@@ -1,10 +1,39 @@
+# ==============================================================================
+# Terraform Variables - Development Environment
+# ==============================================================================
 # Copy this file to terraform.tfvars and fill in your actual values
-# IMPORTANT: Never commit terraform.tfvars to version control
+# IMPORTANT: Never commit terraform.tfvars to git (contains secrets)
+#
+# Usage:
+#   cp terraform.tfvars.example terraform.tfvars
+#   # Edit terraform.tfvars with your actual values
+#   terraform init
+#   terraform plan
+#   terraform apply
+# ==============================================================================
 
-aws_region     = "us-east-2"
-environment    = "dev"
+# AWS Configuration
+aws_region  = "us-east-2"  # Ohio region
+environment = "dev"
 
-# SmashRun OAuth credentials
-# Get these from: https://smashrun.com/settings/api
-smashrun_client_id     = "your-smashrun-client-id"
-smashrun_client_secret = "your-smashrun-client-secret"
+# SmashRun OAuth Credentials
+# Get these from: https://api.smashrun.com/register
+# After OAuth flow, you'll have access_token and refresh_token
+smashrun_client_id     = "streak_xxxxxxxxxxxxx"
+smashrun_client_secret = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+smashrun_access_token  = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+smashrun_refresh_token = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# API Gateway API Key
+# Generate a secure random key:
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Or:
+#   openssl rand -base64 32
+api_key_personal = "xxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Lambda Configuration
+lambda_package_path = "../../../lambda/deployment-package.zip"
+lambda_log_level    = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+# EventBridge Schedule
+eventbridge_enabled = true  # Set to false to disable automated syncs
