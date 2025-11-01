@@ -4,7 +4,7 @@ import logging
 from datetime import date
 from typing import Any
 
-from aws_lambda_powertools import Logger, Metrics, Tracer
+from aws_lambda_powertools import Logger, Metrics
 from aws_lambda_powertools.metrics import MetricUnit
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
@@ -14,14 +14,12 @@ from src.shared.smashrun import SmashRunAPIClient, SmashRunOAuthClient
 from src.shared.smashrun.sync_state import SyncStateManager
 from src.shared.smashrun.token_manager import TokenManager
 
-# Initialize Lambda Powertools
+# Initialize Lambda Powertools (X-Ray tracing disabled - not needed for this use case)
 logger = Logger(service="smashrun-sync")
-tracer = Tracer(service="smashrun-sync")
 metrics = Metrics(namespace="MyRunStreak", service="smashrun-sync")
 
 
 @logger.inject_lambda_context(log_event=True)
-@tracer.capture_lambda_handler
 @metrics.log_metrics(capture_cold_start_metric=True)
 def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, Any]:
     """
@@ -130,7 +128,6 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
         }
 
 
-@tracer.capture_method
 def sync_runs(
     access_token: str,
     since_date: date,
