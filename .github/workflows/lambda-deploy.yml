@@ -158,8 +158,8 @@ jobs:
           # Remove tests if any
           rm -rf tests/ test_*.py
 
-          # Remove .dist-info directories (metadata, not needed at runtime)
-          find . -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
+          # Keep .dist-info directories - some packages like DuckDB need their metadata
+          # find . -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
 
       # ========================================================================
       # Step 9: Create Deployment ZIP
