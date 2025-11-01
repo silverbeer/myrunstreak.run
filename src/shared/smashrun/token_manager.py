@@ -127,8 +127,8 @@ class TokenManager:
         # Check if token needs refresh
         expires_at_str = tokens.get("expires_at")
         if expires_at_str:
-            expires_at = datetime.fromisoformat(expires_at_str)
-            now = datetime.utcnow()
+            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
+            now = datetime.utcnow().replace(tzinfo=expires_at.tzinfo)
 
             # Refresh if expired or expiring within 1 day
             buffer = timedelta(days=1)
