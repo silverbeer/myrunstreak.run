@@ -49,14 +49,23 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
             redirect_uri=settings.smashrun_redirect_uri,
         )
 
+        # Get secret names from environment (set by Terraform)
+        import os
+        smashrun_secret_name = os.getenv("SMASHRUN_SECRET_NAME", "myrunstreak/dev/smashrun/oauth")
+
+        # Derive sync state secret name from SmashRun secret name
+        # e.g., "myrunstreak/dev/smashrun/oauth" -> "myrunstreak/dev/sync-state"
+        sync_state_secret = smashrun_secret_name.rsplit("/", 2)[0] + "/sync-state"
+
         token_manager = TokenManager(
-            secret_name="myrunstreak/smashrun/tokens",
+            secret_name=smashrun_secret_name,
             oauth_client=oauth_client,
             region_name=settings.aws_region,
         )
 
+        # Sync state manager will create its secret if it doesn't exist
         sync_state_manager = SyncStateManager(
-            secret_name="myrunstreak/sync-state",
+            secret_name=sync_state_secret,
             region_name=settings.aws_region,
         )
 

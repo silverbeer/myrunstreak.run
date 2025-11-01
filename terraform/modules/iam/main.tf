@@ -140,18 +140,23 @@ resource "aws_iam_role_policy" "secrets_access" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ReadSmashRunSecrets"
+        Sid    = "ManageSmashRunSecrets"
         Effect = "Allow"
         Action = [
           "secretsmanager:GetSecretValue",
-          "secretsmanager:DescribeSecret"
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:CreateSecret",
+          "secretsmanager:UpdateSecret",
+          "secretsmanager:PutSecretValue"
         ]
         Resource = [
           "arn:aws:secretsmanager:${var.aws_region}:${var.account_id}:secret:${var.project_name}/*"
         ]
         # This grants access to any secret starting with "myrunstreak/"
-        # Example: myrunstreak/smashrun/oauth
-        # More specific than "*" which would grant access to all secrets
+        # Lambda needs write permissions to:
+        # - Refresh OAuth tokens (UpdateSecret)
+        # - Create sync state secret (CreateSecret)
+        # Example: myrunstreak/dev/smashrun/oauth, myrunstreak/dev/sync-state
       }
     ]
   })

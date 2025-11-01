@@ -152,6 +152,14 @@ module "lambda" {
   api_gateway_execution_arn = null
   eventbridge_rule_arn      = null
 
+  # Additional environment variables needed by the sync handler
+  extra_environment_variables = {
+    SMASHRUN_CLIENT_ID     = var.smashrun_client_id
+    SMASHRUN_CLIENT_SECRET = var.smashrun_client_secret
+    SMASHRUN_REDIRECT_URI  = "urn:ietf:wg:oauth:2.0:oob"  # Out-of-band redirect for CLI
+    DUCKDB_PATH            = "s3://${module.s3.bucket_id}/runs.duckdb"
+  }
+
   tags = local.common_tags
 
   depends_on = [
