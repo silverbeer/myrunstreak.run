@@ -170,6 +170,57 @@ module "lambda" {
 }
 
 # ==============================================================================
+# Module: Query Lambda Function
+# ==============================================================================
+# Fast read-only Lambda for querying run statistics
+
+module "lambda_query" {
+  source = "../../modules/lambda"
+
+  function_name      = "${local.project_name}-query-runner-${var.environment}"
+  execution_role_arn = module.iam.lambda_execution_role_arn
+  package_path       = var.lambda_package_path
+  handler            = "lambda_function.handler"  # Will be overridden by GitHub Actions
+
+  # Environment configuration
+  environment = var.environment
+  aws_region  = data.aws_region.current.name
+
+  # S3 configuration (read-only access)
+  s3_bucket_name       = module.s3.bucket_id
+  smashrun_secret_name = null  # Query Lambda doesn't need SmashRun credentials
+
+  # Performance tuning for fast queries
+  memory_size            = 256  # MB (queries are fast)
+  timeout                = 30   # 30 seconds (API Gateway limit)
+  ephemeral_storage_size = 512  # 512 MB for DuckDB read operations
+
+  # Logging
+  log_level          = var.lambda_log_level
+  log_retention_days = 7
+
+  # Monitoring
+  enable_xray_tracing = false
+  enable_alarms       = false
+
+  # Permissions will be created separately below
+  api_gateway_execution_arn = null
+  eventbridge_rule_arn      = null
+
+  # Environment variables for query handler
+  extra_environment_variables = {
+    DUCKDB_PATH = "s3://${module.s3.bucket_id}/runs.duckdb"
+  }
+
+  tags = local.common_tags
+
+  depends_on = [
+    module.iam,
+    module.s3
+  ]
+}
+
+# ==============================================================================
 # Module: API Gateway
 # ==============================================================================
 # REST API with authentication for manual sync triggers
@@ -265,4 +316,105 @@ resource "aws_lambda_permission" "eventbridge_invoke" {
 
   # Source ARN restricts which EventBridge rule can invoke
   source_arn = module.eventbridge.rule_arn
+}
+
+# Query Lambda permissions
+resource "aws_lambda_permission" "query_api_gateway_invoke" {
+  statement_id  = "AllowAPIGatewayInvokeQuery"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_query.function_name
+  principal     = "apigateway.amazonaws.com"
+
+  # Allow invocation from any path in this API Gateway
+  source_arn = "${module.api_gateway.api_execution_arn}/*/*"
+}
+
+# ==============================================================================
+# API Gateway Resources for Query Endpoints
+# ==============================================================================
+# Create resources and integrations for /stats/* and /runs/* endpoints
+
+# /stats resource
+resource "aws_api_gateway_resource" "stats" {
+  rest_api_id = module.api_gateway.rest_api_id
+  parent_id   = module.api_gateway.root_resource_id
+  path_part   = "stats"
+}
+
+# /stats/{proxy+} - catches all /stats/* paths
+resource "aws_api_gateway_resource" "stats_proxy" {
+  rest_api_id = module.api_gateway.rest_api_id
+  parent_id   = aws_api_gateway_resource.stats.id
+  path_part   = "{proxy+}"
+}
+
+# GET method for /stats/{proxy+}
+resource "aws_api_gateway_method" "stats_proxy_get" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.stats_proxy.id
+  http_method   = "GET"
+  authorization = "NONE"  # Public read access
+}
+
+# Integration with query Lambda for /stats/{proxy+}
+resource "aws_api_gateway_integration" "stats_proxy" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.stats_proxy.id
+  http_method = aws_api_gateway_method.stats_proxy_get.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = module.lambda_query.function_invoke_arn
+}
+
+# /runs resource
+resource "aws_api_gateway_resource" "runs" {
+  rest_api_id = module.api_gateway.rest_api_id
+  parent_id   = module.api_gateway.root_resource_id
+  path_part   = "runs"
+}
+
+# GET method for /runs (list all runs)
+resource "aws_api_gateway_method" "runs_get" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.runs.id
+  http_method   = "GET"
+  authorization = "NONE"  # Public read access
+}
+
+# Integration with query Lambda for /runs
+resource "aws_api_gateway_integration" "runs_get" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.runs.id
+  http_method = aws_api_gateway_method.runs_get.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = module.lambda_query.function_invoke_arn
+}
+
+# /runs/{proxy+} - catches all /runs/* paths
+resource "aws_api_gateway_resource" "runs_proxy" {
+  rest_api_id = module.api_gateway.rest_api_id
+  parent_id   = aws_api_gateway_resource.runs.id
+  path_part   = "{proxy+}"
+}
+
+# GET method for /runs/{proxy+}
+resource "aws_api_gateway_method" "runs_proxy_get" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.runs_proxy.id
+  http_method   = "GET"
+  authorization = "NONE"  # Public read access
+}
+
+# Integration with query Lambda for /runs/{proxy+}
+resource "aws_api_gateway_integration" "runs_proxy" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.runs_proxy.id
+  http_method = aws_api_gateway_method.runs_proxy_get.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = module.lambda_query.function_invoke_arn
 }
