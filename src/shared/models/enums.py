@@ -40,9 +40,13 @@ class WeatherType(str, Enum):
     CLOUDY = "cloudy"
     PARTLY_CLOUDY = "partlycloudy"
     RAIN = "rain"
+    DRIZZLE = "drizzle"
     EXTREME_RAIN = "extremerain"
     STORM = "storm"
     SNOW = "snow"
+    BLIZZARD = "blizzard"
+    EXTREME_COLD = "extremecold"
+    EXTREME_WIND = "extremewind"
 
 
 class DeviceType(str, Enum):

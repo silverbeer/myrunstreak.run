@@ -157,7 +157,7 @@ def get_streaks():
         # Calculate streaks using window functions
         results = conn.execute("""
             WITH daily_runs AS (
-                SELECT DISTINCT start_date_time_local::DATE as run_date
+                SELECT DISTINCT start_date as run_date
                 FROM runs
             ),
             streak_groups AS (
