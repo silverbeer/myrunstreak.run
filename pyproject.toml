@@ -38,6 +38,9 @@ dev = [
     "mypy>=1.11.0",  # Type checking
     "boto3-stubs[essential]>=1.35.0",
 ]
+cli = [
+    "rich>=13.7.0",  # Pretty terminal output
+]
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]
