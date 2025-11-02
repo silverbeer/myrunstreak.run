@@ -32,28 +32,28 @@ def get_overall_stats():
         result = conn.execute("""
             SELECT
                 COUNT(*) as total_runs,
-                SUM(distance) as total_distance,
-                AVG(distance) as avg_distance,
-                MAX(distance) as longest_run,
-                AVG(avgPace) as avg_pace
+                SUM(distance_km) as total_distance,
+                AVG(distance_km) as avg_distance,
+                MAX(distance_km) as longest_run,
+                AVG(average_pace_min_per_km) as avg_pace
             FROM runs
         """).fetchone()
 
         if not result or result[0] == 0:
             return {
                 "total_runs": 0,
-                "total_miles": 0,
-                "avg_miles": 0,
-                "longest_run": 0,
-                "avg_pace": 0
+                "total_km": 0,
+                "avg_km": 0,
+                "longest_run_km": 0,
+                "avg_pace_min_per_km": 0
             }
 
         return {
             "total_runs": result[0],
-            "total_miles": round(result[1], 2) if result[1] else 0,
-            "avg_miles": round(result[2], 2) if result[2] else 0,
-            "longest_run": round(result[3], 2) if result[3] else 0,
-            "avg_pace": round(result[4], 2) if result[4] else 0
+            "total_km": round(result[1], 2) if result[1] else 0,
+            "avg_km": round(result[2], 2) if result[2] else 0,
+            "longest_run_km": round(result[3], 2) if result[3] else 0,
+            "avg_pace_min_per_km": round(result[4], 2) if result[4] else 0
         }
 
 
@@ -71,16 +71,16 @@ def get_recent_runs():
     with db_manager as conn:
         results = conn.execute(f"""
             SELECT
-                activityId,
-                startDateTimeLocal,
-                distance,
-                duration,
-                avgPace,
-                avgHeartRate,
-                temperature,
-                weatherType
+                activity_id,
+                start_date_time_local,
+                distance_km,
+                duration_seconds,
+                average_pace_min_per_km,
+                heart_rate_average,
+                temperature_celsius,
+                weather_type
             FROM runs
-            ORDER BY startDateTimeLocal DESC
+            ORDER BY start_date_time_local DESC
             LIMIT {limit}
         """).fetchall()
 
@@ -89,12 +89,12 @@ def get_recent_runs():
             runs.append({
                 "activity_id": row[0],
                 "date": str(row[1]),
-                "distance_miles": round(row[2], 2) if row[2] else 0,
+                "distance_km": round(row[2], 2) if row[2] else 0,
                 "duration_seconds": row[3],
                 "duration_minutes": round(row[3] / 60, 1) if row[3] else 0,
-                "avg_pace": round(row[4], 2) if row[4] else 0,
-                "avg_heart_rate": row[5],
-                "temperature": row[6],
+                "avg_pace_min_per_km": round(row[4], 2) if row[4] else 0,
+                "heart_rate_avg": row[5],
+                "temperature_celsius": row[6],
                 "weather": row[7]
             })
 
@@ -118,11 +118,11 @@ def get_monthly_stats():
     with db_manager as conn:
         results = conn.execute(f"""
             SELECT
-                DATE_TRUNC('month', startDateTimeLocal)::DATE as month,
+                DATE_TRUNC('month', start_date_time_local)::DATE as month,
                 COUNT(*) as run_count,
-                SUM(distance) as total_distance,
-                AVG(distance) as avg_distance,
-                AVG(avgPace) as avg_pace
+                SUM(distance_km) as total_distance,
+                AVG(distance_km) as avg_distance,
+                AVG(average_pace_min_per_km) as avg_pace
             FROM runs
             GROUP BY month
             ORDER BY month DESC
@@ -134,9 +134,9 @@ def get_monthly_stats():
             months.append({
                 "month": str(row[0]),
                 "run_count": row[1],
-                "total_miles": round(row[2], 2) if row[2] else 0,
-                "avg_miles": round(row[3], 2) if row[3] else 0,
-                "avg_pace": round(row[4], 2) if row[4] else 0
+                "total_km": round(row[2], 2) if row[2] else 0,
+                "avg_km": round(row[3], 2) if row[3] else 0,
+                "avg_pace_min_per_km": round(row[4], 2) if row[4] else 0
             })
 
         return {
@@ -157,7 +157,7 @@ def get_streaks():
         # Calculate streaks using window functions
         results = conn.execute("""
             WITH daily_runs AS (
-                SELECT DISTINCT startDateTimeLocal::DATE as run_date
+                SELECT DISTINCT start_date_time_local::DATE as run_date
                 FROM runs
             ),
             streak_groups AS (
@@ -217,18 +217,18 @@ def get_records():
     with db_manager as conn:
         # Longest run
         longest = conn.execute("""
-            SELECT startDateTimeLocal::DATE, distance, activityId
+            SELECT start_date_time_local::DATE, distance_km, activity_id
             FROM runs
-            ORDER BY distance DESC
+            ORDER BY distance_km DESC
             LIMIT 1
         """).fetchone()
 
-        # Fastest pace (for runs >= 3 miles)
+        # Fastest pace (for runs >= 5 km)
         fastest = conn.execute("""
-            SELECT startDateTimeLocal::DATE, avgPace, distance, activityId
+            SELECT start_date_time_local::DATE, average_pace_min_per_km, distance_km, activity_id
             FROM runs
-            WHERE distance >= 3
-            ORDER BY avgPace ASC
+            WHERE distance_km >= 5
+            ORDER BY average_pace_min_per_km ASC
             LIMIT 1
         """).fetchone()
 
@@ -236,8 +236,8 @@ def get_records():
         weekly = conn.execute("""
             WITH weekly_totals AS (
                 SELECT
-                    DATE_TRUNC('week', startDateTimeLocal)::DATE as week_start,
-                    SUM(distance) as total_distance
+                    DATE_TRUNC('week', start_date_time_local)::DATE as week_start,
+                    SUM(distance_km) as total_distance
                 FROM runs
                 GROUP BY week_start
             )
@@ -251,9 +251,9 @@ def get_records():
         monthly = conn.execute("""
             WITH monthly_totals AS (
                 SELECT
-                    DATE_TRUNC('month', startDateTimeLocal)::DATE as month_start,
+                    DATE_TRUNC('month', start_date_time_local)::DATE as month_start,
                     COUNT(*) as run_count,
-                    SUM(distance) as total_distance
+                    SUM(distance_km) as total_distance
                 FROM runs
                 GROUP BY month_start
             )
@@ -268,29 +268,29 @@ def get_records():
         if longest:
             records["longest_run"] = {
                 "date": str(longest[0]),
-                "distance_miles": round(longest[1], 2),
+                "distance_km": round(longest[1], 2),
                 "activity_id": longest[2]
             }
 
         if fastest:
             records["fastest_pace"] = {
                 "date": str(fastest[0]),
-                "pace_min_per_mile": round(fastest[1], 2),
-                "distance_miles": round(fastest[2], 2),
+                "pace_min_per_km": round(fastest[1], 2),
+                "distance_km": round(fastest[2], 2),
                 "activity_id": fastest[3]
             }
 
         if weekly:
-            records["most_miles_week"] = {
+            records["most_km_week"] = {
                 "week_start": str(weekly[0]),
-                "total_miles": round(weekly[1], 2)
+                "total_km": round(weekly[1], 2)
             }
 
         if monthly:
-            records["most_miles_month"] = {
+            records["most_km_month"] = {
                 "month": str(monthly[0]),
                 "run_count": monthly[1],
-                "total_miles": round(monthly[2], 2)
+                "total_km": round(monthly[2], 2)
             }
 
         return records
@@ -315,13 +315,13 @@ def list_runs():
         # Get paginated results
         results = conn.execute(f"""
             SELECT
-                activityId,
-                startDateTimeLocal,
-                distance,
-                duration,
-                avgPace
+                activity_id,
+                start_date_time_local,
+                distance_km,
+                duration_seconds,
+                average_pace_min_per_km
             FROM runs
-            ORDER BY startDateTimeLocal DESC
+            ORDER BY start_date_time_local DESC
             LIMIT {limit}
             OFFSET {offset}
         """).fetchall()
@@ -331,9 +331,9 @@ def list_runs():
             runs.append({
                 "activity_id": row[0],
                 "date": str(row[1]),
-                "distance_miles": round(row[2], 2) if row[2] else 0,
+                "distance_km": round(row[2], 2) if row[2] else 0,
                 "duration_minutes": round(row[3] / 60, 1) if row[3] else 0,
-                "avg_pace": round(row[4], 2) if row[4] else 0
+                "avg_pace_min_per_km": round(row[4], 2) if row[4] else 0
             })
 
         return {
