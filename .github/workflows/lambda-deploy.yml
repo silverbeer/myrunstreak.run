@@ -148,7 +148,8 @@ jobs:
         run: |
           # Install production dependencies to lambda-package directory
           # This installs only the dependencies defined in pyproject.toml (not dev dependencies)
-          uv pip install --target lambda-package --no-cache .
+          # Use --python-platform to get binaries compatible with AWS Lambda (Amazon Linux 2)
+          uv pip install --target lambda-package --no-cache --python-platform manylinux2014_x86_64 .
 
       # ========================================================================
       # Step 7: Copy Application Code
