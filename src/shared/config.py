@@ -30,10 +30,18 @@ class Settings(BaseSettings):
         description="OAuth redirect URI for authorization code flow",
     )
 
-    # DuckDB Configuration
+    # Supabase Configuration
+    supabase_url: str = Field(
+        description="Supabase project URL",
+    )
+    supabase_key: str = Field(
+        description="Supabase service role key (bypasses RLS)",
+    )
+
+    # DuckDB Configuration (DEPRECATED - migrating to Supabase)
     duckdb_path: str = Field(
         default="s3://myrunstreak-data/runs.duckdb",
-        description="Path to DuckDB database (local or S3)",
+        description="Path to DuckDB database (local or S3) - DEPRECATED",
     )
 
     # AWS Configuration

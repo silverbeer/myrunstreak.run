@@ -6,9 +6,7 @@ from uuid import UUID
 from ..models import Activity, Split
 
 
-def activity_to_run_dict(
-    activity: Activity, user_id: UUID, source_id: UUID
-) -> dict[str, Any]:
+def activity_to_run_dict(activity: Activity, user_id: UUID, source_id: UUID) -> dict[str, Any]:
     """
     Convert Activity model to Supabase runs table format.
 
@@ -34,9 +32,7 @@ def activity_to_run_dict(
         "distance_km": float(activity.distance),
         "duration_seconds": float(activity.duration),
         # Cadence
-        "cadence_average": (
-            float(activity.cadence_average) if activity.cadence_average else None
-        ),
+        "cadence_average": (float(activity.cadence_average) if activity.cadence_average else None),
         "cadence_min": float(activity.cadence_min) if activity.cadence_min else None,
         "cadence_max": float(activity.cadence_max) if activity.cadence_max else None,
         # Heart rate
@@ -44,18 +40,12 @@ def activity_to_run_dict(
         "heart_rate_min": activity.heart_rate_min,
         "heart_rate_max": activity.heart_rate_max,
         # Health & subjective
-        "body_weight_kg": (
-            float(activity.body_weight) if activity.body_weight else None
-        ),
+        "body_weight_kg": (float(activity.body_weight) if activity.body_weight else None),
         "how_felt": activity.how_felt.value if activity.how_felt else None,
         # Environmental
         "terrain": activity.terrain.value if activity.terrain else None,
-        "temperature_celsius": (
-            float(activity.temperature) if activity.temperature else None
-        ),
-        "weather_type": (
-            activity.weather_type.value if activity.weather_type else None
-        ),
+        "temperature_celsius": (float(activity.temperature) if activity.temperature else None),
+        "weather_type": (activity.weather_type.value if activity.weather_type else None),
         "humidity_percent": activity.humidity,
         "wind_speed_kph": activity.wind_speed,
         # User content
@@ -68,8 +58,7 @@ def activity_to_run_dict(
         "app_version": activity.external_app_version,
         # Data availability flags
         "has_gps_data": (
-            activity.recording_keys is not None
-            and "latitude" in (activity.recording_keys or [])
+            activity.recording_keys is not None and "latitude" in (activity.recording_keys or [])
         ),
         "has_heart_rate_data": activity.heart_rate_average is not None,
         "has_cadence_data": activity.cadence_average is not None,

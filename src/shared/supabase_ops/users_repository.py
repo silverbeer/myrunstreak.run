@@ -61,9 +61,7 @@ class UsersRepository:
         Returns:
             User record or None if not found
         """
-        result = (
-            self.supabase.table("users").select("*").eq("user_id", str(user_id)).execute()
-        )
+        result = self.supabase.table("users").select("*").eq("user_id", str(user_id)).execute()
 
         return result.data[0] if result.data else None
 
@@ -77,9 +75,7 @@ class UsersRepository:
         Returns:
             User record or None if not found
         """
-        result = (
-            self.supabase.table("users").select("*").eq("email", email).execute()
-        )
+        result = self.supabase.table("users").select("*").eq("email", email).execute()
 
         return result.data[0] if result.data else None
 
@@ -114,15 +110,11 @@ class UsersRepository:
 
         result = self.supabase.table("user_sources").insert(data).execute()
 
-        logger.info(
-            f"Connected {source_type} source for user {user_id}: {result.data[0]['id']}"
-        )
+        logger.info(f"Connected {source_type} source for user {user_id}: {result.data[0]['id']}")
 
         return result.data[0]
 
-    def get_user_sources(
-        self, user_id: UUID, active_only: bool = True
-    ) -> list[dict[str, Any]]:
+    def get_user_sources(self, user_id: UUID, active_only: bool = True) -> list[dict[str, Any]]:
         """
         Get all data sources for a user.
 
@@ -133,11 +125,7 @@ class UsersRepository:
         Returns:
             List of user_source records
         """
-        query = (
-            self.supabase.table("user_sources")
-            .select("*")
-            .eq("user_id", str(user_id))
-        )
+        query = self.supabase.table("user_sources").select("*").eq("user_id", str(user_id))
 
         if active_only:
             query = query.eq("is_active", True)
@@ -156,12 +144,7 @@ class UsersRepository:
         Returns:
             User_source record or None if not found
         """
-        result = (
-            self.supabase.table("user_sources")
-            .select("*")
-            .eq("id", str(source_id))
-            .execute()
-        )
+        result = self.supabase.table("user_sources").select("*").eq("id", str(source_id)).execute()
 
         return result.data[0] if result.data else None
 
@@ -186,6 +169,17 @@ class UsersRepository:
             }
         ).eq("id", str(source_id)).execute()
 
+    def update_source_last_sync(self, source_id: UUID) -> None:
+        """
+        Update source last sync timestamp to now.
+
+        Convenience method for marking successful sync completion.
+
+        Args:
+            source_id: Source UUID
+        """
+        self.update_source_sync_status(source_id, datetime.utcnow(), last_sync_status="success")
+
     def get_all_active_sources(self, source_type: str | None = None) -> list[dict[str, Any]]:
         """
         Get all active data sources across all users.
@@ -198,11 +192,7 @@ class UsersRepository:
         Returns:
             List of user_source records with user info
         """
-        query = (
-            self.supabase.table("user_sources")
-            .select("*, users(*)")
-            .eq("is_active", True)
-        )
+        query = self.supabase.table("user_sources").select("*, users(*)").eq("is_active", True)
 
         if source_type:
             query = query.eq("source_type", source_type)

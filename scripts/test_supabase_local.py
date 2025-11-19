@@ -121,7 +121,7 @@ def test_runs_repository():
 
         # Get overall stats
         stats = runs_repo.get_user_overall_stats(test_user_id)
-        print(f"✅ Overall stats:")
+        print("✅ Overall stats:")
         print(f"   Total runs: {stats['total_runs']}")
         print(f"   Total km: {stats['total_km']}")
         print(f"   Avg km: {stats['avg_km']}")

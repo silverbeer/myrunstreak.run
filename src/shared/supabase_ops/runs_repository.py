@@ -56,16 +56,12 @@ class RunsRepository:
                 .execute()
             )
 
-            logger.debug(
-                f"Upserted run {run_data.get('source_activity_id')} for user {user_id}"
-            )
+            logger.debug(f"Upserted run {run_data.get('source_activity_id')} for user {user_id}")
 
             return result.data[0]
 
         except Exception as e:
-            logger.error(
-                f"Failed to upsert run {run_data.get('source_activity_id')}: {e}"
-            )
+            logger.error(f"Failed to upsert run {run_data.get('source_activity_id')}: {e}")
             raise
 
     def get_run_by_id(self, run_id: UUID) -> dict[str, Any] | None:
@@ -78,9 +74,7 @@ class RunsRepository:
         Returns:
             Run record or None if not found
         """
-        result = (
-            self.supabase.table("runs").select("*").eq("id", str(run_id)).execute()
-        )
+        result = self.supabase.table("runs").select("*").eq("id", str(run_id)).execute()
 
         return result.data[0] if result.data else None
 
@@ -183,9 +177,7 @@ class RunsRepository:
             "avg_pace_min_per_km": round(sum(paces) / len(paces), 2) if paces else 0,
         }
 
-    def get_monthly_stats(
-        self, user_id: UUID, limit: int = 12
-    ) -> list[dict[str, Any]]:
+    def get_monthly_stats(self, user_id: UUID, limit: int = 12) -> list[dict[str, Any]]:
         """
         Get monthly statistics for a user using the monthly_summary view.
 
@@ -245,9 +237,7 @@ class RunsRepository:
 
         return streak
 
-    def upsert_split(
-        self, run_id: UUID, split_data: dict[str, Any]
-    ) -> dict[str, Any]:
+    def upsert_split(self, run_id: UUID, split_data: dict[str, Any]) -> dict[str, Any]:
         """
         Insert or update a split for a run.
 
