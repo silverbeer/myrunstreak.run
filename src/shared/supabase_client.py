@@ -89,7 +89,7 @@ def test_connection() -> dict[str, Any]:
         supabase = get_supabase_client()
 
         # Query users table to verify connection
-        result = supabase.table("users").select("count", count="exact").execute()
+        result = supabase.table("users").select("count", count="exact").execute()  # type: ignore[arg-type]
 
         return {
             "status": "connected",

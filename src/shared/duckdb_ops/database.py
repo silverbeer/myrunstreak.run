@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import boto3
-import duckdb
+import duckdb  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
 

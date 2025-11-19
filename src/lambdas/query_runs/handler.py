@@ -1,7 +1,7 @@
 """Lambda function handler for querying running statistics (multi-user)."""
 
 import json
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from aws_lambda_powertools import Logger, Metrics
@@ -223,8 +223,9 @@ def get_records() -> dict[str, Any]:
         .execute()
     )
 
-    if longest_result.data:
-        longest = longest_result.data[0]
+    longest_data = cast(list[dict[str, Any]], longest_result.data)
+    if longest_data:
+        longest = longest_data[0]
         records["longest_run"] = {
             "date": longest["start_date"],
             "distance_km": float(longest["distance_km"]),
@@ -242,8 +243,9 @@ def get_records() -> dict[str, Any]:
         .execute()
     )
 
-    if fastest_result.data:
-        fastest = fastest_result.data[0]
+    fastest_data = cast(list[dict[str, Any]], fastest_result.data)
+    if fastest_data:
+        fastest = fastest_data[0]
         records["fastest_pace"] = {
             "date": fastest["start_date"],
             "pace_min_per_km": float(fastest["average_pace_min_per_km"]),
@@ -262,8 +264,9 @@ def get_records() -> dict[str, Any]:
         .execute()
     )
 
-    if monthly_result.data:
-        monthly = monthly_result.data[0]
+    monthly_data = cast(list[dict[str, Any]], monthly_result.data)
+    if monthly_data:
+        monthly = monthly_data[0]
         records["most_km_month"] = {
             "month": f"{monthly['start_year']}-{monthly['start_month']:02d}-01",
             "run_count": monthly["run_count"],
@@ -305,7 +308,7 @@ def list_runs() -> dict[str, Any]:
 
     # Get total count
     total_result = (
-        supabase.table("runs").select("*", count="exact").eq("user_id", str(user_id)).execute()
+        supabase.table("runs").select("*", count="exact").eq("user_id", str(user_id)).execute()  # type: ignore[arg-type]
     )
     total = total_result.count if total_result.count else 0
 

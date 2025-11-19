@@ -2,7 +2,7 @@
 
 import logging
 from datetime import date
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from supabase import Client
@@ -57,8 +57,9 @@ class RunsRepository:
             )
 
             logger.debug(f"Upserted run {run_data.get('source_activity_id')} for user {user_id}")
+            data_list = cast(list[dict[str, Any]], result.data)
 
-            return result.data[0]
+            return data_list[0]
 
         except Exception as e:
             logger.error(f"Failed to upsert run {run_data.get('source_activity_id')}: {e}")
@@ -75,8 +76,9 @@ class RunsRepository:
             Run record or None if not found
         """
         result = self.supabase.table("runs").select("*").eq("id", str(run_id)).execute()
+        data_list = cast(list[dict[str, Any]], result.data)
 
-        return result.data[0] if result.data else None
+        return data_list[0] if data_list else None
 
     def get_runs_by_user(
         self, user_id: UUID, limit: int = 50, offset: int = 0
@@ -101,7 +103,7 @@ class RunsRepository:
             .execute()
         )
 
-        return result.data
+        return cast(list[dict[str, Any]], result.data)
 
     def get_runs_by_date_range(
         self, user_id: UUID, start_date: date, end_date: date
@@ -127,7 +129,7 @@ class RunsRepository:
             .execute()
         )
 
-        return result.data
+        return cast(list[dict[str, Any]], result.data)
 
     def get_user_overall_stats(self, user_id: UUID) -> dict[str, Any]:
         """
@@ -150,7 +152,9 @@ class RunsRepository:
             .execute()
         )
 
-        if not result.data or len(result.data) == 0:
+        runs = cast(list[dict[str, Any]], result.data)
+
+        if not runs or len(runs) == 0:
             return {
                 "total_runs": 0,
                 "total_km": 0,
@@ -160,7 +164,6 @@ class RunsRepository:
             }
 
         # Client-side aggregation
-        runs = result.data
         total_runs = len(runs)
         distances = [float(r["distance_km"]) for r in runs]
         paces = [
@@ -198,7 +201,7 @@ class RunsRepository:
             .execute()
         )
 
-        return result.data
+        return cast(list[dict[str, Any]], result.data)
 
     def get_current_streak(self, user_id: UUID) -> int:
         """
@@ -221,11 +224,13 @@ class RunsRepository:
             .execute()
         )
 
-        if not result.data:
+        data_list = cast(list[dict[str, Any]], result.data)
+
+        if not data_list:
             return 0
 
         # Convert to set of dates for fast lookup
-        run_dates = {date.fromisoformat(row["start_date"]) for row in result.data}
+        run_dates = {date.fromisoformat(row["start_date"]) for row in data_list}
 
         # Count consecutive days from today
         current_date = date.today()
@@ -255,8 +260,9 @@ class RunsRepository:
             .upsert(split_data, on_conflict="run_id,split_unit,split_number")
             .execute()
         )
+        data_list = cast(list[dict[str, Any]], result.data)
 
-        return result.data[0]
+        return data_list[0]
 
     def get_splits_for_run(self, run_id: UUID) -> list[dict[str, Any]]:
         """
@@ -276,7 +282,7 @@ class RunsRepository:
             .execute()
         )
 
-        return result.data
+        return cast(list[dict[str, Any]], result.data)
 
     def delete_run(self, run_id: UUID) -> None:
         """

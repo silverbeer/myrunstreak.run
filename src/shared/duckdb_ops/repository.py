@@ -4,7 +4,7 @@ import logging
 from datetime import date
 from typing import Any
 
-import duckdb
+import duckdb  # type: ignore[import-not-found]
 
 from ..models import Activity, Split
 

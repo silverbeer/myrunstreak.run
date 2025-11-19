@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from supabase import Client
@@ -46,10 +46,11 @@ class UsersRepository:
             data["display_name"] = display_name
 
         result = self.supabase.table("users").insert(data).execute()
+        data_list = cast(list[dict[str, Any]], result.data)
 
-        logger.info(f"Created user {result.data[0]['user_id']}")
+        logger.info(f"Created user {data_list[0]['user_id']}")
 
-        return result.data[0]
+        return data_list[0]
 
     def get_user_by_id(self, user_id: UUID) -> dict[str, Any] | None:
         """
@@ -62,8 +63,9 @@ class UsersRepository:
             User record or None if not found
         """
         result = self.supabase.table("users").select("*").eq("user_id", str(user_id)).execute()
+        data_list = cast(list[dict[str, Any]], result.data)
 
-        return result.data[0] if result.data else None
+        return data_list[0] if data_list else None
 
     def get_user_by_email(self, email: str) -> dict[str, Any] | None:
         """
@@ -76,8 +78,9 @@ class UsersRepository:
             User record or None if not found
         """
         result = self.supabase.table("users").select("*").eq("email", email).execute()
+        data_list = cast(list[dict[str, Any]], result.data)
 
-        return result.data[0] if result.data else None
+        return data_list[0] if data_list else None
 
     def create_user_source(
         self,
@@ -109,10 +112,11 @@ class UsersRepository:
         }
 
         result = self.supabase.table("user_sources").insert(data).execute()
+        data_list = cast(list[dict[str, Any]], result.data)
 
-        logger.info(f"Connected {source_type} source for user {user_id}: {result.data[0]['id']}")
+        logger.info(f"Connected {source_type} source for user {user_id}: {data_list[0]['id']}")
 
-        return result.data[0]
+        return data_list[0]
 
     def get_user_sources(self, user_id: UUID, active_only: bool = True) -> list[dict[str, Any]]:
         """
@@ -132,7 +136,7 @@ class UsersRepository:
 
         result = query.execute()
 
-        return result.data
+        return cast(list[dict[str, Any]], result.data)
 
     def get_source_by_id(self, source_id: UUID) -> dict[str, Any] | None:
         """
@@ -145,8 +149,9 @@ class UsersRepository:
             User_source record or None if not found
         """
         result = self.supabase.table("user_sources").select("*").eq("id", str(source_id)).execute()
+        data_list = cast(list[dict[str, Any]], result.data)
 
-        return result.data[0] if result.data else None
+        return data_list[0] if data_list else None
 
     def update_source_sync_status(
         self,
@@ -199,7 +204,7 @@ class UsersRepository:
 
         result = query.execute()
 
-        return result.data
+        return cast(list[dict[str, Any]], result.data)
 
     def deactivate_source(self, source_id: UUID) -> None:
         """
