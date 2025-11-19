@@ -1,0 +1,80 @@
+# Docker Compose for LocalStack - AWS Service Emulator
+#
+# LocalStack provides a more comprehensive AWS emulation than moto,
+# including Secrets Manager, Lambda, S3, and more.
+#
+# Usage:
+#   # Start LocalStack
+#   docker-compose -f docker-compose.localstack.yml up -d
+#
+#   # Check status
+#   docker-compose -f docker-compose.localstack.yml ps
+#
+#   # View logs
+#   docker-compose -f docker-compose.localstack.yml logs -f
+#
+#   # Stop LocalStack
+#   docker-compose -f docker-compose.localstack.yml down
+#
+# Test migration with LocalStack:
+#   # Set environment to use LocalStack
+#   export AWS_ENDPOINT_URL=http://localhost:4566
+#   export AWS_ACCESS_KEY_ID=test
+#   export AWS_SECRET_ACCESS_KEY=test
+#   export AWS_DEFAULT_REGION=us-east-2
+#
+#   # Run migration script
+#   uv run python scripts/migrate_oauth_tokens.py --dry-run
+
+version: '3.8'
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: myrunstreak-localstack
+    ports:
+      # Main endpoint for all AWS services
+      - "4566:4566"
+    environment:
+      # AWS Services to enable
+      SERVICES: secretsmanager,s3,lambda,dynamodb
+
+      # AWS Configuration
+      DEFAULT_REGION: us-east-2
+
+      # LocalStack Configuration
+      DEBUG: 0
+      PERSISTENCE: 1  # Enable state persistence
+
+      # Docker Configuration
+      DOCKER_HOST: unix:///var/run/docker.sock
+
+    volumes:
+      # Persist LocalStack state
+      - ./tmp/localstack:/var/lib/localstack
+
+      # Mount Docker socket for Lambda execution
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Optional: LocalStack UI (Pro feature)
+  # Uncomment if you have a LocalStack Pro license
+  # localstack-ui:
+  #   image: localstack/localstack-pro:latest
+  #   container_name: myrunstreak-localstack-ui
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     LOCALSTACK_API_KEY: ${LOCALSTACK_API_KEY}
+  #   depends_on:
+  #     - localstack
+
+volumes:
+  localstack-data:
+    driver: local
