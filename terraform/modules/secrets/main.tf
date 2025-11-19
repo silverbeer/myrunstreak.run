@@ -89,6 +89,41 @@ resource "aws_secretsmanager_secret_version" "smashrun_oauth" {
 # - Terraform manages the secret resource, not its value
 
 # ------------------------------------------------------------------------------
+# Supabase Credentials Secret
+# ------------------------------------------------------------------------------
+# Stores Supabase URL and service role key
+# Used by Lambda functions to connect to PostgreSQL database
+
+resource "aws_secretsmanager_secret" "supabase" {
+  name                    = "${var.project_name}/${var.environment}/supabase/credentials"
+  description             = "Supabase PostgreSQL database credentials"
+  recovery_window_in_days = var.environment == "dev" ? 0 : 30
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-supabase-credentials"
+      Description = "Supabase database access"
+    }
+  )
+}
+
+resource "aws_secretsmanager_secret_version" "supabase" {
+  secret_id = aws_secretsmanager_secret.supabase.id
+
+  secret_string = jsonencode({
+    url = var.supabase_url
+    key = var.supabase_service_role_key
+  })
+
+  lifecycle {
+    ignore_changes = [
+      secret_string
+    ]
+  }
+}
+
+# ------------------------------------------------------------------------------
 # API Gateway API Keys Secret
 # ------------------------------------------------------------------------------
 # Stores API keys for API Gateway access

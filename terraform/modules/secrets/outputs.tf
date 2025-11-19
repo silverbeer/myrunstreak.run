@@ -22,5 +22,15 @@ output "api_keys_secret_name" {
   value       = aws_secretsmanager_secret.api_keys.name
 }
 
+output "supabase_secret_arn" {
+  description = "ARN of the Supabase credentials secret"
+  value       = aws_secretsmanager_secret.supabase.arn
+}
+
+output "supabase_secret_name" {
+  description = "Name of the Supabase credentials secret"
+  value       = aws_secretsmanager_secret.supabase.name
+}
+
 # Note: We don't output secret values for security
 # Lambda reads secrets directly from Secrets Manager at runtime

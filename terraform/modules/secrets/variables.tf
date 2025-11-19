@@ -57,6 +57,19 @@ variable "api_key_personal" {
   sensitive   = true
 }
 
+# Supabase Credentials
+variable "supabase_url" {
+  description = "Supabase project URL (e.g., https://xxxxx.supabase.co)"
+  type        = string
+  sensitive   = true
+}
+
+variable "supabase_service_role_key" {
+  description = "Supabase service role key (bypasses RLS, use with caution)"
+  type        = string
+  sensitive   = true
+}
+
 # Optional Features
 variable "enable_rotation" {
   description = "Enable automatic secret rotation"

@@ -107,6 +107,10 @@ module "secrets" {
   # API Gateway API key
   api_key_personal = var.api_key_personal
 
+  # Supabase credentials
+  supabase_url              = var.supabase_url
+  supabase_service_role_key = var.supabase_service_role_key
+
   # Optional features
   enable_rotation      = false  # Manual token management for now
   enable_age_monitoring = false  # Optional alarm for stale secrets
@@ -157,7 +161,8 @@ module "lambda" {
     SMASHRUN_CLIENT_ID     = var.smashrun_client_id
     SMASHRUN_CLIENT_SECRET = var.smashrun_client_secret
     SMASHRUN_REDIRECT_URI  = "urn:ietf:wg:oauth:2.0:oob"  # Out-of-band redirect for CLI
-    DUCKDB_PATH            = "s3://${module.s3.bucket_id}/runs.duckdb"
+    SUPABASE_URL           = var.supabase_url
+    SUPABASE_KEY           = var.supabase_service_role_key
   }
 
   tags = local.common_tags
@@ -209,7 +214,8 @@ module "lambda_query" {
 
   # Environment variables for query handler
   extra_environment_variables = {
-    DUCKDB_PATH = "s3://${module.s3.bucket_id}/runs.duckdb"
+    SUPABASE_URL = var.supabase_url
+    SUPABASE_KEY = var.supabase_service_role_key
   }
 
   tags = local.common_tags

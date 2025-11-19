@@ -40,6 +40,18 @@ variable "api_key_personal" {
   sensitive   = true
 }
 
+variable "supabase_url" {
+  description = "Supabase project URL (e.g., https://xxxxx.supabase.co)"
+  type        = string
+  sensitive   = true
+}
+
+variable "supabase_service_role_key" {
+  description = "Supabase service role key for Lambda access (bypasses RLS)"
+  type        = string
+  sensitive   = true
+}
+
 variable "lambda_package_path" {
   description = "Path to Lambda deployment package (ZIP file)"
   type        = string
