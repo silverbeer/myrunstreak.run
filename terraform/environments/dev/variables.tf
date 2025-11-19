@@ -53,9 +53,27 @@ variable "supabase_service_role_key" {
 }
 
 variable "lambda_package_path" {
-  description = "Path to Lambda deployment package (ZIP file)"
+  description = "Path to Lambda deployment package (ZIP file) - for local development"
   type        = string
-  default     = "../../../lambda/deployment-package.zip"
+  default     = null
+}
+
+variable "lambda_s3_bucket" {
+  description = "S3 bucket containing Lambda deployment packages (for CI/CD)"
+  type        = string
+  default     = null
+}
+
+variable "lambda_s3_key_sync" {
+  description = "S3 key for sync Lambda deployment package"
+  type        = string
+  default     = "lambda-packages/sync-runner/latest.zip"
+}
+
+variable "lambda_s3_key_query" {
+  description = "S3 key for query Lambda deployment package"
+  type        = string
+  default     = "lambda-packages/query-runner/latest.zip"
 }
 
 variable "lambda_log_level" {

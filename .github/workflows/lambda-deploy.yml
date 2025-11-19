@@ -59,6 +59,7 @@ permissions:
 env:
   AWS_REGION: us-east-2
   PYTHON_VERSION: "3.12"
+  LAMBDA_S3_BUCKET: myrunstreak-data-dev-855323747881
 
 jobs:
   deploy-lambda:
@@ -73,10 +74,12 @@ jobs:
             function_name: myrunstreak-sync-runner-dev
             handler_module: sync_runs
             handler_import: "from src.lambdas.sync_runs.handler import lambda_handler"
+            s3_key: "lambda-packages/sync-runner/latest.zip"
           - name: "Query Lambda"
             function_name: myrunstreak-query-runner-dev
             handler_module: query_runs
             handler_import: "from src.lambdas.query_runs.handler import lambda_handler"
+            s3_key: "lambda-packages/query-runner/latest.zip"
 
     steps:
       # ========================================================================
@@ -229,15 +232,28 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       # ========================================================================
-      # Step 12: Deploy to Lambda
+      # Step 12: Upload to S3
+      # ========================================================================
+      # Store package in S3 for Terraform and Lambda deployment
+      - name: Upload Package to S3
+        run: |
+          # Upload deployment package to S3
+          aws s3 cp deployment-package.zip \
+            s3://${{ env.LAMBDA_S3_BUCKET }}/${{ matrix.lambda.s3_key }}
+
+          echo "✅ Package uploaded to s3://${{ env.LAMBDA_S3_BUCKET }}/${{ matrix.lambda.s3_key }}"
+
+      # ========================================================================
+      # Step 13: Deploy to Lambda
       # ========================================================================
       - name: Deploy to AWS Lambda
         id: deploy
         run: |
-          # Update Lambda function code
+          # Update Lambda function code from S3
           aws lambda update-function-code \
             --function-name ${{ matrix.lambda.function_name }} \
-            --zip-file fileb://deployment-package.zip \
+            --s3-bucket ${{ env.LAMBDA_S3_BUCKET }} \
+            --s3-key ${{ matrix.lambda.s3_key }} \
             --publish
 
           # Wait for update to complete
@@ -247,7 +263,7 @@ jobs:
           echo "✅ Lambda function updated successfully"
 
       # ========================================================================
-      # Step 13: Get Function Info
+      # Step 14: Get Function Info
       # ========================================================================
       - name: Get Function Info
         id: function-info
@@ -264,7 +280,7 @@ jobs:
           echo "size=$SIZE" >> $GITHUB_OUTPUT
 
       # ========================================================================
-      # Step 14: Run Smoke Test
+      # Step 15: Run Smoke Test
       # ========================================================================
       # Invoke Lambda to verify it works
 
@@ -289,7 +305,7 @@ jobs:
           cat response.json
 
       # ========================================================================
-      # Step 15: Upload Deployment Artifact
+      # Step 16: Upload Deployment Artifact
       # ========================================================================
       # Save ZIP file as GitHub artifact for debugging/rollback
 
@@ -301,7 +317,7 @@ jobs:
           retention-days: 30
 
       # ========================================================================
-      # Step 16: Create Deployment Summary
+      # Step 17: Create Deployment Summary
       # ========================================================================
       - name: Create Deployment Summary
         if: steps.deploy.outcome == 'success'
@@ -312,6 +328,7 @@ jobs:
           **Function:** \`${{ matrix.lambda.function_name }}\`
           **Version:** \`${{ steps.function-info.outputs.version }}\`
           **Package Size:** $((${{ steps.function-info.outputs.size }} / 1024)) KB
+          **S3 Package:** \`s3://${{ env.LAMBDA_S3_BUCKET }}/${{ matrix.lambda.s3_key }}\`
           **Deployed At:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
           **Deployed By:** @${{ github.actor }}
 

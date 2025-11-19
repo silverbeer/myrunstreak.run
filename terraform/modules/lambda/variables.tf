@@ -13,8 +13,21 @@ variable "execution_role_arn" {
 }
 
 variable "package_path" {
-  description = "Path to the Lambda deployment package (ZIP file)"
+  description = "Path to the Lambda deployment package (ZIP file) - used for local development"
   type        = string
+  default     = null
+}
+
+variable "s3_package_bucket" {
+  description = "S3 bucket containing the Lambda deployment package"
+  type        = string
+  default     = null
+}
+
+variable "s3_package_key" {
+  description = "S3 key (path) to the Lambda deployment package"
+  type        = string
+  default     = null
 }
 
 variable "handler" {

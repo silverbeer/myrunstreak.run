@@ -128,8 +128,13 @@ module "lambda" {
 
   function_name       = "${local.project_name}-sync-runner-${var.environment}"
   execution_role_arn  = module.iam.lambda_execution_role_arn
-  package_path        = var.lambda_package_path
-  handler             = "lambda_function.handler"
+
+  # Code package - use S3 for CI/CD, local file for development
+  package_path      = var.lambda_package_path
+  s3_package_bucket = var.lambda_s3_bucket != null ? var.lambda_s3_bucket : module.s3.bucket_id
+  s3_package_key    = var.lambda_s3_bucket != null ? var.lambda_s3_key_sync : null
+
+  handler           = "lambda_function.handler"
 
   # Environment configuration
   environment = var.environment
@@ -184,7 +189,12 @@ module "lambda_query" {
 
   function_name      = "${local.project_name}-query-runner-${var.environment}"
   execution_role_arn = module.iam.lambda_execution_role_arn
-  package_path       = var.lambda_package_path
+
+  # Code package - use S3 for CI/CD, local file for development
+  package_path      = var.lambda_package_path
+  s3_package_bucket = var.lambda_s3_bucket != null ? var.lambda_s3_bucket : module.s3.bucket_id
+  s3_package_key    = var.lambda_s3_bucket != null ? var.lambda_s3_key_query : null
+
   handler            = "lambda_function.handler"  # Will be overridden by GitHub Actions
 
   # Environment configuration

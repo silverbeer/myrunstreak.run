@@ -65,11 +65,14 @@ resource "aws_lambda_function" "sync_runner" {
   # IAM Role
   role = var.execution_role_arn
 
-  # Code Package
-  filename         = var.package_path
-  source_code_hash = filebase64sha256(var.package_path)
-  # source_code_hash triggers updates when code changes
-  # Without this, Lambda wouldn't know to redeploy when ZIP changes
+  # Code Package - supports either local file or S3
+  # Use S3 for CI/CD (GitHub Actions), local file for development
+  filename         = var.package_path != null ? var.package_path : null
+  source_code_hash = var.package_path != null ? filebase64sha256(var.package_path) : null
+  s3_bucket        = var.s3_package_bucket
+  s3_key           = var.s3_package_key
+  # Note: When using S3, code updates are triggered by changing s3_key
+  # Lambda workflow uploads new versions with unique keys
 
   # Runtime Configuration
   runtime = "python3.12"

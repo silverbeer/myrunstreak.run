@@ -141,6 +141,8 @@ jobs:
           TF_VAR_api_key_personal: ${{ secrets.API_KEY_PERSONAL }}
           TF_VAR_supabase_url: ${{ secrets.SUPABASE_URL }}
           TF_VAR_supabase_service_role_key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Use S3 for Lambda packages in CI/CD
+          TF_VAR_lambda_s3_bucket: myrunstreak-data-dev-855323747881
 
       # ========================================================================
       # Step 7: Terraform Apply
