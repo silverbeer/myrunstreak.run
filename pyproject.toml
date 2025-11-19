@@ -1,7 +1,7 @@
 [project]
 name = "myrunstreak"
 version = "0.1.0"
-description = "Serverless running analytics API powered by SmashRun, DuckDB, and AWS"
+description = "Multi-user running analytics API powered by SmashRun, Supabase, and AWS"
 readme = "README.md"
 authors = [
     { name = "silverbeer", email = "silverbeer.io@gmail.com" }
@@ -13,7 +13,9 @@ dependencies = [
     "boto3>=1.35.0",
 
     # Data & Analytics
-    "duckdb>=1.1.0",
+    # "duckdb>=1.1.0",  # Migrating to Supabase PostgreSQL
+    "supabase>=2.0.0",
+    "psycopg2-binary>=2.9.9",  # PostgreSQL adapter for Python
 
     # HTTP & OAuth
     "httpx>=0.27.0",
