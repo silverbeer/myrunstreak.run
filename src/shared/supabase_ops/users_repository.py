@@ -82,6 +82,77 @@ class UsersRepository:
 
         return data_list[0] if data_list else None
 
+    def get_user_by_source_username(
+        self, source_type: str, source_username: str
+    ) -> dict[str, Any] | None:
+        """
+        Get user by their username in an external source system.
+
+        Args:
+            source_type: Source type (e.g., 'smashrun')
+            source_username: Username in the source system
+
+        Returns:
+            User record or None if not found
+        """
+        result = (
+            self.supabase.table("user_sources")
+            .select("user_id, users(*)")
+            .eq("source_type", source_type)
+            .eq("source_username", source_username)
+            .eq("is_active", True)
+            .limit(1)
+            .execute()
+        )
+        data_list = cast(list[dict[str, Any]], result.data)
+
+        if data_list and data_list[0].get("users"):
+            return data_list[0]["users"]
+        return None
+
+    def get_or_create_user_with_source(
+        self,
+        source_type: str,
+        source_username: str,
+        source_user_id: str | None = None,
+        display_name: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        """
+        Get existing user by source username or create a new one.
+
+        Args:
+            source_type: Source type (e.g., 'smashrun')
+            source_username: Username in the source system
+            source_user_id: User ID in the source system
+            display_name: Display name for new user
+
+        Returns:
+            Tuple of (user record, created flag)
+        """
+        # Try to find existing user
+        existing = self.get_user_by_source_username(source_type, source_username)
+        if existing:
+            logger.info(f"Found existing user for {source_type}:{source_username}")
+            return existing, False
+
+        # Create new user
+        user = self.create_user(display_name=display_name or source_username)
+        user_id = UUID(user["user_id"])
+
+        # Create source (without access_token_secret for now - CLI stores locally)
+        self.supabase.table("user_sources").insert(
+            {
+                "user_id": str(user_id),
+                "source_type": source_type,
+                "source_user_id": source_user_id,
+                "source_username": source_username,
+                "access_token_secret": f"cli-local-{source_username}",  # Placeholder
+            }
+        ).execute()
+
+        logger.info(f"Created new user {user_id} for {source_type}:{source_username}")
+        return user, True
+
     def create_user_source(
         self,
         user_id: UUID,

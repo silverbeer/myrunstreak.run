@@ -101,3 +101,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "additional_deployment_triggers" {
+  description = "Additional resource IDs to include in deployment triggers (for resources created outside this module)"
+  type        = list(string)
+  default     = []
+}

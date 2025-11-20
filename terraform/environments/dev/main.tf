@@ -434,3 +434,62 @@ resource "aws_api_gateway_integration" "runs_proxy" {
   type                    = "AWS_PROXY"
   uri                     = module.lambda_query.function_invoke_arn
 }
+
+# ==============================================================================
+# API Gateway Deployment for Query Endpoints
+# ==============================================================================
+# Create a new deployment that includes the query endpoints
+# This triggers a redeployment whenever query resources change
+
+resource "aws_api_gateway_deployment" "query_endpoints" {
+  rest_api_id = module.api_gateway.rest_api_id
+
+  # Trigger redeployment when query resources change
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.stats.id,
+      aws_api_gateway_resource.stats_proxy.id,
+      aws_api_gateway_method.stats_proxy_get.id,
+      aws_api_gateway_integration.stats_proxy.id,
+      aws_api_gateway_resource.runs.id,
+      aws_api_gateway_method.runs_get.id,
+      aws_api_gateway_integration.runs_get.id,
+      aws_api_gateway_resource.runs_proxy.id,
+      aws_api_gateway_method.runs_proxy_get.id,
+      aws_api_gateway_integration.runs_proxy.id,
+    ]))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  depends_on = [
+    aws_api_gateway_integration.stats_proxy,
+    aws_api_gateway_integration.runs_get,
+    aws_api_gateway_integration.runs_proxy,
+  ]
+}
+
+# Update the existing stage to use the new deployment with query endpoints
+# This uses a null_resource to run AWS CLI command that updates the stage
+resource "null_resource" "update_stage_deployment" {
+  triggers = {
+    deployment_id = aws_api_gateway_deployment.query_endpoints.id
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      aws apigateway update-stage \
+        --rest-api-id ${module.api_gateway.rest_api_id} \
+        --stage-name ${var.environment} \
+        --patch-operations op=replace,path=/deploymentId,value=${aws_api_gateway_deployment.query_endpoints.id} \
+        --region ${var.aws_region}
+    EOT
+  }
+
+  depends_on = [
+    module.api_gateway,
+    aws_api_gateway_deployment.query_endpoints,
+  ]
+}

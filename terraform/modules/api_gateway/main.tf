@@ -352,14 +352,14 @@ resource "aws_api_gateway_deployment" "main" {
 
   # Trigger redeployment when resources change
   triggers = {
-    redeployment = sha1(jsonencode([
+    redeployment = sha1(jsonencode(concat([
       aws_api_gateway_resource.sync.id,
       aws_api_gateway_method.sync_post.id,
       aws_api_gateway_integration.sync_lambda.id,
       aws_api_gateway_resource.health.id,
       aws_api_gateway_method.health_get.id,
       aws_api_gateway_integration.health_mock.id,
-    ]))
+    ], var.additional_deployment_triggers)))
   }
 
   lifecycle {
