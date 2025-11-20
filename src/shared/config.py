@@ -26,7 +26,7 @@ class Settings(BaseSettings):
         description="SmashRun OAuth Client Secret",
     )
     smashrun_redirect_uri: str = Field(
-        default="http://localhost:8000/callback",
+        default="http://localhost:9876/callback",
         description="OAuth redirect URI for authorization code flow",
     )
 

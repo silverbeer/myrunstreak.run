@@ -70,6 +70,7 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
 
+        # Accept callback on any path (/, /callback, etc.)
         if "code" in params:
             OAuthCallbackHandler.auth_code = params["code"][0]
             self.send_response(200)
@@ -112,14 +113,95 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
             </html>
             """)
         elif "error" in params:
-            OAuthCallbackHandler.error = params.get("error_description", params["error"])[0]
+            error_code = params["error"][0]
+            error_desc = params.get("error_description", [error_code])[0]
+            OAuthCallbackHandler.error = f"{error_code}: {error_desc}"
             self.send_response(400)
             self.send_header("Content-type", "text/html")
             self.end_headers()
-            self.wfile.write(f"<h1>Error</h1><p>{OAuthCallbackHandler.error}</p>".encode())
+            self.wfile.write(f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>stk - Login Failed</title>
+                <style>
+                    body {{
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        height: 100vh;
+                        margin: 0;
+                        background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+                        color: white;
+                    }}
+                    .container {{
+                        text-align: center;
+                        padding: 40px;
+                        background: rgba(0,0,0,0.3);
+                        border-radius: 16px;
+                        max-width: 500px;
+                    }}
+                    h1 {{ font-size: 2.5em; margin: 0 0 20px 0; }}
+                    .error-code {{ font-size: 1.1em; opacity: 0.9; font-family: monospace; }}
+                    .error-desc {{ font-size: 1em; opacity: 0.8; margin-top: 10px; }}
+                    .emoji {{ font-size: 4em; }}
+                    .hint {{ margin-top: 20px; font-size: 0.9em; opacity: 0.7; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="emoji">&#x274C;</div>
+                    <h1>Login Failed</h1>
+                    <p class="error-code">{error_code}</p>
+                    <p class="error-desc">{error_desc}</p>
+                    <p class="hint">Check your SmashRun OAuth credentials in .env</p>
+                </div>
+            </body>
+            </html>
+            """.encode())
         else:
-            self.send_response(404)
+            # No code or error - unexpected callback
+            self.send_response(400)
+            self.send_header("Content-type", "text/html")
             self.end_headers()
+            self.wfile.write(b"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>stk - Invalid Callback</title>
+                <style>
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        height: 100vh;
+                        margin: 0;
+                        background: linear-gradient(135deg, #f39c12 0%, #d68910 100%);
+                        color: white;
+                    }
+                    .container {
+                        text-align: center;
+                        padding: 40px;
+                        background: rgba(0,0,0,0.3);
+                        border-radius: 16px;
+                    }
+                    h1 { font-size: 2.5em; margin: 0 0 20px 0; }
+                    p { font-size: 1.1em; opacity: 0.9; }
+                    .emoji { font-size: 4em; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="emoji">&#x2753;</div>
+                    <h1>Invalid Callback</h1>
+                    <p>No authorization code received.</p>
+                    <p>Please try logging in again.</p>
+                </div>
+            </body>
+            </html>
+            """)
 
     def log_message(self, format: str, *args: object) -> None:
         """Suppress default logging."""
@@ -170,6 +252,71 @@ def is_port_available(port: int) -> bool:
             return False
 
 
+def validate_env_config() -> tuple[bool, list[str]]:
+    """
+    Validate that required environment variables are configured.
+
+    Returns:
+        Tuple of (is_valid, list of error messages)
+    """
+    from pathlib import Path
+    import os
+
+    errors = []
+
+    # Check if .env file exists
+    env_path = Path.cwd() / ".env"
+    if not env_path.exists():
+        errors.append("No .env file found in current directory")
+        errors.append("Copy .env.example to .env and fill in your credentials")
+        return False, errors
+
+    # Load .env file so os.getenv can see the values
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(env_path)
+    except ImportError:
+        # dotenv not installed, try manual parsing
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    os.environ[key.strip()] = value.strip()
+
+    # Check required SmashRun credentials
+    client_id = os.getenv("SMASHRUN_CLIENT_ID", "")
+    client_secret = os.getenv("SMASHRUN_CLIENT_SECRET", "")
+
+    # Check for missing or placeholder values
+    placeholder_patterns = ["your", "changeme", "xxx", "placeholder", "example", "fill-in"]
+
+    def is_placeholder(value: str) -> bool:
+        """Check if value looks like a placeholder."""
+        if not value:
+            return True
+        lower = value.lower()
+        return any(pattern in lower for pattern in placeholder_patterns)
+
+    if is_placeholder(client_id):
+        errors.append("SMASHRUN_CLIENT_ID is not set or contains a placeholder value")
+
+    if is_placeholder(client_secret):
+        errors.append("SMASHRUN_CLIENT_SECRET is not set or contains a placeholder value")
+
+    # Check Supabase config (needed for storing runs)
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    supabase_key = os.getenv("SUPABASE_KEY", "")
+
+    if not supabase_url:
+        errors.append("SUPABASE_URL is not set (needed to store your runs)")
+
+    if not supabase_key:
+        errors.append("SUPABASE_KEY is not set (needed to store your runs)")
+
+    return len(errors) == 0, errors
+
+
 @app.command()
 def login(
     no_browser: bool = typer.Option(False, "--no-browser", help="Don't open browser automatically"),
@@ -183,6 +330,39 @@ def login(
     except ImportError as e:
         display.display_error(f"Missing dependencies: {e}")
         display.display_info("Run 'uv sync' to install dependencies")
+        raise typer.Exit(1) from None
+
+    # Validate environment configuration first
+    is_valid, config_errors = validate_env_config()
+    if not is_valid:
+        display.display_error("Invalid configuration")
+        console.print()
+        for error in config_errors:
+            console.print(f"  [red]•[/red] {error}")
+        console.print()
+
+        # Check if .env.example exists and suggest copying it
+        from pathlib import Path
+        env_example = Path.cwd() / ".env.example"
+        if env_example.exists():
+            console.print("[bold yellow]Quick Start:[/bold yellow]")
+            console.print("  cp .env.example .env")
+            console.print("  # Then edit .env with your credentials")
+            console.print()
+
+        console.print("[bold]To get SmashRun OAuth credentials:[/bold]")
+        console.print("  1. Go to https://smashrun.com/developers")
+        console.print("  2. Register a new application")
+        console.print("  3. Set redirect URI to: http://localhost:9876/callback")
+        console.print("  4. Copy Client ID and Secret to your .env file")
+        console.print()
+        console.print("[bold]For Supabase credentials:[/bold]")
+        console.print("  1. Create a project at https://supabase.com")
+        console.print("  2. Get the URL and service_role key from Settings > API")
+        console.print()
+        console.print("[dim]📖 See docs/SMASHRUN_OAUTH.md for detailed OAuth setup[/dim]")
+        console.print("[dim]📖 See README.md for full project setup[/dim]")
+        console.print()
         raise typer.Exit(1) from None
 
     # Get settings
@@ -206,7 +386,7 @@ def login(
     auth_url = oauth_client.get_authorization_url(state="stk_cli")
 
     # Check if we can use automatic callback
-    port = 8000
+    port = 9876
     if not is_port_available(port):
         if not no_browser:
             display.display_warning(f"Port {port} is in use - cannot auto-capture callback")

@@ -81,6 +81,7 @@ def sync_runs(
     year: int | None = typer.Option(None, "--year", "-y", help="Sync a specific year"),
     full: bool = typer.Option(False, "--full", "-f", help="Full sync (all time)"),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Fetch but don't store"),
+    limit: int | None = typer.Option(None, "--limit", "-l", help="Limit number of runs to sync"),
 ) -> None:
     """
     Sync runs from SmashRun to MyRunStreak.
@@ -90,6 +91,7 @@ def sync_runs(
         stk sync --year 2015        # Sync all runs from 2015
         stk sync --since 2020-01-01 # Sync from Jan 1, 2020
         stk sync --full             # Sync everything (4000+ runs!)
+        stk sync --limit 1          # Sync just 1 run (for testing)
     """
     # Check for tokens
     tokens = get_tokens()
@@ -205,9 +207,11 @@ def sync_runs(
                 # Use get_activities with date range for better control
                 all_activities = []
                 page = 0
+                fetch_count = min(100, limit) if limit else 100
+
                 while True:
                     activities = api_client.get_activities(
-                        page=page, count=100, since=since_date, until=until_date
+                        page=page, count=fetch_count, since=since_date, until=until_date
                     )
                     if not activities:
                         break
@@ -216,6 +220,12 @@ def sync_runs(
                         fetch_task,
                         description=f"Fetched {len(all_activities)} runs...",
                     )
+
+                    # Stop early if we've hit the limit
+                    if limit and len(all_activities) >= limit:
+                        all_activities = all_activities[:limit]
+                        break
+
                     page += 1
 
                 if not all_activities:
@@ -224,12 +234,22 @@ def sync_runs(
                     display.display_info("No runs found in date range")
                     return
 
-                progress.update(
-                    fetch_task,
-                    description=f"Found {len(all_activities)} runs",
-                    total=1,
-                    completed=1,
-                )
+                # Apply limit if specified
+                if limit and limit > 0:
+                    all_activities = all_activities[:limit]
+                    progress.update(
+                        fetch_task,
+                        description=f"Found {len(all_activities)} runs (limited)",
+                        total=1,
+                        completed=1,
+                    )
+                else:
+                    progress.update(
+                        fetch_task,
+                        description=f"Found {len(all_activities)} runs",
+                        total=1,
+                        completed=1,
+                    )
 
                 if dry_run:
                     console.print()
