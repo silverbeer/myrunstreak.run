@@ -1,9 +1,12 @@
 """Auth commands for stk CLI."""
 
 import json
+import socket
 import webbrowser
 from datetime import UTC, datetime, timedelta
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import typer
 from rich.console import Console
@@ -53,6 +56,117 @@ def get_config() -> dict:
         return json.load(f)
 
 
+class OAuthCallbackHandler(BaseHTTPRequestHandler):
+    """HTTP handler for OAuth callback."""
+
+    auth_code: str | None = None
+    error: str | None = None
+
+    def do_GET(self) -> None:
+        """Handle GET request from OAuth callback."""
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+
+        if "code" in params:
+            OAuthCallbackHandler.auth_code = params["code"][0]
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>stk - Login Successful</title>
+                <style>
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        height: 100vh;
+                        margin: 0;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white;
+                    }
+                    .container {
+                        text-align: center;
+                        padding: 40px;
+                        background: rgba(0,0,0,0.3);
+                        border-radius: 16px;
+                    }
+                    h1 { font-size: 3em; margin: 0; }
+                    p { font-size: 1.2em; opacity: 0.9; }
+                    .emoji { font-size: 4em; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="emoji">&#x1F525;</div>
+                    <h1>Success!</h1>
+                    <p>You can close this window and return to your terminal.</p>
+                </div>
+            </body>
+            </html>
+            """)
+        elif "error" in params:
+            OAuthCallbackHandler.error = params.get("error_description", params["error"])[0]
+            self.send_response(400)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(f"<h1>Error</h1><p>{OAuthCallbackHandler.error}</p>".encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format: str, *args: object) -> None:
+        """Suppress default logging."""
+        pass
+
+
+def wait_for_oauth_callback(port: int = 8000, timeout: int = 120) -> str:
+    """
+    Start a temporary server to receive OAuth callback.
+
+    Args:
+        port: Port to listen on
+        timeout: Timeout in seconds
+
+    Returns:
+        Authorization code
+
+    Raises:
+        TimeoutError: If no callback received
+        ValueError: If callback contains error
+    """
+    # Reset state
+    OAuthCallbackHandler.auth_code = None
+    OAuthCallbackHandler.error = None
+
+    server = HTTPServer(("localhost", port), OAuthCallbackHandler)
+    server.timeout = timeout
+
+    # Handle one request
+    server.handle_request()
+    server.server_close()
+
+    if OAuthCallbackHandler.error:
+        raise ValueError(OAuthCallbackHandler.error)
+    if not OAuthCallbackHandler.auth_code:
+        raise TimeoutError("No authorization code received")
+
+    return OAuthCallbackHandler.auth_code
+
+
+def is_port_available(port: int) -> bool:
+    """Check if a port is available."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("localhost", port))
+            return True
+        except OSError:
+            return False
+
+
 @app.command()
 def login(
     no_browser: bool = typer.Option(False, "--no-browser", help="Don't open browser automatically"),
@@ -88,28 +202,81 @@ def login(
     # Get authorization URL
     auth_url = oauth_client.get_authorization_url(state="stk_cli")
 
-    console.print(
-        Panel(
-            "[bold]Step 1: Authorize with SmashRun[/bold]\n\n"
-            f"[cyan]{auth_url}[/cyan]\n\n"
-            "After authorizing, you'll be redirected. Copy the [bold]code[/bold] from the URL.",
-            title="Login",
-            border_style="cyan",
-        )
-    )
+    # Check if we can use automatic callback
+    port = 8000
+    if not is_port_available(port):
+        if not no_browser:
+            display.display_warning(f"Port {port} is in use - cannot auto-capture callback")
+            display.display_info("Stop the other service or use: stk auth login --no-browser")
+            display.display_info(f"Check what's using port {port}: lsof -i :{port}")
+        use_auto_callback = False
+    else:
+        use_auto_callback = not no_browser
 
-    # Open browser
-    if not no_browser:
-        console.print("\n[dim]Opening browser...[/dim]")
+    if use_auto_callback:
+        console.print(
+            Panel(
+                "[bold]Authorize with SmashRun[/bold]\n\n"
+                "Opening browser for authorization...\n"
+                "Waiting for callback...",
+                title="Login",
+                border_style="cyan",
+            )
+        )
+
+        # Start server FIRST, then open browser
+        # Reset state
+        OAuthCallbackHandler.auth_code = None
+        OAuthCallbackHandler.error = None
+
+        server = HTTPServer(("localhost", port), OAuthCallbackHandler)
+        server.timeout = 120
+
+        # Now open browser
         webbrowser.open(auth_url)
 
-    # Get the code from user
-    console.print()
-    auth_code = typer.prompt("Paste authorization code")
+        # Wait for callback
+        try:
+            server.handle_request()
+            server.server_close()
 
-    if not auth_code:
-        display.display_error("No code provided")
-        raise typer.Exit(1) from None
+            if OAuthCallbackHandler.error:
+                display.display_error(f"Authorization failed: {OAuthCallbackHandler.error}")
+                raise typer.Exit(1) from None
+            if not OAuthCallbackHandler.auth_code:
+                display.display_error("Timed out waiting for authorization")
+                display.display_info("Try again or use --no-browser for manual mode")
+                raise typer.Exit(1) from None
+
+            auth_code = OAuthCallbackHandler.auth_code
+            display.display_sync_progress("Authorization received!", done=True)
+        except Exception as e:
+            server.server_close()
+            display.display_error(f"Callback failed: {e}")
+            raise typer.Exit(1) from None
+    else:
+        # Fallback to manual code entry
+        console.print(
+            Panel(
+                "[bold]Authorize with SmashRun[/bold]\n\n"
+                f"[cyan]{auth_url}[/cyan]\n\n"
+                "After authorizing, copy the [bold]code[/bold] from the URL.\n"
+                "(The part after 'code=' and before '&')",
+                title="Login",
+                border_style="cyan",
+            )
+        )
+
+        if not no_browser:
+            console.print("\n[dim]Opening browser...[/dim]")
+            webbrowser.open(auth_url)
+
+        console.print()
+        auth_code = typer.prompt("Paste authorization code")
+
+        if not auth_code:
+            display.display_error("No code provided")
+            raise typer.Exit(1) from None
 
     # Exchange code for tokens
     display.display_sync_progress("Exchanging code for tokens...")
