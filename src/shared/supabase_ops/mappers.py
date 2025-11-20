@@ -5,6 +5,30 @@ from uuid import UUID
 
 from ..models import Activity, Split
 
+# Map SmashRun weather types to database enum values
+# Database: 'sunny', 'cloudy', 'rainy', 'snowy', 'windy', 'hot', 'cold'
+WEATHER_TYPE_MAP: dict[str, str | None] = {
+    "clear": "sunny",
+    "cloudy": "cloudy",
+    "partlycloudy": "cloudy",
+    "rain": "rainy",
+    "drizzle": "rainy",
+    "extremerain": "rainy",
+    "storm": "rainy",
+    "snow": "snowy",
+    "blizzard": "snowy",
+    "extremecold": "cold",
+    "extremewind": "windy",
+    "indoor": None,  # No outdoor weather for indoor runs
+}
+
+
+def map_weather_type(smashrun_weather: str | None) -> str | None:
+    """Map SmashRun weather type to database enum value."""
+    if not smashrun_weather:
+        return None
+    return WEATHER_TYPE_MAP.get(smashrun_weather, None)
+
 
 def activity_to_run_dict(activity: Activity, user_id: UUID, source_id: UUID) -> dict[str, Any]:
     """
@@ -53,7 +77,7 @@ def activity_to_run_dict(activity: Activity, user_id: UUID, source_id: UUID) -> 
             else None
         ),
         "temperature_celsius": (float(activity.temperature) if activity.temperature else None),
-        "weather_type": (activity.weather_type.value if activity.weather_type else None),
+        "weather_type": map_weather_type(activity.weather_type.value if activity.weather_type else None),
         "humidity_percent": int(activity.humidity) if activity.humidity else None,
         "wind_speed_kph": activity.wind_speed,
         # User content

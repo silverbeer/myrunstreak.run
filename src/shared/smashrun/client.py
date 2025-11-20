@@ -86,10 +86,15 @@ class SmashRunAPIClient:
             "count": min(count, 100),  # SmashRun max is 100
         }
 
+        # SmashRun API uses 'fromDate' parameter with Unix timestamp
         if since:
-            params["since"] = since.isoformat()
-        if until:
-            params["until"] = until.isoformat()
+            from datetime import datetime, timezone
+            # Convert date to Unix timestamp (start of day UTC)
+            since_dt = datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc)
+            params["fromDate"] = int(since_dt.timestamp())
+
+        # Note: SmashRun API doesn't have an 'until' parameter
+        # We'll filter by until date after fetching
 
         logger.info(f"Fetching activities page {page} with count {count}")
 
@@ -97,7 +102,29 @@ class SmashRunAPIClient:
         response.raise_for_status()
 
         activities = cast(list[dict[str, Any]], response.json())
-        logger.info(f"Retrieved {len(activities)} activities")
+        logger.info(f"Retrieved {len(activities)} activities from API")
+
+        # Filter by until date if provided (API doesn't support this)
+        if until and activities:
+            from datetime import datetime
+
+            filtered = []
+            for activity in activities:
+                # Parse startDateTimeLocal (format: "2025-11-20T06:30:00")
+                start_str = activity.get("startDateTimeLocal", "")
+                if start_str:
+                    try:
+                        activity_date = datetime.fromisoformat(start_str).date()
+                        if activity_date <= until:
+                            filtered.append(activity)
+                    except ValueError:
+                        # If we can't parse, include it
+                        filtered.append(activity)
+                else:
+                    filtered.append(activity)
+
+            logger.info(f"Filtered to {len(filtered)} activities (until {until})")
+            return filtered
 
         return activities
 
