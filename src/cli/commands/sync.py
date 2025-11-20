@@ -3,6 +3,7 @@
 import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import typer
@@ -25,23 +26,25 @@ def ensure_config_dir() -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def get_tokens() -> dict | None:
+def get_tokens() -> dict[str, Any] | None:
     """Load tokens from config file."""
     if not TOKENS_FILE.exists():
         return None
     with open(TOKENS_FILE) as f:
-        return json.load(f)
+        data: dict[str, Any] = json.load(f)
+        return data
 
 
-def get_config() -> dict:
+def get_config() -> dict[str, Any]:
     """Load config from file."""
     if not CONFIG_FILE.exists():
         return {}
     with open(CONFIG_FILE) as f:
-        return json.load(f)
+        data: dict[str, Any] = json.load(f)
+        return data
 
 
-def save_tokens(token_data: dict) -> None:
+def save_tokens(token_data: dict[str, Any]) -> None:
     """Save tokens to config file."""
     ensure_config_dir()
     with open(TOKENS_FILE, "w") as f:

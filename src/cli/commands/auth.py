@@ -6,6 +6,7 @@ import webbrowser
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import typer
@@ -26,34 +27,36 @@ def ensure_config_dir() -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def save_tokens(token_data: dict) -> None:
+def save_tokens(token_data: dict[str, Any]) -> None:
     """Save tokens to config file."""
     ensure_config_dir()
     with open(TOKENS_FILE, "w") as f:
         json.dump(token_data, f, indent=2)
 
 
-def get_tokens() -> dict | None:
+def get_tokens() -> dict[str, Any] | None:
     """Load tokens from config file."""
     if not TOKENS_FILE.exists():
         return None
     with open(TOKENS_FILE) as f:
-        return json.load(f)
+        data: dict[str, Any] = json.load(f)
+        return data
 
 
-def save_config(config: dict) -> None:
+def save_config(config: dict[str, str]) -> None:
     """Save config to file."""
     ensure_config_dir()
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
 
 
-def get_config() -> dict:
+def get_config() -> dict[str, str]:
     """Load config from file."""
     if not CONFIG_FILE.exists():
         return {}
     with open(CONFIG_FILE) as f:
-        return json.load(f)
+        data: dict[str, str] = json.load(f)
+        return data
 
 
 class OAuthCallbackHandler(BaseHTTPRequestHandler):

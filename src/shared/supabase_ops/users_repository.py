@@ -107,7 +107,8 @@ class UsersRepository:
         data_list = cast(list[dict[str, Any]], result.data)
 
         if data_list and data_list[0].get("users"):
-            return data_list[0]["users"]
+            users: dict[str, Any] = data_list[0]["users"]
+            return users
         return None
 
     def get_or_create_user_with_source(

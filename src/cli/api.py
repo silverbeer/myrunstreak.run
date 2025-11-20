@@ -29,8 +29,9 @@ def get_user_id() -> str | None:
         return None
     try:
         with open(CONFIG_FILE) as f:
-            config = json.load(f)
-            return config.get("user_id")
+            config: dict[str, str] = json.load(f)
+            user_id: str | None = config.get("user_id")
+            return user_id
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -68,7 +69,8 @@ def request(endpoint: str, params: dict[str, Any] | None = None) -> dict[str, An
     try:
         response = httpx.get(url, params=params, timeout=TIMEOUT)
         response.raise_for_status()
-        return response.json()
+        result: dict[str, Any] = response.json()
+        return result
     except httpx.TimeoutException:
         display_error(f"Request timed out after {TIMEOUT}s")
         sys.exit(1)
