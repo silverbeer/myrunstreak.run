@@ -65,6 +65,7 @@ class SmashRunAPIClient:
         count: int = 100,
         since: date | None = None,
         until: date | None = None,
+        incremental: bool = False,
     ) -> list[dict[str, Any]]:
         """
         Fetch activities with pagination and optional date filtering.
@@ -74,6 +75,8 @@ class SmashRunAPIClient:
             count: Number of activities per page (max 100)
             since: Only fetch activities on or after this date
             until: Only fetch activities on or before this date
+            incremental: If True, use fromDate to filter by sync date (for incremental syncs).
+                        If False, filter by activity date client-side (for historical syncs).
 
         Returns:
             List of activity dictionaries from SmashRun API
@@ -86,15 +89,13 @@ class SmashRunAPIClient:
             "count": min(count, 100),  # SmashRun max is 100
         }
 
-        # SmashRun API uses 'fromDate' parameter with Unix timestamp
-        if since:
+        # SmashRun API 'fromDate' filters by SYNC date (when activity was added/updated),
+        # not by activity date. Only use it for incremental syncs.
+        if since and incremental:
             from datetime import datetime, timezone
             # Convert date to Unix timestamp (start of day UTC)
             since_dt = datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc)
             params["fromDate"] = int(since_dt.timestamp())
-
-        # Note: SmashRun API doesn't have an 'until' parameter
-        # We'll filter by until date after fetching
 
         logger.info(f"Fetching activities page {page} with count {count}")
 
@@ -104,8 +105,8 @@ class SmashRunAPIClient:
         activities = cast(list[dict[str, Any]], response.json())
         logger.info(f"Retrieved {len(activities)} activities from API")
 
-        # Filter by until date if provided (API doesn't support this)
-        if until and activities:
+        # Filter by activity date client-side (both since and until)
+        if (since or until) and activities:
             from datetime import datetime
 
             filtered = []
@@ -115,15 +116,20 @@ class SmashRunAPIClient:
                 if start_str:
                     try:
                         activity_date = datetime.fromisoformat(start_str).date()
-                        if activity_date <= until:
-                            filtered.append(activity)
+                        # Check since filter
+                        if since and activity_date < since:
+                            continue
+                        # Check until filter
+                        if until and activity_date > until:
+                            continue
+                        filtered.append(activity)
                     except ValueError:
                         # If we can't parse, include it
                         filtered.append(activity)
                 else:
                     filtered.append(activity)
 
-            logger.info(f"Filtered to {len(filtered)} activities (until {until})")
+            logger.info(f"Filtered to {len(filtered)} activities ({since} to {until})")
             return filtered
 
         return activities

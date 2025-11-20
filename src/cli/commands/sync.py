@@ -1,6 +1,7 @@
 """Sync commands for stk CLI."""
 
 import json
+import time
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -108,7 +109,11 @@ def sync_runs(
 
     user_id = UUID(user_id_str)
 
-    # Determine date range
+    # Determine date range and sync mode
+    # incremental=True uses API's fromDate (filters by sync date, faster)
+    # incremental=False fetches all and filters by activity date (for historical)
+    incremental_sync = False
+
     if year:
         since_date = date(year, 1, 1)
         until_date = date(year, 12, 31)
@@ -140,8 +145,10 @@ def sync_runs(
 
         display.display_info(f"Syncing {since_date} to {until_date}")
     else:
+        # Default: incremental sync from last sync date
         since_date = get_last_sync_date()
         until_date = date.today()
+        incremental_sync = True
         display.display_info(f"Syncing since {since_date}")
 
     # Import dependencies
@@ -222,26 +229,63 @@ def sync_runs(
                 # Use get_activities with date range for better control
                 all_activities = []
                 page = 0
-                fetch_count = min(100, limit) if limit else 100
+                fetch_count = 100  # Always use max page size for efficiency
 
                 while True:
-                    activities = api_client.get_activities(
-                        page=page, count=fetch_count, since=since_date, until=until_date
-                    )
+                    # For historical syncs, fetch without date filter (filter later)
+                    # For incremental syncs, use API's fromDate filter
+                    if incremental_sync:
+                        activities = api_client.get_activities(
+                            page=page,
+                            count=fetch_count,
+                            since=since_date,
+                            until=until_date,
+                            incremental=True,
+                        )
+                    else:
+                        # Fetch raw data, filter afterwards
+                        activities = api_client.get_activities(
+                            page=page,
+                            count=fetch_count,
+                        )
+
                     if not activities:
                         break
+
                     all_activities.extend(activities)
                     progress.update(
                         fetch_task,
                         description=f"Fetched {len(all_activities)} runs...",
                     )
 
-                    # Stop early if we've hit the limit
-                    if limit and len(all_activities) >= limit:
+                    # For incremental: stop early if we've hit the limit
+                    # For historical: keep fetching all pages
+                    if incremental_sync and limit and len(all_activities) >= limit:
                         all_activities = all_activities[:limit]
                         break
 
                     page += 1
+                    # Small delay to avoid rate limiting (80 calls per 10 seconds)
+                    time.sleep(0.15)
+
+                # For historical syncs, filter by date range now
+                if not incremental_sync and all_activities:
+                    from datetime import datetime as dt
+                    filtered = []
+                    for activity in all_activities:
+                        start_str = activity.get("startDateTimeLocal", "")
+                        if start_str:
+                            try:
+                                activity_date = dt.fromisoformat(start_str).date()
+                                if since_date <= activity_date <= until_date:
+                                    filtered.append(activity)
+                            except ValueError:
+                                pass
+                    all_activities = filtered
+                    progress.update(
+                        fetch_task,
+                        description=f"Found {len(all_activities)} runs in {since_date.year}...",
+                    )
 
                 if not all_activities:
                     progress.update(fetch_task, description="No runs found", total=1, completed=1)
