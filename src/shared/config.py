@@ -1,7 +1,30 @@
 """Configuration management for MyRunStreak.com."""
 
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def find_env_file() -> Path | None:
+    """Find .env file at git root (project root)."""
+    # Search up for git root and use .env there
+    current = Path.cwd()
+    for parent in [current, *current.parents]:
+        if (parent / ".git").exists():
+            env_file = parent / ".env"
+            if env_file.exists():
+                return env_file
+            break
+    # Fallback to current directory
+    local_env = Path.cwd() / ".env"
+    if local_env.exists():
+        return local_env
+    return None
+
+
+# Find env file once at module load
+_env_file = find_env_file()
 
 
 class Settings(BaseSettings):
@@ -12,7 +35,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_env_file,
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
