@@ -232,7 +232,7 @@ def sync_runs(
                 fetch_count = 100  # Always use max page size for efficiency
 
                 while True:
-                    # For historical syncs, fetch without date filter (filter later)
+                    # For historical syncs, fetch without date filter (filter as we go)
                     # For incremental syncs, use API's fromDate filter
                     if incremental_sync:
                         activities = api_client.get_activities(
@@ -243,7 +243,7 @@ def sync_runs(
                             incremental=True,
                         )
                     else:
-                        # Fetch raw data, filter afterwards
+                        # Fetch raw data for historical sync
                         activities = api_client.get_activities(
                             page=page,
                             count=fetch_count,
@@ -252,14 +252,45 @@ def sync_runs(
                     if not activities:
                         break
 
-                    all_activities.extend(activities)
-                    progress.update(
-                        fetch_task,
-                        description=f"Fetched {len(all_activities)} runs...",
-                    )
+                    # For historical syncs, filter and check if we can stop early
+                    # API returns newest first, so stop when we pass the target range
+                    if not incremental_sync:
+                        from datetime import datetime as dt
+                        found_in_range = False
+                        passed_range = False
+                        for activity in activities:
+                            start_str = activity.get("startDateTimeLocal", "")
+                            if start_str:
+                                try:
+                                    activity_date = dt.fromisoformat(start_str).date()
+                                    if since_date <= activity_date <= until_date:
+                                        all_activities.append(activity)
+                                        found_in_range = True
+                                    elif activity_date < since_date:
+                                        # We've passed the target range (activities are newest first)
+                                        passed_range = True
+                                except ValueError:
+                                    pass
+
+                        progress.update(
+                            fetch_task,
+                            description=f"Found {len(all_activities)} runs in {since_date.year}...",
+                        )
+
+                        # Stop if we've passed the target range
+                        if passed_range and found_in_range:
+                            break
+                        # Also stop if we found activities and this page had none in range
+                        if len(all_activities) > 0 and not found_in_range:
+                            break
+                    else:
+                        all_activities.extend(activities)
+                        progress.update(
+                            fetch_task,
+                            description=f"Fetched {len(all_activities)} runs...",
+                        )
 
                     # For incremental: stop early if we've hit the limit
-                    # For historical: keep fetching all pages
                     if incremental_sync and limit and len(all_activities) >= limit:
                         all_activities = all_activities[:limit]
                         break
@@ -267,25 +298,6 @@ def sync_runs(
                     page += 1
                     # Small delay to avoid rate limiting (80 calls per 10 seconds)
                     time.sleep(0.15)
-
-                # For historical syncs, filter by date range now
-                if not incremental_sync and all_activities:
-                    from datetime import datetime as dt
-                    filtered = []
-                    for activity in all_activities:
-                        start_str = activity.get("startDateTimeLocal", "")
-                        if start_str:
-                            try:
-                                activity_date = dt.fromisoformat(start_str).date()
-                                if since_date <= activity_date <= until_date:
-                                    filtered.append(activity)
-                            except ValueError:
-                                pass
-                    all_activities = filtered
-                    progress.update(
-                        fetch_task,
-                        description=f"Found {len(all_activities)} runs in {since_date.year}...",
-                    )
 
                 if not all_activities:
                     progress.update(fetch_task, description="No runs found", total=1, completed=1)
