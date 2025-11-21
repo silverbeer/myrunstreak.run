@@ -523,6 +523,58 @@ resource "aws_api_gateway_integration" "auth_store_tokens" {
   uri                     = module.lambda_query.function_invoke_arn
 }
 
+# /auth/login-url resource
+resource "aws_api_gateway_resource" "auth_login_url" {
+  rest_api_id = module.api_gateway.rest_api_id
+  parent_id   = aws_api_gateway_resource.auth.id
+  path_part   = "login-url"
+}
+
+# GET method for /auth/login-url
+resource "aws_api_gateway_method" "auth_login_url_get" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.auth_login_url.id
+  http_method   = "GET"
+  authorization = "NONE"
+}
+
+# Integration with query Lambda for /auth/login-url
+resource "aws_api_gateway_integration" "auth_login_url" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.auth_login_url.id
+  http_method = aws_api_gateway_method.auth_login_url_get.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = module.lambda_query.function_invoke_arn
+}
+
+# /auth/callback resource
+resource "aws_api_gateway_resource" "auth_callback" {
+  rest_api_id = module.api_gateway.rest_api_id
+  parent_id   = aws_api_gateway_resource.auth.id
+  path_part   = "callback"
+}
+
+# POST method for /auth/callback
+resource "aws_api_gateway_method" "auth_callback_post" {
+  rest_api_id   = module.api_gateway.rest_api_id
+  resource_id   = aws_api_gateway_resource.auth_callback.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+# Integration with query Lambda for /auth/callback
+resource "aws_api_gateway_integration" "auth_callback" {
+  rest_api_id = module.api_gateway.rest_api_id
+  resource_id = aws_api_gateway_resource.auth_callback.id
+  http_method = aws_api_gateway_method.auth_callback_post.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = module.lambda_query.function_invoke_arn
+}
+
 # ==============================================================================
 # API Gateway Deployment for Query Endpoints
 # ==============================================================================
@@ -552,6 +604,12 @@ resource "aws_api_gateway_deployment" "query_endpoints" {
       aws_api_gateway_resource.auth_store_tokens.id,
       aws_api_gateway_method.auth_store_tokens_post.id,
       aws_api_gateway_integration.auth_store_tokens.id,
+      aws_api_gateway_resource.auth_login_url.id,
+      aws_api_gateway_method.auth_login_url_get.id,
+      aws_api_gateway_integration.auth_login_url.id,
+      aws_api_gateway_resource.auth_callback.id,
+      aws_api_gateway_method.auth_callback_post.id,
+      aws_api_gateway_integration.auth_callback.id,
     ]))
   }
 
@@ -565,6 +623,8 @@ resource "aws_api_gateway_deployment" "query_endpoints" {
     aws_api_gateway_integration.runs_proxy,
     aws_api_gateway_integration.sync_user,
     aws_api_gateway_integration.auth_store_tokens,
+    aws_api_gateway_integration.auth_login_url,
+    aws_api_gateway_integration.auth_callback,
   ]
 }
 

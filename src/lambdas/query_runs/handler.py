@@ -13,7 +13,12 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 from src.shared.secrets import get_smashrun_oauth_credentials
 from src.shared.smashrun import SmashRunAPIClient, SmashRunOAuthClient
 from src.shared.supabase_client import get_supabase_client
-from src.shared.supabase_ops import RunsRepository, TokenRepository, activity_to_run_dict
+from src.shared.supabase_ops import (
+    RunsRepository,
+    TokenRepository,
+    UsersRepository,
+    activity_to_run_dict,
+)
 
 # Initialize Lambda Powertools
 logger = Logger(service="myrunstreak-query")
@@ -547,6 +552,134 @@ def store_tokens() -> dict[str, Any]:
     return {
         "message": "Tokens stored successfully",
         "user_id": str(user_id),
+    }
+
+
+@app.get("/auth/login-url")
+def get_login_url() -> dict[str, Any]:
+    """
+    Get SmashRun OAuth authorization URL.
+
+    Query Parameters:
+        redirect_uri (optional): Custom redirect URI (default: http://localhost:9876/callback)
+
+    Returns:
+        Authorization URL to redirect user to
+    """
+    # Get redirect URI from query params or use default
+    redirect_uri = app.current_event.get_query_string_value(
+        "redirect_uri", "http://localhost:9876/callback"
+    )
+
+    # Get SmashRun OAuth credentials from Secrets Manager
+    smashrun_creds = get_smashrun_oauth_credentials()
+
+    # Build authorization URL
+    oauth_client = SmashRunOAuthClient(
+        client_id=smashrun_creds.get("client_id", ""),
+        client_secret=smashrun_creds.get("client_secret", ""),
+        redirect_uri=redirect_uri,
+    )
+
+    auth_url = oauth_client.get_authorization_url(state="stk_cli")
+
+    logger.info(f"Generated login URL with redirect_uri={redirect_uri}")
+
+    return {
+        "auth_url": auth_url,
+        "redirect_uri": redirect_uri,
+    }
+
+
+@app.post("/auth/callback")
+def handle_auth_callback() -> dict[str, Any]:
+    """
+    Handle OAuth callback - exchange code for tokens, register user, store tokens.
+
+    Body (JSON):
+        code: Authorization code from SmashRun (required)
+        redirect_uri (optional): Redirect URI used in auth request
+
+    Returns:
+        User ID and username
+    """
+    # Parse request body
+    if not app.current_event.body:
+        raise ValueError("Request body is required")
+
+    try:
+        body = json.loads(app.current_event.body)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON in request body: {e}") from e
+
+    # Get authorization code
+    code = body.get("code")
+    if not code:
+        raise ValueError("code is required")
+
+    redirect_uri = body.get("redirect_uri", "http://localhost:9876/callback")
+
+    logger.info("Processing OAuth callback")
+
+    # Get SmashRun OAuth credentials from Secrets Manager
+    smashrun_creds = get_smashrun_oauth_credentials()
+
+    # Exchange code for tokens
+    oauth_client = SmashRunOAuthClient(
+        client_id=smashrun_creds.get("client_id", ""),
+        client_secret=smashrun_creds.get("client_secret", ""),
+        redirect_uri=redirect_uri,
+    )
+
+    token_data = oauth_client.exchange_code_for_token(code)
+    access_token = token_data["access_token"]
+    refresh_token = token_data["refresh_token"]
+    expires_in = token_data.get("expires_in")
+
+    logger.info("Token exchange successful")
+
+    # Get SmashRun user info
+    with SmashRunAPIClient(access_token=access_token) as api_client:
+        user_info = api_client.get_user_info()
+        username = user_info.get("userName", "unknown")
+        smashrun_user_id = str(user_info.get("id", ""))
+
+    logger.info(f"Got SmashRun user info: {username}")
+
+    # Register/link user in Supabase
+    supabase = get_supabase_client()
+    users_repo = UsersRepository(supabase)
+    token_repo = TokenRepository(supabase)
+
+    user, created = users_repo.get_or_create_user_with_source(
+        source_type="smashrun",
+        source_username=username,
+        source_user_id=smashrun_user_id,
+        display_name=username,
+    )
+
+    user_id = UUID(user["user_id"])
+
+    if created:
+        logger.info(f"Created new user: {user_id}")
+    else:
+        logger.info(f"Linked existing user: {user_id}")
+
+    # Store tokens in Supabase
+    token_repo.save_user_tokens(
+        user_id=user_id,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=expires_in,
+        source_type="smashrun",
+    )
+
+    logger.info(f"Tokens stored for user {user_id}")
+
+    return {
+        "user_id": str(user_id),
+        "username": username,
+        "created": created,
     }
 
 
