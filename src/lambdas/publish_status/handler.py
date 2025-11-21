@@ -122,10 +122,9 @@ def build_status_data(user_id: UUID, runs_repo: RunsRepository) -> dict[str, Any
     if streak_days > 0:
         streak_start_date = today - timedelta(days=streak_days - 1)
         streak_start = streak_start_date.isoformat()
-        # Get all runs since streak started
-        streak_runs = runs_repo.get_runs_by_date_range(user_id, streak_start_date, today)
-        streak_total_km = sum(float(run["distance_km"]) for run in streak_runs)
-        streak_total_mi = round(km_to_miles(streak_total_km), 1)
+        # Use database aggregation to get accurate total (avoids row limits)
+        overall_stats = runs_repo.get_user_overall_stats(user_id)
+        streak_total_mi = round(km_to_miles(float(overall_stats["total_km"])), 1)
 
     # Get runs for this month
     first_of_month = today.replace(day=1)
