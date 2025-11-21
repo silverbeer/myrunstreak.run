@@ -142,6 +142,7 @@ See [docs/PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md)
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [Terraform Bootstrap](docs/TERRAFORM_BOOTSTRAP.md)
 - [GitHub Actions CI/CD](docs/GITHUB_ACTIONS.md)
+- [GitHub OIDC Authentication](docs/GITHUB_OIDC.md) - Secure, token-free AWS authentication
 - [Production Deployment](docs/PRODUCTION_DEPLOYMENT.md)
 - [Local Testing](docs/LOCAL_TESTING.md)
 
