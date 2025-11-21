@@ -93,6 +93,8 @@ We use GitHub Actions for **automated CI/CD**:
 
 GitHub Actions uses **OpenID Connect (OIDC)** to authenticate with AWS. This is more secure than storing AWS access keys as secrets.
 
+> **📖 For comprehensive OIDC documentation, see [GITHUB_OIDC.md](GITHUB_OIDC.md)**
+
 ### Why OIDC?
 
 **Traditional approach (❌ Not Recommended):**
@@ -113,163 +115,49 @@ GitHub generates JWT token → AWS validates → Temporary credentials
 └─ Clear audit trail in CloudTrail
 ```
 
-### Step 1: Create IAM OIDC Identity Provider
+### Terraform Implementation (100% IaC)
 
-This tells AWS to trust GitHub as an identity provider.
+All OIDC infrastructure is managed via Terraform - **no manual AWS CLI commands required**.
 
-```bash
-# Get your GitHub repository (format: organization/repo)
-GITHUB_REPO="silverbeer/myrunstreak.com"
+**Module location:** `terraform/modules/github_oidc/`
 
-# Create OIDC provider (only needed once per AWS account)
-aws iam create-open-id-connect-provider \
-  --url https://token.actions.githubusercontent.com \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
-```
+The module creates:
+- IAM OIDC Identity Provider (trust relationship with GitHub)
+- IAM Role with trust policy (restricts to your repository)
+- Permission policies (Lambda, ECR, S3, CloudWatch)
 
-**What this does:**
-- Registers GitHub as a trusted identity provider
-- AWS will accept JWTs from GitHub Actions
-- `thumbprint` is GitHub's certificate fingerprint
-
-### Step 2: Create IAM Role for Terraform
-
-Create a role that GitHub Actions can assume for Terraform operations.
+**Deploy OIDC infrastructure:**
 
 ```bash
-# Create trust policy
-cat > terraform-role-trust-policy.json <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:$GITHUB_REPO:*"
-        }
-      }
-    }
-  ]
-}
-EOF
-
-# Create the role
-aws iam create-role \
-  --role-name GitHubActions-Terraform \
-  --assume-role-policy-document file://terraform-role-trust-policy.json \
-  --description "Role for GitHub Actions to manage Terraform infrastructure"
-
-# Attach policies (adjust permissions as needed)
-aws iam attach-role-policy \
-  --role-name GitHubActions-Terraform \
-  --policy-arn arn:aws:iam::aws:policy/PowerUserAccess
-
-# Note: PowerUserAccess is broad. In production, use a custom policy with least privilege.
+cd terraform/environments/dev
+terraform init
+terraform apply
 ```
 
-**Trust Policy Explained:**
-- `Federated`: The OIDC provider (GitHub)
-- `Action`: AssumeRoleWithWebIdentity (OIDC-specific)
-- `Condition`: Only allow tokens from your specific repository
-
-### Step 3: Create IAM Role for Lambda Deployment
-
-Separate role for Lambda deployments (narrower permissions).
+**Get the role ARN for GitHub Secrets:**
 
 ```bash
-# Create trust policy (same structure, different role name)
-cat > lambda-role-trust-policy.json <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:$GITHUB_REPO:*"
-        }
-      }
-    }
-  ]
-}
-EOF
-
-# Create the role
-aws iam create-role \
-  --role-name GitHubActions-LambdaDeploy \
-  --assume-role-policy-document file://lambda-role-trust-policy.json \
-  --description "Role for GitHub Actions to deploy Lambda functions"
-
-# Create inline policy for Lambda-specific permissions
-cat > lambda-deploy-policy.json <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "LambdaDeployment",
-      "Effect": "Allow",
-      "Action": [
-        "lambda:UpdateFunctionCode",
-        "lambda:GetFunction",
-        "lambda:GetFunctionConfiguration",
-        "lambda:PublishVersion",
-        "lambda:InvokeFunction"
-      ],
-      "Resource": "arn:aws:lambda:us-east-2:*:function:myrunstreak-*"
-    },
-    {
-      "Sid": "CloudWatchLogs",
-      "Effect": "Allow",
-      "Action": [
-        "logs:DescribeLogGroups",
-        "logs:DescribeLogStreams",
-        "logs:GetLogEvents"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-EOF
-
-aws iam put-role-policy \
-  --role-name GitHubActions-LambdaDeploy \
-  --policy-name LambdaDeployPolicy \
-  --policy-document file://lambda-deploy-policy.json
+terraform output github_actions_role_arn
 ```
 
-### Step 4: Get Role ARNs
+This outputs the ARN you need to set as `AWS_LAMBDA_DEPLOY_ROLE_ARN` in GitHub Secrets.
 
-Save these ARNs - you'll need them for GitHub Secrets:
+### How It Works
 
-```bash
-# Terraform role ARN
-aws iam get-role \
-  --role-name GitHubActions-Terraform \
-  --query 'Role.Arn' \
-  --output text
+1. GitHub Actions requests a JWT from GitHub's OIDC provider
+2. Workflow presents JWT to AWS STS with the role ARN
+3. AWS validates JWT against GitHub's OIDC provider
+4. AWS checks trust policy conditions (repo, branch, etc.)
+5. AWS issues temporary credentials (1-hour lifetime)
+6. Workflow uses credentials for AWS API calls
 
-# Lambda deploy role ARN
-aws iam get-role \
-  --role-name GitHubActions-LambdaDeploy \
-  --query 'Role.Arn' \
-  --output text
-```
+For deep-dive documentation including:
+- Trust policy anatomy
+- Security best practices
+- Troubleshooting guide
+- Learning resources
+
+**See: [GITHUB_OIDC.md](GITHUB_OIDC.md)**
 
 ---
 
