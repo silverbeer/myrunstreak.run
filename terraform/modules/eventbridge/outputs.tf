@@ -2,27 +2,27 @@
 # EventBridge Module - Outputs
 # ==============================================================================
 
-output "rule_name" {
-  description = "Name of the EventBridge rule"
-  value       = aws_cloudwatch_event_rule.daily_sync.name
+output "rule_names" {
+  description = "Names of the EventBridge rules"
+  value       = { for k, v in aws_cloudwatch_event_rule.sync : k => v.name }
 }
 
-output "rule_arn" {
-  description = "ARN of the EventBridge rule"
-  value       = aws_cloudwatch_event_rule.daily_sync.arn
+output "rule_arns" {
+  description = "ARNs of the EventBridge rules"
+  value       = { for k, v in aws_cloudwatch_event_rule.sync : k => v.arn }
 }
 
-output "rule_id" {
-  description = "ID of the EventBridge rule"
-  value       = aws_cloudwatch_event_rule.daily_sync.id
+output "rule_ids" {
+  description = "IDs of the EventBridge rules"
+  value       = { for k, v in aws_cloudwatch_event_rule.sync : k => v.id }
 }
 
-output "schedule_expression" {
-  description = "Cron/rate expression for the schedule"
-  value       = aws_cloudwatch_event_rule.daily_sync.schedule_expression
+output "schedule_expressions" {
+  description = "Cron/rate expressions for the schedules"
+  value       = { for k, v in aws_cloudwatch_event_rule.sync : k => v.schedule_expression }
 }
 
 output "is_enabled" {
-  description = "Whether the rule is currently enabled"
-  value       = aws_cloudwatch_event_rule.daily_sync.state == "ENABLED"
+  description = "Whether the rules are currently enabled"
+  value       = length(aws_cloudwatch_event_rule.sync) > 0 ? values(aws_cloudwatch_event_rule.sync)[0].state == "ENABLED" : false
 }

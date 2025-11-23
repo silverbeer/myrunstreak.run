@@ -24,21 +24,20 @@ variable "lambda_function_arn" {
 }
 
 # Schedule Configuration
-variable "schedule_expression" {
-  description = "Cron or rate expression for the schedule"
-  type        = string
-  default     = "cron(0 11 * * ? *)"  # Daily at 11:00 UTC (6am EST / 7am EDT)
-
-  validation {
-    condition     = can(regex("^(cron|rate)\\(", var.schedule_expression))
-    error_message = "Schedule expression must start with 'cron(' or 'rate('."
-  }
-}
-
-variable "schedule_description" {
-  description = "Human-readable description of when the schedule runs"
-  type        = string
-  default     = "6am EST / 7am EDT (11:00 UTC)"
+variable "schedules" {
+  description = "List of schedules with name, cron expression, and description"
+  type = list(object({
+    name        = string
+    expression  = string
+    description = string
+  }))
+  default = [
+    {
+      name        = "morning"
+      expression  = "cron(0 14 * * ? *)"
+      description = "9am EST / 10am EDT (14:00 UTC)"
+    }
+  ]
 }
 
 variable "enabled" {

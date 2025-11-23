@@ -140,18 +140,18 @@ output "api_key_value" {
 # EventBridge Outputs
 # ==============================================================================
 
-output "eventbridge_rule_name" {
-  description = "Name of the EventBridge rule for daily syncs"
-  value       = module.eventbridge.rule_name
+output "eventbridge_rule_names" {
+  description = "Names of the EventBridge rules for syncs"
+  value       = module.eventbridge.rule_names
 }
 
-output "eventbridge_schedule" {
-  description = "Cron expression for the daily sync schedule"
-  value       = module.eventbridge.schedule_expression
+output "eventbridge_schedules" {
+  description = "Cron expressions for the sync schedules"
+  value       = module.eventbridge.schedule_expressions
 }
 
 output "eventbridge_enabled" {
-  description = "Whether the EventBridge rule is currently enabled"
+  description = "Whether the EventBridge rules are currently enabled"
   value       = module.eventbridge.is_enabled
 }
 
@@ -183,8 +183,9 @@ output "deployment_instructions" {
 
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    ⏰ Automated Sync Schedule:
-      ${module.eventbridge.schedule_expression}
+    ⏰ Automated Sync Schedules:
+      Morning: 9am EST / 10am EDT (14:00 UTC)
+      Midday:  12pm EST / 1pm EDT (17:00 UTC)
       Status: ${module.eventbridge.is_enabled ? "ENABLED ✓" : "DISABLED ✗"}
 
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

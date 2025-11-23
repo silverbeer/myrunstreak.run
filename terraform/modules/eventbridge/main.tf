@@ -25,14 +25,16 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# EventBridge Rule - Daily Sync Schedule
+# EventBridge Rules - Sync Schedules
 # ------------------------------------------------------------------------------
-# Triggers Lambda function daily at specified time
+# Triggers Lambda function at specified times
 
-resource "aws_cloudwatch_event_rule" "daily_sync" {
-  name                = "${var.project_name}-daily-sync-${var.environment}"
-  description         = "Trigger Lambda to sync running data from SmashRun daily at ${var.schedule_description}"
-  schedule_expression = var.schedule_expression
+resource "aws_cloudwatch_event_rule" "sync" {
+  for_each = { for s in var.schedules : s.name => s }
+
+  name                = "${var.project_name}-sync-${each.key}-${var.environment}"
+  description         = "Trigger Lambda to sync running data from SmashRun at ${each.value.description}"
+  schedule_expression = each.value.expression
 
   # Enable/disable without deleting
   state = var.enabled ? "ENABLED" : "DISABLED"
@@ -40,7 +42,7 @@ resource "aws_cloudwatch_event_rule" "daily_sync" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.project_name}-daily-sync"
+      Name = "${var.project_name}-sync-${each.key}"
     }
   )
 }
@@ -55,24 +57,25 @@ resource "aws_cloudwatch_event_rule" "daily_sync" {
 # - If you want consistent 6am year-round, use 11:00 UTC (winter time)
 
 # ------------------------------------------------------------------------------
-# EventBridge Target - Lambda Function
+# EventBridge Targets - Lambda Function
 # ------------------------------------------------------------------------------
-# Defines what to invoke when the rule triggers
+# Defines what to invoke when each rule triggers
 
 resource "aws_cloudwatch_event_target" "lambda" {
-  rule      = aws_cloudwatch_event_rule.daily_sync.name
+  for_each = aws_cloudwatch_event_rule.sync
+
+  rule      = each.value.name
   target_id = "lambda-sync-runner"
   arn       = var.lambda_function_arn
 
   # Input to pass to Lambda (optional)
   # Can pass custom JSON payload to distinguish scheduled vs API-triggered runs
-  dynamic "input_transformer" {
-    for_each = var.custom_input != null ? [1] : []
-    content {
-      input_paths = {}
-      input_template = jsonencode(var.custom_input)
+  input = jsonencode(merge(
+    var.custom_input != null ? var.custom_input : {},
+    {
+      schedule = each.key
     }
-  }
+  ))
 
   # Retry policy
   retry_policy {
@@ -96,14 +99,14 @@ resource "aws_cloudwatch_event_target" "lambda" {
 # Example use case: Pass the rule name to Lambda so it knows why it was invoked
 
 # ------------------------------------------------------------------------------
-# CloudWatch Metric Alarm - Invocation Failures
+# CloudWatch Metric Alarms - Invocation Failures
 # ------------------------------------------------------------------------------
 # Alert if EventBridge fails to invoke Lambda
 
 resource "aws_cloudwatch_metric_alarm" "invocation_failures" {
-  count = var.enable_alarms ? 1 : 0
+  for_each = var.enable_alarms ? aws_cloudwatch_event_rule.sync : {}
 
-  alarm_name          = "${var.project_name}-eventbridge-failures-${var.environment}"
+  alarm_name          = "${var.project_name}-eventbridge-failures-${each.key}-${var.environment}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "FailedInvocations"
@@ -111,11 +114,11 @@ resource "aws_cloudwatch_metric_alarm" "invocation_failures" {
   period              = "300"
   statistic           = "Sum"
   threshold           = "0"
-  alarm_description   = "EventBridge failed to invoke Lambda"
+  alarm_description   = "EventBridge failed to invoke Lambda for ${each.key} schedule"
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    RuleName = aws_cloudwatch_event_rule.daily_sync.name
+    RuleName = each.value.name
   }
 
   alarm_actions = var.alarm_actions

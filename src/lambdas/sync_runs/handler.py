@@ -1,9 +1,11 @@
 """Lambda function handler for multi-user SmashRun sync."""
 
+import os
 from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+import boto3
 from aws_lambda_powertools import Logger, Metrics
 from aws_lambda_powertools.metrics import MetricUnit
 from aws_lambda_powertools.utilities.typing import LambdaContext
@@ -120,6 +122,24 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
         metrics.add_metric(name="SyncSuccess", unit=MetricUnit.Count, value=1)
 
         logger.info(f"Sync completed: {total_runs_synced} runs from {sources_synced} sources")
+
+        # Trigger publish_status to update the public widget
+        if sources_synced > 0:
+            try:
+                publish_function_name = os.environ.get(
+                    "PUBLISH_STATUS_FUNCTION_NAME",
+                    "myrunstreak-publish-status-dev"
+                )
+                lambda_client = boto3.client("lambda", region_name=settings.aws_region)
+                lambda_client.invoke(
+                    FunctionName=publish_function_name,
+                    InvocationType="Event",  # Async invocation
+                    Payload=b"{}",
+                )
+                logger.info(f"Triggered publish_status function: {publish_function_name}")
+            except Exception as e:
+                logger.warning(f"Failed to trigger publish_status: {e}")
+                # Don't fail the sync if publish fails
 
         return {
             "statusCode": 200,
