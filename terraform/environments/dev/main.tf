@@ -357,7 +357,7 @@ module "api_gateway" {
 # ==============================================================================
 # Module: EventBridge (CloudWatch Events)
 # ==============================================================================
-# Schedule Lambda to run daily at 6am EST / 7am EDT
+# Schedule Lambda to run twice daily at 9am and 12pm ET
 
 module "eventbridge" {
   source = "../../modules/eventbridge"
@@ -366,9 +366,20 @@ module "eventbridge" {
   environment         = var.environment
   lambda_function_arn = module.lambda.function_arn
 
-  # Schedule: Daily at 11:00 UTC (6am EST / 7am EDT)
-  schedule_expression = "cron(0 11 * * ? *)"
-  schedule_description = "6am EST / 7am EDT (11:00 UTC)"
+  # Schedules: 9am and 12pm ET (14:00 and 17:00 UTC during EST)
+  # Note: During EDT (Mar-Nov), these will be 10am and 1pm local time
+  schedules = [
+    {
+      name        = "morning"
+      expression  = "cron(0 14 * * ? *)"
+      description = "9am EST / 10am EDT (14:00 UTC)"
+    },
+    {
+      name        = "midday"
+      expression  = "cron(0 17 * * ? *)"
+      description = "12pm EST / 1pm EDT (17:00 UTC)"
+    }
+  ]
 
   # Enable/disable schedule
   enabled = var.eventbridge_enabled
@@ -409,13 +420,15 @@ resource "aws_lambda_permission" "api_gateway_invoke" {
 }
 
 resource "aws_lambda_permission" "eventbridge_invoke" {
-  statement_id  = "AllowEventBridgeInvoke"
+  for_each = module.eventbridge.rule_arns
+
+  statement_id  = "AllowEventBridgeInvoke-${each.key}"
   action        = "lambda:InvokeFunction"
   function_name = module.lambda.function_name
   principal     = "events.amazonaws.com"
 
   # Source ARN restricts which EventBridge rule can invoke
-  source_arn = module.eventbridge.rule_arn
+  source_arn = each.value
 }
 
 # Query Lambda permissions
