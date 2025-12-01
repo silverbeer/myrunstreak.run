@@ -326,3 +326,67 @@ class RunsRepository:
         """
         self.supabase.table("runs").delete().eq("id", str(run_id)).execute()
         logger.info(f"Deleted run {run_id}")
+
+    def recalculate_user_stats(self, user_id: UUID) -> dict[str, Any]:
+        """
+        Recalculate and store all running statistics for a user.
+
+        Calls the database function to aggregate stats and store them in
+        user_running_stats table. This avoids row limits for users with
+        large datasets (e.g., multi-year streaks).
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            Dict with calculated statistics
+
+        Raises:
+            Exception: If recalculation fails
+        """
+        try:
+            result = self.supabase.rpc(
+                "recalculate_user_stats", {"p_user_id": str(user_id)}
+            ).execute()
+
+            if result.data:
+                stats = result.data
+                # Handle both direct dict and list responses
+                if isinstance(stats, list) and len(stats) > 0:
+                    stats = stats[0]
+                stats_dict = cast(dict[str, Any], stats)
+                logger.info(
+                    f"Recalculated stats for user {user_id}: "
+                    f"{stats_dict.get('lifetime_runs')} runs, "
+                    f"{stats_dict.get('current_streak_days')} day streak"
+                )
+                return stats_dict
+
+            return {}
+
+        except Exception as e:
+            logger.error(f"Failed to recalculate stats for user {user_id}: {e}")
+            raise
+
+    def get_user_running_stats(self, user_id: UUID) -> dict[str, Any] | None:
+        """
+        Get pre-calculated running statistics for a user.
+
+        Fetches from the user_running_stats aggregation table. If no stats
+        exist yet, returns None (caller should trigger recalculation).
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            Dict with all pre-calculated stats, or None if not found
+        """
+        result = (
+            self.supabase.table("user_running_stats")
+            .select("*")
+            .eq("user_id", str(user_id))
+            .execute()
+        )
+
+        data_list = cast(list[dict[str, Any]], result.data)
+        return data_list[0] if data_list else None

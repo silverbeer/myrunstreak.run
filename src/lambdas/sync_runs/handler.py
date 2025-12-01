@@ -104,6 +104,18 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
                 # Update last sync timestamp
                 users_repo.update_source_last_sync(source_id)
 
+                # Recalculate user stats (aggregation table)
+                try:
+                    stats = runs_repo.recalculate_user_stats(user_id)
+                    logger.info(
+                        f"Recalculated stats for user {user_id}: "
+                        f"{stats.get('current_streak_days')} day streak, "
+                        f"{stats.get('current_streak_distance_km')} km"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to recalculate stats for user {user_id}: {e}")
+                    # Don't fail sync if stats recalculation fails
+
                 total_runs_synced += runs_synced
                 sources_synced += 1
 
