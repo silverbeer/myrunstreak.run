@@ -2,9 +2,10 @@
 
 import json
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from google.cloud import storage
 from google.oauth2 import service_account
@@ -21,6 +22,9 @@ logger.setLevel(logging.INFO)
 GCS_BUCKET_NAME = "myrunstreak-public"
 GCS_OBJECT_PATH = "status.json"
 ENVIRONMENT = "dev"
+
+# User's timezone for "ran today" logic
+USER_TIMEZONE = ZoneInfo("America/New_York")
 
 # Conversion factor
 KM_TO_MILES = 0.621371
@@ -85,7 +89,8 @@ def build_status_data(user_id: UUID, runs_repo: RunsRepository) -> dict[str, Any
     Returns:
         Status data dictionary
     """
-    today = date.today()
+    # Use user's timezone for "ran today" logic
+    today = datetime.now(USER_TIMEZONE).date()
     seven_days_ago = today - timedelta(days=7)
 
     # Get last 7 days of runs (still needed for last_7_days array and last_run details)
