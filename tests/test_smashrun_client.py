@@ -87,24 +87,45 @@ def test_get_activities_basic(mock_client_class, api_client, sample_activity):
 
 @patch("httpx.Client")
 def test_get_activities_with_date_filter(mock_client_class, api_client, sample_activity):
-    """Test fetching activities with date filtering."""
+    """Test fetching activities with date filtering (client-side filtering)."""
+    # Create activities both inside and outside the date range
+    in_range_activity = {
+        **sample_activity,
+        "activityId": "1",
+        "startDateTimeLocal": "2024-10-15T08:00:00-04:00",
+    }
+    before_range_activity = {
+        **sample_activity,
+        "activityId": "2",
+        "startDateTimeLocal": "2024-09-15T08:00:00-04:00",
+    }
+    after_range_activity = {
+        **sample_activity,
+        "activityId": "3",
+        "startDateTimeLocal": "2024-11-15T08:00:00-05:00",
+    }
+
     mock_response = MagicMock()
-    mock_response.json.return_value = [sample_activity]
+    mock_response.json.return_value = [in_range_activity, before_range_activity, after_range_activity]
     mock_response.raise_for_status = MagicMock()
 
     mock_client = MagicMock()
     mock_client.get.return_value = mock_response
     api_client._client = mock_client
 
-    # Fetch activities with date filter
+    # Fetch activities with date filter (client-side filtering)
     since_date = date(2024, 10, 1)
     until_date = date(2024, 10, 31)
-    _ = api_client.get_activities(page=0, count=50, since=since_date, until=until_date)
+    activities = api_client.get_activities(page=0, count=50, since=since_date, until=until_date)
 
-    # Verify
+    # Verify that only in-range activity is returned
+    assert len(activities) == 1
+    assert activities[0]["activityId"] == "1"
+
+    # Verify API call doesn't include since/until (filtering is client-side)
     call_args = mock_client.get.call_args
-    assert call_args[1]["params"]["since"] == "2024-10-01"
-    assert call_args[1]["params"]["until"] == "2024-10-31"
+    assert "since" not in call_args[1]["params"]
+    assert "until" not in call_args[1]["params"]
 
 
 @patch("httpx.Client")
