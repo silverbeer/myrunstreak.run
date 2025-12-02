@@ -2,11 +2,12 @@
 
 import json
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from dateutil.relativedelta import relativedelta
 from google.cloud import storage
 from google.oauth2 import service_account
 
@@ -33,6 +34,45 @@ KM_TO_MILES = 0.621371
 def km_to_miles(km: float) -> float:
     """Convert kilometers to miles."""
     return km * KM_TO_MILES
+
+
+def format_streak_duration(streak_start: str | None, today: date) -> str | None:
+    """
+    Format streak duration as "X years, Y months and Z days".
+
+    Args:
+        streak_start: Start date in ISO format (YYYY-MM-DD)
+        today: Today's date (in user's timezone)
+
+    Returns:
+        Human-readable duration string, or None if no start date
+    """
+    if not streak_start:
+        return None
+
+    start = date.fromisoformat(streak_start)
+    delta = relativedelta(today, start)
+
+    years = delta.years
+    months = delta.months
+    days = delta.days
+
+    # Build the output string with proper pluralization
+    parts = []
+    if years > 0:
+        parts.append(f"{years} year{'s' if years != 1 else ''}")
+    if months > 0:
+        parts.append(f"{months} month{'s' if months != 1 else ''}")
+    if days > 0 or not parts:  # Include days if no other parts or if days > 0
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+
+    # Format with commas and "and"
+    if len(parts) == 1:
+        return parts[0]
+    elif len(parts) == 2:
+        return f"{parts[0]} and {parts[1]}"
+    else:
+        return f"{parts[0]}, {parts[1]} and {parts[2]}"
 
 
 def get_gcs_credentials() -> dict[str, Any]:
@@ -165,6 +205,7 @@ def build_status_data(user_id: UUID, runs_repo: RunsRepository) -> dict[str, Any
         "streak": {
             "current_days": streak_days,
             "started": streak_start,
+            "duration": format_streak_duration(streak_start, today),
             "total_mi": streak_total_mi,
         },
         "last_run": last_run,

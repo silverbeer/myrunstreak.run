@@ -1,9 +1,10 @@
 """Tests for unit conversion utilities."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
+from src.lambdas.publish_status.handler import format_streak_duration
 from src.shared.models import (
     Activity,
     UnitSystem,
@@ -136,3 +137,67 @@ def test_zero_distance_handling():
     assert activity.distance_miles >= 0
     assert activity.average_pace_min_per_mile >= 0
     assert activity.average_speed_mph >= 0
+
+
+# Tests for format_streak_duration
+def test_format_streak_duration_years_months_days():
+    """Test full format with years, months, and days."""
+    today = date(2025, 3, 5)
+    streak_start = "2013-11-30"  # 11 years, 3 months, 5 days
+    result = format_streak_duration(streak_start, today)
+    assert result == "11 years, 3 months and 5 days"
+
+
+def test_format_streak_duration_singular():
+    """Test singular form for 1 year, 1 month, 1 day."""
+    today = date(2025, 2, 2)
+    streak_start = "2024-01-01"  # 1 year, 1 month, 1 day
+    result = format_streak_duration(streak_start, today)
+    assert result == "1 year, 1 month and 1 day"
+
+
+def test_format_streak_duration_days_only():
+    """Test format with only days."""
+    today = date(2025, 1, 15)
+    streak_start = "2025-01-10"  # 5 days
+    result = format_streak_duration(streak_start, today)
+    assert result == "5 days"
+
+
+def test_format_streak_duration_months_and_days():
+    """Test format with months and days only."""
+    today = date(2025, 3, 15)
+    streak_start = "2025-01-10"  # 2 months and 5 days
+    result = format_streak_duration(streak_start, today)
+    assert result == "2 months and 5 days"
+
+
+def test_format_streak_duration_years_and_days():
+    """Test format with years and days only (no months)."""
+    today = date(2025, 1, 15)
+    streak_start = "2023-01-10"  # 2 years and 5 days
+    result = format_streak_duration(streak_start, today)
+    assert result == "2 years and 5 days"
+
+
+def test_format_streak_duration_none_input():
+    """Test that None input returns None."""
+    result = format_streak_duration(None, date.today())
+    assert result is None
+
+
+def test_format_streak_duration_zero_days():
+    """Test format when started today (0 days)."""
+    today = date(2025, 1, 15)
+    streak_start = "2025-01-15"  # Same day
+    result = format_streak_duration(streak_start, today)
+    assert result == "0 days"
+
+
+def test_format_streak_duration_month_boundary():
+    """Test across month boundaries with different day counts."""
+    # March 2 with start Jan 31 - should handle different month lengths
+    today = date(2025, 3, 2)
+    streak_start = "2025-01-31"
+    result = format_streak_duration(streak_start, today)
+    assert result == "1 month and 2 days"

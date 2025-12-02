@@ -104,3 +104,8 @@ ignore_missing_imports = true
 module = ["google.cloud.*", "google.oauth2.*"]
 ignore_missing_imports = true
 disallow_untyped_calls = false
+
+[dependency-groups]
+dev = [
+    "types-python-dateutil>=2.9.0.20251115",
+]
