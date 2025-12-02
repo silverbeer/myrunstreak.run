@@ -151,6 +151,8 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/amd64
+          provenance: false
           tags: |
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ matrix.lambda.ecr_repository }}:latest
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ matrix.lambda.ecr_repository }}:${{ github.sha }}
