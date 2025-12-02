@@ -112,6 +112,10 @@ jobs:
             function_name: myrunstreak-query-runner-dev
             handler_module: query_runs
             ecr_repository: myrunstreak-query-dev
+          - name: "Publish Status Lambda"
+            function_name: myrunstreak-publish-status-dev
+            handler_module: publish_status
+            ecr_repository: myrunstreak-publish-status-dev
 
     steps:
       # ========================================================================
