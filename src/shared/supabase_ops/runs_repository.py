@@ -153,18 +153,19 @@ class RunsRepository:
                 # Handle both direct dict and list responses
                 if isinstance(stats, list) and len(stats) > 0:
                     stats = stats[0]
+                stats_dict = cast(dict[str, Any], stats)
                 return {
-                    "total_runs": int(stats.get("total_runs", 0)),
-                    "total_km": float(stats.get("total_km", 0)),
-                    "avg_km": float(stats.get("avg_km", 0)),
-                    "longest_run_km": float(stats.get("longest_run_km", 0)),
-                    "avg_pace_min_per_km": float(stats.get("avg_pace_min_per_km", 0)),
+                    "total_runs": int(stats_dict.get("total_runs", 0)),
+                    "total_km": float(stats_dict.get("total_km", 0)),
+                    "avg_km": float(stats_dict.get("avg_km", 0)),
+                    "longest_run_km": float(stats_dict.get("longest_run_km", 0)),
+                    "avg_pace_min_per_km": float(stats_dict.get("avg_pace_min_per_km", 0)),
                 }
         except Exception as e:
             logger.warning(f"RPC get_user_stats failed, falling back to client-side: {e}")
 
         # Fallback to client-side aggregation (limited to 1000 rows)
-        result = (
+        fallback_result = (
             self.supabase.table("runs")
             .select("distance_km, average_pace_min_per_km")
             .eq("user_id", str(user_id))
@@ -172,7 +173,7 @@ class RunsRepository:
             .execute()
         )
 
-        runs = cast(list[dict[str, Any]], result.data)
+        runs = cast(list[dict[str, Any]], fallback_result.data)
 
         if not runs or len(runs) == 0:
             return {
@@ -236,17 +237,17 @@ class RunsRepository:
         """
         try:
             # Use database function for accurate streak calculation
-            result = self.supabase.rpc(
+            rpc_result = self.supabase.rpc(
                 "get_current_streak", {"p_user_id": str(user_id)}
             ).execute()
 
-            if result.data is not None:
-                return int(result.data)
+            if rpc_result.data is not None:
+                return int(cast(int, rpc_result.data))
         except Exception as e:
             logger.warning(f"RPC get_current_streak failed, falling back: {e}")
 
         # Fallback to client-side calculation (limited to 1000 rows)
-        result = (
+        fallback_result = (
             self.supabase.table("runs")
             .select("start_date")
             .eq("user_id", str(user_id))
@@ -255,7 +256,7 @@ class RunsRepository:
             .execute()
         )
 
-        data_list = cast(list[dict[str, Any]], result.data)
+        data_list = cast(list[dict[str, Any]], fallback_result.data)
 
         if not data_list:
             return 0

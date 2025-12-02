@@ -50,7 +50,7 @@ def upload_to_gcs(data: dict[str, Any]) -> str:
     """
     # Get credentials from Secrets Manager
     creds_dict = get_gcs_credentials()
-    credentials = service_account.Credentials.from_service_account_info(creds_dict)
+    credentials = service_account.Credentials.from_service_account_info(creds_dict)  # type: ignore[no-untyped-call]
 
     # Create GCS client
     client = storage.Client(credentials=credentials, project=creds_dict.get("project_id"))
