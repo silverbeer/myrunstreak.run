@@ -75,6 +75,9 @@ def build_status_data(user_id: UUID, runs_repo: RunsRepository) -> dict[str, Any
     """
     Build the status JSON structure.
 
+    Uses pre-calculated stats from user_running_stats table for efficiency,
+    with fallback to real-time calculation if stats aren't available.
+
     Args:
         user_id: User UUID
         runs_repo: Runs repository instance
@@ -85,11 +88,8 @@ def build_status_data(user_id: UUID, runs_repo: RunsRepository) -> dict[str, Any
     today = date.today()
     seven_days_ago = today - timedelta(days=7)
 
-    # Get last 7 days of runs
+    # Get last 7 days of runs (still needed for last_7_days array and last_run details)
     recent_runs = runs_repo.get_runs_by_date_range(user_id, seven_days_ago, today)
-
-    # Get current streak
-    streak_days = runs_repo.get_current_streak(user_id)
 
     # Determine if ran today
     ran_today = any(run["start_date"] == today.isoformat() for run in recent_runs)
@@ -116,29 +116,42 @@ def build_status_data(user_id: UUID, runs_repo: RunsRepository) -> dict[str, Any
             }
         )
 
-    # Calculate streak start date (approximate)
-    streak_start = None
-    if streak_days > 0:
-        streak_start = (today - timedelta(days=streak_days - 1)).isoformat()
+    # Get pre-calculated stats from aggregation table
+    stats = runs_repo.get_user_running_stats(user_id)
 
-    # Calculate total miles during the streak
-    streak_total_km = 0.0
-    if streak_days > 0 and streak_start:
-        streak_start_date = date.fromisoformat(streak_start)
-        streak_runs = runs_repo.get_runs_by_date_range(user_id, streak_start_date, today)
-        streak_total_km = sum(float(run["distance_km"]) for run in streak_runs)
+    if stats:
+        # Use pre-calculated values from aggregation table
+        streak_days = stats.get("current_streak_days", 0)
+        streak_start = stats.get("current_streak_start")
+        streak_total_km = float(stats.get("current_streak_distance_km", 0))
+        month_total_km = float(stats.get("month_to_date_distance_km", 0))
+        year_total_km = float(stats.get("year_to_date_distance_km", 0))
+
+        logger.info(
+            f"Using pre-calculated stats: {streak_days} day streak, "
+            f"{streak_total_km:.1f} km streak total"
+        )
+    else:
+        # Fallback: recalculate stats if not available
+        logger.warning(f"No pre-calculated stats for user {user_id}, recalculating...")
+        try:
+            stats = runs_repo.recalculate_user_stats(user_id)
+            streak_days = stats.get("current_streak_days", 0)
+            streak_start = stats.get("current_streak_start")
+            streak_total_km = float(stats.get("current_streak_distance_km", 0))
+            month_total_km = float(stats.get("month_to_date_distance_km", 0))
+            year_total_km = float(stats.get("year_to_date_distance_km", 0))
+        except Exception as e:
+            logger.error(f"Failed to recalculate stats: {e}, using defaults")
+            streak_days = 0
+            streak_start = None
+            streak_total_km = 0.0
+            month_total_km = 0.0
+            year_total_km = 0.0
+
+    # Convert to miles
     streak_total_mi = round(km_to_miles(streak_total_km), 1)
-
-    # Get runs for this month
-    first_of_month = today.replace(day=1)
-    month_runs = runs_repo.get_runs_by_date_range(user_id, first_of_month, today)
-    month_total_km = sum(float(run["distance_km"]) for run in month_runs)
     month_total_mi = round(km_to_miles(month_total_km), 1)
-
-    # Get runs for this year
-    first_of_year = today.replace(month=1, day=1)
-    year_runs = runs_repo.get_runs_by_date_range(user_id, first_of_year, today)
-    year_total_km = sum(float(run["distance_km"]) for run in year_runs)
     year_total_mi = round(km_to_miles(year_total_km), 1)
 
     return {
