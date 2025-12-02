@@ -2,11 +2,11 @@
 
 import json
 import socket
+import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
-import webbrowser
 
 import httpx
 import typer

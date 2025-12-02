@@ -1,7 +1,7 @@
 """SmashRun API client for fetching running activities."""
 
 import logging
-from datetime import date
+from datetime import UTC, date
 from typing import Any, cast
 
 import httpx
@@ -92,9 +92,9 @@ class SmashRunAPIClient:
         # SmashRun API 'fromDate' filters by SYNC date (when activity was added/updated),
         # not by activity date. Only use it for incremental syncs.
         if since and incremental:
-            from datetime import datetime, timezone
+            from datetime import datetime
             # Convert date to Unix timestamp (start of day UTC)
-            since_dt = datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc)
+            since_dt = datetime.combine(since, datetime.min.time(), tzinfo=UTC)
             params["fromDate"] = int(since_dt.timestamp())
 
         logger.info(f"Fetching activities page {page} with count {count}")
