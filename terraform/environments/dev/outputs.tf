@@ -114,27 +114,37 @@ output "github_actions_role_arn" {
 # ==============================================================================
 # API Gateway Outputs
 # ==============================================================================
+# Note: Base API Gateway is managed by runstreak-common.
+# This repo only manages routes on the shared API Gateway.
 
 output "api_gateway_url" {
-  description = "Base URL of the API Gateway"
-  value       = module.api_gateway.api_endpoint
+  description = "Base URL of the API Gateway (from SSM)"
+  value       = module.api_gateway_consumer.api_gateway_invoke_url
 }
 
 output "api_sync_endpoint" {
   description = "Full URL for the sync endpoint"
-  value       = module.api_gateway.sync_endpoint
+  value       = module.api_gateway_consumer.sync_endpoint
 }
 
 output "api_health_endpoint" {
   description = "Full URL for the health check endpoint"
-  value       = module.api_gateway.health_endpoint
+  value       = "${module.api_gateway_consumer.api_gateway_invoke_url}/health"
 }
 
-output "api_key_value" {
-  description = "API Gateway API key (sensitive - use with caution)"
-  value       = module.api_gateway.api_key_value
-  sensitive   = true
+output "api_stats_endpoint" {
+  description = "Base URL for stats endpoints"
+  value       = module.api_gateway_consumer.stats_endpoint
 }
+
+output "api_runs_endpoint" {
+  description = "Base URL for runs endpoints"
+  value       = module.api_gateway_consumer.runs_endpoint
+}
+
+# Note: API key is now managed by runstreak-common repo
+# Get it from: aws ssm get-parameter --name "/runstreak/shared/dev/api-gateway-api-key-id"
+# Or from runstreak-common terraform output
 
 # ==============================================================================
 # EventBridge Outputs
@@ -163,54 +173,41 @@ output "deployment_instructions" {
   description = "Instructions for testing the deployment"
   value = <<-EOT
 
-    🎉 MyRunStreak.com Infrastructure Deployed Successfully! 🎉
+    MyRunStreak.run Infrastructure Deployed Successfully!
 
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    📍 API Endpoints:
+    API Endpoints:
 
     Health Check (public):
-      curl ${module.api_gateway.health_endpoint}
+      curl ${module.api_gateway_consumer.api_gateway_invoke_url}/health
 
     Manual Sync (requires API key):
-      curl -X POST ${module.api_gateway.sync_endpoint} \
+      curl -X POST ${module.api_gateway_consumer.sync_endpoint} \
            -H "x-api-key: YOUR_API_KEY_HERE"
+
+    Stats:
+      curl ${module.api_gateway_consumer.stats_endpoint}/streak
 
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    🔑 Get your API key:
+    Get your API key (from runstreak-common):
+      cd ../runstreak-common/terraform/environments/dev
       terraform output -raw api_key_value
 
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    ⏰ Automated Sync Schedules:
+    Automated Sync Schedules:
       Morning: 9am EST / 10am EDT (14:00 UTC)
       Midday:  12pm EST / 1pm EDT (17:00 UTC)
-      Status: ${module.eventbridge.is_enabled ? "ENABLED ✓" : "DISABLED ✗"}
+      Status: ${module.eventbridge.is_enabled ? "ENABLED" : "DISABLED"}
 
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    📊 Monitoring:
+    Monitoring:
       Lambda Logs:    https://console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.name}#logsV2:log-groups/log-group/${replace(module.lambda.log_group_name, "/", "$252F")}
-      API Gateway:    https://console.aws.amazon.com/apigateway/home?region=${data.aws_region.current.name}#/apis/${module.api_gateway.api_id}
+      API Gateway:    https://console.aws.amazon.com/apigateway/home?region=${data.aws_region.current.name}#/apis/${module.api_gateway_consumer.api_gateway_id}
       S3 Bucket:      https://s3.console.aws.amazon.com/s3/buckets/${module.s3.bucket_id}
-
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-    📝 Next Steps:
-
-    1. Upload initial DuckDB database to S3:
-       aws s3 cp data/runs.duckdb s3://${module.s3.bucket_id}/runs.duckdb
-
-    2. Test the health endpoint (no auth needed):
-       curl ${module.api_gateway.health_endpoint}
-
-    3. Get your API key and test manual sync:
-       API_KEY=$(terraform output -raw api_key_value)
-       curl -X POST ${module.api_gateway.sync_endpoint} -H "x-api-key: $API_KEY"
-
-    4. View Lambda logs:
-       aws logs tail ${module.lambda.log_group_name} --follow
 
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
