@@ -4,7 +4,7 @@
 terraform {
   required_version = ">= 1.5.0"
 
-  
+
 
   backend "s3" {
     bucket         = "myrunstreak-terraform-state-855323747881"
@@ -81,8 +81,8 @@ module "s3" {
   lambda_execution_role_arn = module.iam.lambda_execution_role_arn
 
   # Optional features
-  enable_cors       = false  # Enable if building web UI
-  enable_monitoring = true   # CloudWatch alarms for bucket size
+  enable_cors       = false # Enable if building web UI
+  enable_monitoring = true  # CloudWatch alarms for bucket size
 
   tags = local.common_tags
 }
@@ -112,8 +112,8 @@ module "secrets" {
   supabase_service_role_key = var.supabase_service_role_key
 
   # Optional features
-  enable_rotation      = false  # Manual token management for now
-  enable_age_monitoring = false  # Optional alarm for stale secrets
+  enable_rotation       = false # Manual token management for now
+  enable_age_monitoring = false # Optional alarm for stale secrets
 
   tags = local.common_tags
 }
@@ -180,16 +180,16 @@ module "lambda" {
   smashrun_secret_name = module.secrets.smashrun_oauth_secret_name
 
   # Performance tuning
-  memory_size             = 512   # MB (affects CPU allocation)
-  timeout                 = 300   # 5 minutes
-  ephemeral_storage_size  = 1024  # 1 GB for DuckDB operations
+  memory_size            = 512  # MB (affects CPU allocation)
+  timeout                = 300  # 5 minutes
+  ephemeral_storage_size = 1024 # 1 GB for DuckDB operations
 
   # Logging
-  log_level           = var.lambda_log_level
-  log_retention_days  = 14
+  log_level          = var.lambda_log_level
+  log_retention_days = 14
 
   # Monitoring
-  enable_xray_tracing = false  # Enable for distributed tracing
+  enable_xray_tracing = false # Enable for distributed tracing
   enable_alarms       = true
 
   # Permissions will be created separately below to avoid circular dependencies
@@ -199,7 +199,7 @@ module "lambda" {
   # Additional environment variables needed by the sync handler
   # Note: Secrets (Supabase, SmashRun credentials) are fetched from Secrets Manager
   extra_environment_variables = {
-    SMASHRUN_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob"  # Out-of-band redirect for CLI
+    SMASHRUN_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob" # Out-of-band redirect for CLI
   }
 
   tags = local.common_tags
@@ -233,12 +233,12 @@ module "lambda_query" {
 
   # S3 configuration (read-only access)
   s3_bucket_name       = module.s3.bucket_id
-  smashrun_secret_name = null  # Query Lambda doesn't need SmashRun credentials
+  smashrun_secret_name = null # Query Lambda doesn't need SmashRun credentials
 
   # Performance tuning for fast queries
-  memory_size            = 256  # MB (queries are fast)
-  timeout                = 30   # 30 seconds (API Gateway limit)
-  ephemeral_storage_size = 512  # 512 MB for DuckDB read operations
+  memory_size            = 256 # MB (queries are fast)
+  timeout                = 30  # 30 seconds (API Gateway limit)
+  ephemeral_storage_size = 512 # 512 MB for DuckDB read operations
 
   # Logging
   log_level          = var.lambda_log_level
@@ -291,9 +291,9 @@ module "lambda_publish_status" {
   smashrun_secret_name = null
 
   # Performance tuning
-  memory_size            = 256  # MB
-  timeout                = 60   # 1 minute
-  ephemeral_storage_size = 512  # MB
+  memory_size            = 256 # MB
+  timeout                = 60  # 1 minute
+  ephemeral_storage_size = 512 # MB
 
   # Logging
   log_level          = var.lambda_log_level
@@ -380,7 +380,7 @@ module "eventbridge" {
   }
 
   # Retry configuration
-  maximum_event_age_seconds = 3600  # 1 hour
+  maximum_event_age_seconds = 3600 # 1 hour
   maximum_retry_attempts    = 2
 
   # Monitoring
@@ -421,8 +421,8 @@ resource "aws_iam_role_policy" "lambda_invoke_publish_status" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = "lambda:InvokeFunction"
+        Effect   = "Allow"
+        Action   = "lambda:InvokeFunction"
         Resource = module.lambda_publish_status.function_arn
       }
     ]

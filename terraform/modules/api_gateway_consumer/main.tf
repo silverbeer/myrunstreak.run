@@ -43,11 +43,11 @@ data "aws_ssm_parameter" "api_gateway_invoke_url" {
 }
 
 locals {
-  api_gateway_id     = data.aws_ssm_parameter.api_gateway_id.value
-  root_resource_id   = data.aws_ssm_parameter.api_gateway_root_resource_id.value
-  api_execution_arn  = data.aws_ssm_parameter.api_gateway_execution_arn.value
-  stage_name         = data.aws_ssm_parameter.api_gateway_stage_name.value
-  api_invoke_url     = data.aws_ssm_parameter.api_gateway_invoke_url.value
+  api_gateway_id    = data.aws_ssm_parameter.api_gateway_id.value
+  root_resource_id  = data.aws_ssm_parameter.api_gateway_root_resource_id.value
+  api_execution_arn = data.aws_ssm_parameter.api_gateway_execution_arn.value
+  stage_name        = data.aws_ssm_parameter.api_gateway_stage_name.value
+  api_invoke_url    = data.aws_ssm_parameter.api_gateway_invoke_url.value
 }
 
 # ==============================================================================

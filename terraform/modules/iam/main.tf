@@ -111,7 +111,7 @@ resource "aws_iam_role_policy" "s3_access" {
           "s3:GetObject",
           "s3:GetObjectVersion",
           "s3:PutObject",
-          "s3:DeleteObject"  # For cleanup if needed
+          "s3:DeleteObject" # For cleanup if needed
         ]
         Resource = "${var.s3_bucket_arn}/*"
         # Note: "/*" means all objects in the bucket
