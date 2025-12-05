@@ -178,7 +178,7 @@ output "eventbridge_enabled" {
 output "deployment_instructions" {
   description = "Instructions for testing the deployment"
   sensitive   = true
-  value = <<-EOT
+  value       = <<-EOT
 
     MyRunStreak.run Infrastructure Deployed Successfully!
 

@@ -57,7 +57,7 @@ variable "enable_monitoring" {
 variable "max_bucket_size_bytes" {
   description = "Maximum bucket size in bytes before alerting"
   type        = number
-  default     = 1073741824  # 1 GB
+  default     = 1073741824 # 1 GB
 }
 
 variable "alarm_sns_topic_arn" {

@@ -201,7 +201,7 @@ resource "aws_cloudwatch_metric_alarm" "secret_age" {
   evaluation_periods  = "1"
   metric_name         = "SecretAge"
   namespace           = "AWS/SecretsManager"
-  period              = "86400"  # Daily check
+  period              = "86400" # Daily check
   statistic           = "Maximum"
   threshold           = var.max_secret_age_days
   alarm_description   = "Secret has not been rotated recently"
