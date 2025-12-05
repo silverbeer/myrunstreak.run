@@ -120,26 +120,31 @@ output "github_actions_role_arn" {
 output "api_gateway_url" {
   description = "Base URL of the API Gateway (from SSM)"
   value       = module.api_gateway_consumer.api_gateway_invoke_url
+  sensitive   = true
 }
 
 output "api_sync_endpoint" {
   description = "Full URL for the sync endpoint"
   value       = module.api_gateway_consumer.sync_endpoint
+  sensitive   = true
 }
 
 output "api_health_endpoint" {
   description = "Full URL for the health check endpoint"
   value       = "${module.api_gateway_consumer.api_gateway_invoke_url}/health"
+  sensitive   = true
 }
 
 output "api_stats_endpoint" {
   description = "Base URL for stats endpoints"
   value       = module.api_gateway_consumer.stats_endpoint
+  sensitive   = true
 }
 
 output "api_runs_endpoint" {
   description = "Base URL for runs endpoints"
   value       = module.api_gateway_consumer.runs_endpoint
+  sensitive   = true
 }
 
 # Note: API key is now managed by runstreak-common repo
@@ -171,6 +176,7 @@ output "eventbridge_enabled" {
 
 output "deployment_instructions" {
   description = "Instructions for testing the deployment"
+  sensitive   = true
   value = <<-EOT
 
     MyRunStreak.run Infrastructure Deployed Successfully!
