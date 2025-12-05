@@ -96,14 +96,14 @@ resource "aws_lambda_function" "sync_runner" {
   }
 
   # Performance Configuration
-  memory_size = var.memory_size  # 128-10240 MB
-  timeout     = var.timeout      # 1-900 seconds (15 minutes max)
+  memory_size = var.memory_size # 128-10240 MB
+  timeout     = var.timeout     # 1-900 seconds (15 minutes max)
   # More memory = more CPU = faster execution
   # But also = higher cost per second
   # 512 MB is sweet spot for most workloads
 
   # Architecture
-  architectures = ["x86_64"]  # or ["arm64"] (Graviton2 - 20% cheaper)
+  architectures = ["x86_64"] # or ["arm64"] (Graviton2 - 20% cheaper)
   # arm64 requires all dependencies compiled for ARM
   # x86_64 is safer for compatibility
 
@@ -176,7 +176,7 @@ resource "aws_lambda_function" "sync_runner" {
 
   # Ephemeral Storage (/tmp directory)
   ephemeral_storage {
-    size = var.ephemeral_storage_size  # 512-10240 MB
+    size = var.ephemeral_storage_size # 512-10240 MB
   }
   # Lambda provides /tmp directory for temporary files
   # DuckDB database is ~3 MB, plus some overhead
@@ -277,7 +277,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   evaluation_periods  = "1"
   metric_name         = "Errors"
   namespace           = "AWS/Lambda"
-  period              = "300"  # 5 minutes
+  period              = "300" # 5 minutes
   statistic           = "Sum"
   threshold           = "1"
   alarm_description   = "Lambda function is experiencing errors"
@@ -321,7 +321,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_duration" {
   namespace           = "AWS/Lambda"
   period              = "300"
   statistic           = "Maximum"
-  threshold           = var.timeout * 1000 * 0.9  # 90% of timeout (in milliseconds)
+  threshold           = var.timeout * 1000 * 0.9 # 90% of timeout (in milliseconds)
   alarm_description   = "Lambda function is approaching timeout"
   treat_missing_data  = "notBreaching"
 

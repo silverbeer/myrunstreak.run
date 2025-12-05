@@ -89,7 +89,7 @@ variable "memory_size" {
 variable "timeout" {
   description = "Function timeout in seconds (1-900)"
   type        = number
-  default     = 300  # 5 minutes
+  default     = 300 # 5 minutes
 
   validation {
     condition     = var.timeout >= 1 && var.timeout <= 900
@@ -100,7 +100,7 @@ variable "timeout" {
 variable "ephemeral_storage_size" {
   description = "Size of /tmp directory in MB (512-10240)"
   type        = number
-  default     = 1024  # 1 GB for DuckDB operations
+  default     = 1024 # 1 GB for DuckDB operations
 
   validation {
     condition     = var.ephemeral_storage_size >= 512 && var.ephemeral_storage_size <= 10240

@@ -63,7 +63,7 @@ variable "custom_input" {
 variable "maximum_event_age_seconds" {
   description = "Maximum age of event before discarding (60-86400)"
   type        = number
-  default     = 3600  # 1 hour
+  default     = 3600 # 1 hour
 
   validation {
     condition     = var.maximum_event_age_seconds >= 60 && var.maximum_event_age_seconds <= 86400

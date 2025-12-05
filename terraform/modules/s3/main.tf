@@ -101,7 +101,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "database" {
     id     = "delete-old-versions"
     status = "Enabled"
 
-    filter {}  # Apply to all objects
+    filter {} # Apply to all objects
 
     noncurrent_version_expiration {
       noncurrent_days = 30
@@ -109,7 +109,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "database" {
 
     noncurrent_version_transition {
       noncurrent_days = 7
-      storage_class   = "GLACIER_IR"  # Cheaper storage for old versions
+      storage_class   = "GLACIER_IR" # Cheaper storage for old versions
     }
   }
 
@@ -117,7 +117,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "database" {
     id     = "cleanup-incomplete-uploads"
     status = "Enabled"
 
-    filter {}  # Apply to all objects
+    filter {} # Apply to all objects
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
@@ -174,10 +174,10 @@ resource "aws_s3_bucket_policy" "database" {
         ]
       },
       {
-        Sid    = "DenyInsecureTransport"
-        Effect = "Deny"
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
         Principal = "*"
-        Action = "s3:*"
+        Action    = "s3:*"
         Resource = [
           aws_s3_bucket.database.arn,
           "${aws_s3_bucket.database.arn}/*"
@@ -205,7 +205,7 @@ resource "aws_cloudwatch_metric_alarm" "bucket_size" {
   evaluation_periods  = "1"
   metric_name         = "BucketSizeBytes"
   namespace           = "AWS/S3"
-  period              = "86400"  # Daily check
+  period              = "86400" # Daily check
   statistic           = "Average"
   threshold           = var.max_bucket_size_bytes
   alarm_description   = "S3 bucket size exceeds threshold - possible issue"

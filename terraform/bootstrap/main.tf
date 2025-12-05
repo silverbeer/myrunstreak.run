@@ -90,7 +90,7 @@ output "dynamodb_table_name" {
 
 output "backend_config" {
   description = "Backend configuration to use in main Terraform"
-  value = <<-EOT
+  value       = <<-EOT
     backend "s3" {
       bucket         = "${aws_s3_bucket.terraform_state.id}"
       key            = "myrunstreak/terraform.tfstate"

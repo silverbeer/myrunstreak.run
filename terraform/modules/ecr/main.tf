@@ -21,7 +21,7 @@
 
 resource "aws_ecr_repository" "sync" {
   name                 = "${var.project_name}-sync-${var.environment}"
-  image_tag_mutability = "MUTABLE"  # Allow overwriting :latest tag
+  image_tag_mutability = "MUTABLE" # Allow overwriting :latest tag
 
   # Enable image scanning on push
   image_scanning_configuration {
@@ -79,9 +79,9 @@ resource "aws_ecr_lifecycle_policy" "sync" {
         rulePriority = 1
         description  = "Keep last ${var.image_retention_count} images"
         selection = {
-          tagStatus     = "any"
-          countType     = "imageCountMoreThan"
-          countNumber   = var.image_retention_count
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = var.image_retention_count
         }
         action = {
           type = "expire"
@@ -104,9 +104,9 @@ resource "aws_ecr_lifecycle_policy" "query" {
         rulePriority = 1
         description  = "Keep last ${var.image_retention_count} images"
         selection = {
-          tagStatus     = "any"
-          countType     = "imageCountMoreThan"
-          countNumber   = var.image_retention_count
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = var.image_retention_count
         }
         action = {
           type = "expire"
@@ -212,9 +212,9 @@ resource "aws_ecr_lifecycle_policy" "publish_status" {
         rulePriority = 1
         description  = "Keep last ${var.image_retention_count} images"
         selection = {
-          tagStatus     = "any"
-          countType     = "imageCountMoreThan"
-          countNumber   = var.image_retention_count
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = var.image_retention_count
         }
         action = {
           type = "expire"
