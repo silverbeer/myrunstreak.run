@@ -119,7 +119,35 @@ jobs:
           terraform_wrapper: false  # Disable wrapper to parse outputs
 
       # ========================================================================
-      # Step 5: Terraform Init
+      # Step 5: Verify Shared Infrastructure (SSM Parameters)
+      # ========================================================================
+      # Check that runstreak-common has been deployed (SSM params exist)
+      # This is required when using the api_gateway_consumer module
+      # Uncomment this step after migrating to the consumer module
+
+      # - name: Verify Shared Infrastructure
+      #   id: verify-ssm
+      #   run: |
+      #     echo "Checking for shared API Gateway configuration..."
+      #     API_ID=$(aws ssm get-parameter \
+      #       --name "/runstreak/shared/dev/api-gateway-id" \
+      #       --query 'Parameter.Value' --output text 2>/dev/null || echo "")
+      #
+      #     if [ -z "$API_ID" ]; then
+      #       echo "❌ ERROR: Shared API Gateway not found!"
+      #       echo ""
+      #       echo "The runstreak-common repository must be deployed first."
+      #       echo "It creates the base API Gateway and SSM parameters."
+      #       echo ""
+      #       echo "Please deploy runstreak-common before running this workflow."
+      #       exit 1
+      #     fi
+      #
+      #     echo "✅ Found shared API Gateway: $API_ID"
+      #     echo "api_gateway_id=$API_ID" >> $GITHUB_OUTPUT
+
+      # ========================================================================
+      # Step 6: Terraform Init
       # ========================================================================
       - name: Terraform Init
         id: init

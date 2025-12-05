@@ -321,37 +321,26 @@ module "lambda_publish_status" {
 }
 
 # ==============================================================================
-# Module: API Gateway
+# Module: API Gateway Consumer
 # ==============================================================================
-# REST API with authentication for manual sync triggers
+# Creates routes on the shared API Gateway (managed by runstreak-common).
+# Reads API Gateway configuration from SSM Parameter Store.
 
-module "api_gateway" {
-  source = "../../modules/api_gateway"
+module "api_gateway_consumer" {
+  source = "../../modules/api_gateway_consumer"
 
-  project_name         = local.project_name
-  environment          = var.environment
-  lambda_invoke_arn    = module.lambda.function_invoke_arn
-  lambda_function_name = module.lambda.function_name
+  environment = var.environment
+  aws_region  = var.aws_region
 
-  # Rate limiting
-  burst_limit = 10   # Max concurrent requests
-  rate_limit  = 5    # Requests per second
+  # Sync Lambda (for /sync endpoint)
+  sync_lambda_invoke_arn    = module.lambda.function_invoke_arn
+  sync_lambda_function_name = module.lambda.function_name
 
-  # Quota
-  quota_limit  = 1000  # Total requests per period
-  quota_period = "DAY"
+  # Query Lambda (for /stats, /runs, /auth endpoints)
+  query_lambda_invoke_arn    = module.lambda_query.function_invoke_arn
+  query_lambda_function_name = module.lambda_query.function_name
 
-  # Logging
-  log_retention_days = 14
-  logging_level      = "INFO"  # OFF, ERROR, or INFO
-
-  # Monitoring
-  enable_xray_tracing = false
-  enable_alarms       = true
-
-  tags = local.common_tags
-
-  depends_on = [module.lambda]
+  depends_on = [module.lambda, module.lambda_query]
 }
 
 # ==============================================================================
@@ -404,20 +393,8 @@ module "eventbridge" {
 # ==============================================================================
 # Lambda Permissions
 # ==============================================================================
-# Created separately from Lambda module to avoid circular dependencies
-# These permissions allow API Gateway and EventBridge to invoke the Lambda function
-
-resource "aws_lambda_permission" "api_gateway_invoke" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = module.lambda.function_name
-  principal     = "apigateway.amazonaws.com"
-
-  # Source ARN restricts which API Gateway can invoke
-  # Format: arn:aws:execute-api:region:account:api-id/stage/method/path
-  source_arn = "${module.api_gateway.api_execution_arn}/*/*"
-  # /*/* means any stage, any method/path
-}
+# EventBridge permissions for scheduled Lambda invocations
+# Note: API Gateway permissions are managed by the api_gateway_consumer module
 
 resource "aws_lambda_permission" "eventbridge_invoke" {
   for_each = module.eventbridge.rule_arns
@@ -429,17 +406,6 @@ resource "aws_lambda_permission" "eventbridge_invoke" {
 
   # Source ARN restricts which EventBridge rule can invoke
   source_arn = each.value
-}
-
-# Query Lambda permissions
-resource "aws_lambda_permission" "query_api_gateway_invoke" {
-  statement_id  = "AllowAPIGatewayInvokeQuery"
-  action        = "lambda:InvokeFunction"
-  function_name = module.lambda_query.function_name
-  principal     = "apigateway.amazonaws.com"
-
-  # Allow invocation from any path in this API Gateway
-  source_arn = "${module.api_gateway.api_execution_arn}/*/*"
 }
 
 # ==============================================================================
@@ -463,279 +429,5 @@ resource "aws_iam_role_policy" "lambda_invoke_publish_status" {
   })
 }
 
-# ==============================================================================
-# API Gateway Resources for Query Endpoints
-# ==============================================================================
-# Create resources and integrations for /stats/* and /runs/* endpoints
-
-# /stats resource
-resource "aws_api_gateway_resource" "stats" {
-  rest_api_id = module.api_gateway.rest_api_id
-  parent_id   = module.api_gateway.root_resource_id
-  path_part   = "stats"
-}
-
-# /stats/{proxy+} - catches all /stats/* paths
-resource "aws_api_gateway_resource" "stats_proxy" {
-  rest_api_id = module.api_gateway.rest_api_id
-  parent_id   = aws_api_gateway_resource.stats.id
-  path_part   = "{proxy+}"
-}
-
-# GET method for /stats/{proxy+}
-resource "aws_api_gateway_method" "stats_proxy_get" {
-  rest_api_id   = module.api_gateway.rest_api_id
-  resource_id   = aws_api_gateway_resource.stats_proxy.id
-  http_method   = "GET"
-  authorization = "NONE"  # Public read access
-}
-
-# Integration with query Lambda for /stats/{proxy+}
-resource "aws_api_gateway_integration" "stats_proxy" {
-  rest_api_id = module.api_gateway.rest_api_id
-  resource_id = aws_api_gateway_resource.stats_proxy.id
-  http_method = aws_api_gateway_method.stats_proxy_get.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = module.lambda_query.function_invoke_arn
-}
-
-# /runs resource
-resource "aws_api_gateway_resource" "runs" {
-  rest_api_id = module.api_gateway.rest_api_id
-  parent_id   = module.api_gateway.root_resource_id
-  path_part   = "runs"
-}
-
-# GET method for /runs (list all runs)
-resource "aws_api_gateway_method" "runs_get" {
-  rest_api_id   = module.api_gateway.rest_api_id
-  resource_id   = aws_api_gateway_resource.runs.id
-  http_method   = "GET"
-  authorization = "NONE"  # Public read access
-}
-
-# Integration with query Lambda for /runs
-resource "aws_api_gateway_integration" "runs_get" {
-  rest_api_id = module.api_gateway.rest_api_id
-  resource_id = aws_api_gateway_resource.runs.id
-  http_method = aws_api_gateway_method.runs_get.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = module.lambda_query.function_invoke_arn
-}
-
-# /runs/{proxy+} - catches all /runs/* paths
-resource "aws_api_gateway_resource" "runs_proxy" {
-  rest_api_id = module.api_gateway.rest_api_id
-  parent_id   = aws_api_gateway_resource.runs.id
-  path_part   = "{proxy+}"
-}
-
-# GET method for /runs/{proxy+}
-resource "aws_api_gateway_method" "runs_proxy_get" {
-  rest_api_id   = module.api_gateway.rest_api_id
-  resource_id   = aws_api_gateway_resource.runs_proxy.id
-  http_method   = "GET"
-  authorization = "NONE"  # Public read access
-}
-
-# Integration with query Lambda for /runs/{proxy+}
-resource "aws_api_gateway_integration" "runs_proxy" {
-  rest_api_id = module.api_gateway.rest_api_id
-  resource_id = aws_api_gateway_resource.runs_proxy.id
-  http_method = aws_api_gateway_method.runs_proxy_get.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = module.lambda_query.function_invoke_arn
-}
-
-# /sync resource for user-initiated sync via query Lambda
-resource "aws_api_gateway_resource" "sync_user" {
-  rest_api_id = module.api_gateway.rest_api_id
-  parent_id   = module.api_gateway.root_resource_id
-  path_part   = "sync-user"  # Different from /sync which goes to sync Lambda
-}
-
-# POST method for /sync-user
-resource "aws_api_gateway_method" "sync_user_post" {
-  rest_api_id   = module.api_gateway.rest_api_id
-  resource_id   = aws_api_gateway_resource.sync_user.id
-  http_method   = "POST"
-  authorization = "NONE"  # Will use user_id for now
-}
-
-# Integration with query Lambda for /sync-user
-resource "aws_api_gateway_integration" "sync_user" {
-  rest_api_id = module.api_gateway.rest_api_id
-  resource_id = aws_api_gateway_resource.sync_user.id
-  http_method = aws_api_gateway_method.sync_user_post.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = module.lambda_query.function_invoke_arn
-}
-
-# /auth resource for authentication endpoints
-resource "aws_api_gateway_resource" "auth" {
-  rest_api_id = module.api_gateway.rest_api_id
-  parent_id   = module.api_gateway.root_resource_id
-  path_part   = "auth"
-}
-
-# /auth/store-tokens resource
-resource "aws_api_gateway_resource" "auth_store_tokens" {
-  rest_api_id = module.api_gateway.rest_api_id
-  parent_id   = aws_api_gateway_resource.auth.id
-  path_part   = "store-tokens"
-}
-
-# POST method for /auth/store-tokens
-resource "aws_api_gateway_method" "auth_store_tokens_post" {
-  rest_api_id   = module.api_gateway.rest_api_id
-  resource_id   = aws_api_gateway_resource.auth_store_tokens.id
-  http_method   = "POST"
-  authorization = "NONE"  # Will use user_id for now
-}
-
-# Integration with query Lambda for /auth/store-tokens
-resource "aws_api_gateway_integration" "auth_store_tokens" {
-  rest_api_id = module.api_gateway.rest_api_id
-  resource_id = aws_api_gateway_resource.auth_store_tokens.id
-  http_method = aws_api_gateway_method.auth_store_tokens_post.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = module.lambda_query.function_invoke_arn
-}
-
-# /auth/login-url resource
-resource "aws_api_gateway_resource" "auth_login_url" {
-  rest_api_id = module.api_gateway.rest_api_id
-  parent_id   = aws_api_gateway_resource.auth.id
-  path_part   = "login-url"
-}
-
-# GET method for /auth/login-url
-resource "aws_api_gateway_method" "auth_login_url_get" {
-  rest_api_id   = module.api_gateway.rest_api_id
-  resource_id   = aws_api_gateway_resource.auth_login_url.id
-  http_method   = "GET"
-  authorization = "NONE"
-}
-
-# Integration with query Lambda for /auth/login-url
-resource "aws_api_gateway_integration" "auth_login_url" {
-  rest_api_id = module.api_gateway.rest_api_id
-  resource_id = aws_api_gateway_resource.auth_login_url.id
-  http_method = aws_api_gateway_method.auth_login_url_get.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = module.lambda_query.function_invoke_arn
-}
-
-# /auth/callback resource
-resource "aws_api_gateway_resource" "auth_callback" {
-  rest_api_id = module.api_gateway.rest_api_id
-  parent_id   = aws_api_gateway_resource.auth.id
-  path_part   = "callback"
-}
-
-# POST method for /auth/callback
-resource "aws_api_gateway_method" "auth_callback_post" {
-  rest_api_id   = module.api_gateway.rest_api_id
-  resource_id   = aws_api_gateway_resource.auth_callback.id
-  http_method   = "POST"
-  authorization = "NONE"
-}
-
-# Integration with query Lambda for /auth/callback
-resource "aws_api_gateway_integration" "auth_callback" {
-  rest_api_id = module.api_gateway.rest_api_id
-  resource_id = aws_api_gateway_resource.auth_callback.id
-  http_method = aws_api_gateway_method.auth_callback_post.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = module.lambda_query.function_invoke_arn
-}
-
-# ==============================================================================
-# API Gateway Deployment for Query Endpoints
-# ==============================================================================
-# Create a new deployment that includes the query endpoints
-# This triggers a redeployment whenever query resources change
-
-resource "aws_api_gateway_deployment" "query_endpoints" {
-  rest_api_id = module.api_gateway.rest_api_id
-
-  # Trigger redeployment when query resources change
-  triggers = {
-    redeployment = sha1(jsonencode([
-      aws_api_gateway_resource.stats.id,
-      aws_api_gateway_resource.stats_proxy.id,
-      aws_api_gateway_method.stats_proxy_get.id,
-      aws_api_gateway_integration.stats_proxy.id,
-      aws_api_gateway_resource.runs.id,
-      aws_api_gateway_method.runs_get.id,
-      aws_api_gateway_integration.runs_get.id,
-      aws_api_gateway_resource.runs_proxy.id,
-      aws_api_gateway_method.runs_proxy_get.id,
-      aws_api_gateway_integration.runs_proxy.id,
-      aws_api_gateway_resource.sync_user.id,
-      aws_api_gateway_method.sync_user_post.id,
-      aws_api_gateway_integration.sync_user.id,
-      aws_api_gateway_resource.auth.id,
-      aws_api_gateway_resource.auth_store_tokens.id,
-      aws_api_gateway_method.auth_store_tokens_post.id,
-      aws_api_gateway_integration.auth_store_tokens.id,
-      aws_api_gateway_resource.auth_login_url.id,
-      aws_api_gateway_method.auth_login_url_get.id,
-      aws_api_gateway_integration.auth_login_url.id,
-      aws_api_gateway_resource.auth_callback.id,
-      aws_api_gateway_method.auth_callback_post.id,
-      aws_api_gateway_integration.auth_callback.id,
-    ]))
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-
-  depends_on = [
-    aws_api_gateway_integration.stats_proxy,
-    aws_api_gateway_integration.runs_get,
-    aws_api_gateway_integration.runs_proxy,
-    aws_api_gateway_integration.sync_user,
-    aws_api_gateway_integration.auth_store_tokens,
-    aws_api_gateway_integration.auth_login_url,
-    aws_api_gateway_integration.auth_callback,
-  ]
-}
-
-# Update the existing stage to use the new deployment with query endpoints
-# This uses a null_resource to run AWS CLI command that updates the stage
-resource "null_resource" "update_stage_deployment" {
-  triggers = {
-    deployment_id = aws_api_gateway_deployment.query_endpoints.id
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      aws apigateway update-stage \
-        --rest-api-id ${module.api_gateway.rest_api_id} \
-        --stage-name ${var.environment} \
-        --patch-operations op=replace,path=/deploymentId,value=${aws_api_gateway_deployment.query_endpoints.id} \
-        --region ${var.aws_region}
-    EOT
-  }
-
-  depends_on = [
-    module.api_gateway,
-    aws_api_gateway_deployment.query_endpoints,
-  ]
-}
+# Note: All API Gateway routes (/sync, /stats, /runs, /auth) are now managed
+# by the api_gateway_consumer module above.
