@@ -11,7 +11,6 @@ Options:
 """
 
 import argparse
-import base64
 import json
 import re
 import sys
@@ -319,13 +318,13 @@ def invoke_lambda(lambda_client: boto3.client) -> dict | None:
 
             if "results" in body:
                 results = body["results"]
-                print(f"\n   📊 Sync Results:")
+                print("\n   📊 Sync Results:")
                 print(f"      Total runs synced: {results.get('total_runs_synced', 0)}")
                 print(f"      Sources processed: {results.get('sources_processed', 0)}")
                 print(f"      Failures: {results.get('failures', 0)}")
 
                 if results.get("details"):
-                    print(f"\n   📋 Details per source:")
+                    print("\n   📋 Details per source:")
                     for detail in results["details"]:
                         status_icon = "✅" if detail.get("status") == "success" else "❌"
                         print(f"      {status_icon} {detail.get('source_type', 'unknown')}: {detail.get('runs_synced', 0)} runs")
@@ -348,7 +347,7 @@ def check_api_health() -> None:
     try:
         with urllib.request.urlopen(f"{API_GATEWAY_URL}/health", timeout=10) as response:
             data = json.loads(response.read().decode())
-            print(f"   ✅ API Gateway is healthy")
+            print("   ✅ API Gateway is healthy")
             print(f"   Status: {data.get('status')}")
             print(f"   Environment: {data.get('environment')}")
     except Exception as e:
