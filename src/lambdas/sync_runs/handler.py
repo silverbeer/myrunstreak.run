@@ -82,14 +82,20 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
 
                 logger.info(f"Syncing source {source_id} (user={user_id}, type={source_type})")
 
-                # Get last sync date (default to 30 days ago if never synced)
-                last_sync_at = source.get("last_sync_at")
-                if last_sync_at:
-                    since_date = datetime.fromisoformat(last_sync_at).date()
-                    logger.info(f"Last sync: {since_date}")
+                # Allow since_date override from event payload (for manual backfill)
+                since_date_override = event.get("since_date")
+                if since_date_override:
+                    since_date = date.fromisoformat(since_date_override)
+                    logger.info(f"Using since_date override from event: {since_date}")
                 else:
-                    since_date = date.today() - timedelta(days=30)
-                    logger.info(f"Never synced, using default: {since_date}")
+                    # Get last sync date (default to 30 days ago if never synced)
+                    last_sync_at = source.get("last_sync_at")
+                    if last_sync_at:
+                        since_date = datetime.fromisoformat(last_sync_at).date()
+                        logger.info(f"Last sync: {since_date}")
+                    else:
+                        since_date = date.today() - timedelta(days=30)
+                        logger.info(f"Never synced, using default: {since_date}")
 
                 # Sync runs for this user source
                 runs_synced = sync_user_source(
