@@ -106,7 +106,8 @@ class TokenManager:
         """
         Get a valid access token, refreshing if necessary.
 
-        Automatically refreshes the token if it's expired or expiring soon.
+        Proactively refreshes at the halfway point of the token lifetime to
+        ensure the refresh token never expires alongside the access token.
 
         Returns:
             Valid access token
@@ -120,14 +121,28 @@ class TokenManager:
 
         # Check if token needs refresh
         expires_at_str = tokens.get("expires_at")
+        updated_at_str = tokens.get("updated_at") or tokens.get("created_at")
         if expires_at_str:
             expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
             now = datetime.utcnow().replace(tzinfo=expires_at.tzinfo)
 
-            # Refresh if expired or expiring within 1 day
-            buffer = timedelta(days=1)
-            if now + buffer >= expires_at:
-                logger.info("Token expired or expiring soon, refreshing...")
+            # Refresh at the halfway point of the token lifetime.
+            # SmashRun tokens last ~12 weeks, so this refreshes around week 6,
+            # well before the refresh token also expires.
+            if updated_at_str:
+                issued_at = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
+                halflife = (expires_at - issued_at) / 2
+                refresh_after = issued_at + halflife
+            else:
+                # Fallback: refresh if within 30 days of expiry
+                refresh_after = expires_at - timedelta(days=30)
+
+            if now >= refresh_after:
+                logger.info(
+                    "Token past halfway point (refresh_after=%s, expires_at=%s), refreshing...",
+                    refresh_after.isoformat(),
+                    expires_at.isoformat(),
+                )
                 return self._refresh_and_update(tokens["refresh_token"])
 
         logger.info("Using existing access token")
