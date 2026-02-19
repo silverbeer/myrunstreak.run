@@ -39,9 +39,9 @@ CloudWatch (logs, metrics, traces)
 
 **Features:**
 - Fetch tokens from AWS Secrets Manager
-- Auto-refresh expired tokens (12-week lifespan)
-- Update stored tokens after refresh
-- 1-day expiration buffer for proactive refresh
+- Auto-refresh at the halfway point of token lifetime (~6 weeks for 12-week tokens)
+- Update stored tokens after refresh, keeping both access and refresh tokens rolling
+- Fallback: refresh within 30 days of expiry if token issue date is unknown
 
 **Key Methods:**
 - `get_valid_access_token()` - Returns valid token, refreshes if needed
@@ -296,8 +296,9 @@ View distributed traces in X-Ray console:
 ### Common Issues
 
 **1. Token Expired**
-- **Error:** "401 Unauthorized" from SmashRun API
-- **Fix:** Token manager should auto-refresh; check Secrets Manager permissions
+- **Error:** `KeyError: 'access_token'` or "401 Unauthorized" from SmashRun API
+- **Cause:** Both access and refresh tokens share the same ~12-week lifespan. If the Lambda was offline long enough for both to expire, auto-refresh fails.
+- **Fix:** Re-authorize with SmashRun: `uv run python scripts/get_oauth_tokens.py`, then update the secret in Secrets Manager
 
 **2. Rate Limited**
 - **Error:** "429 Too Many Requests"

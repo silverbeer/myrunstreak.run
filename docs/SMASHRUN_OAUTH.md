@@ -204,10 +204,11 @@ print(f"New Refresh Token: {new_token_data['refresh_token']}")  # May be same or
 
 ### When to Refresh
 
-Refresh tokens when:
-- Access token expires (12 weeks)
-- API returns 401 Unauthorized
-- Before scheduled daily sync (proactive)
+The `TokenManager` automatically refreshes at the **halfway point** of the token lifetime (~6 weeks for a 12-week token). This ensures both the access token and refresh token stay fresh — SmashRun refresh tokens have the same ~12-week lifespan as access tokens, so waiting until the last day to refresh risks both tokens expiring simultaneously.
+
+Manual refresh is needed when:
+- Both tokens have already expired (re-authorize via `scripts/get_oauth_tokens.py`)
+- API returns 401 Unauthorized after a prolonged outage
 
 ## 🔐 Security Best Practices
 
@@ -244,12 +245,15 @@ def update_smashrun_tokens(access_token, refresh_token):
     )
 ```
 
-### 3. Rotate Tokens Regularly
+### 3. Token Lifespans
 
-Even though refresh tokens don't expire, rotate them periodically:
-- Re-authorize every 6 months
-- After any security incidents
-- If tokens may have been compromised
+SmashRun access tokens **and** refresh tokens both expire after ~12 weeks (~84 days). The `TokenManager` handles this by refreshing at the halfway point (~6 weeks), which rolls both tokens forward automatically. If the Lambda is offline for more than 12 weeks, you'll need to re-authorize manually:
+
+```bash
+uv run python scripts/get_oauth_tokens.py
+```
+
+Also re-authorize after any security incidents or if tokens may have been compromised.
 
 ## 🚀 Complete Sync Script
 
