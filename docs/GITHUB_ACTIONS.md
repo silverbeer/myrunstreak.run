@@ -195,6 +195,7 @@ Go to your GitHub repository → Settings → Secrets and variables → Actions 
 | `SMASHRUN_ACCESS_TOKEN` | SmashRun OAuth access token | From OAuth flow |
 | `SMASHRUN_REFRESH_TOKEN` | SmashRun OAuth refresh token | From OAuth flow |
 | `API_KEY_PERSONAL` | API Gateway API key | Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `SUPABASE_ACCESS_TOKEN` | Supabase Management API token | Dashboard > Account > Access Tokens |
 | `SUPABASE_DB_PASSWORD` | Supabase database password | Dashboard > Settings > Database > Database password |
 
 ### Adding Secrets via GitHub CLI
@@ -214,6 +215,7 @@ gh secret set SMASHRUN_CLIENT_SECRET --body "your-client-secret"
 gh secret set SMASHRUN_ACCESS_TOKEN --body "your-access-token"
 gh secret set SMASHRUN_REFRESH_TOKEN --body "your-refresh-token"
 gh secret set API_KEY_PERSONAL --body "$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+gh secret set SUPABASE_ACCESS_TOKEN --body "your-access-token"
 gh secret set SUPABASE_DB_PASSWORD --body "your-database-password"
 ```
 

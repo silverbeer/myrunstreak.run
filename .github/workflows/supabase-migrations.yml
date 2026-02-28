@@ -15,7 +15,8 @@
 # - Manual: Apply migrations with safety confirmation
 #
 # Prerequisites:
-# - SUPABASE_DB_PASSWORD secret must be configured
+# - SUPABASE_ACCESS_TOKEN secret must be configured (Management API)
+# - SUPABASE_DB_PASSWORD secret must be configured (database connection)
 # - Supabase project must exist (project ref: dnwllbukmvdddwhlsmqb)
 #
 # Security:
@@ -94,6 +95,7 @@ jobs:
       - name: Link Supabase project
         run: supabase link --project-ref ${{ env.SUPABASE_PROJECT_REF }}
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
       # ========================================================================
@@ -116,6 +118,7 @@ jobs:
             echo "has_changes=unknown" >> $GITHUB_OUTPUT
           fi
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
       # ========================================================================
@@ -188,6 +191,7 @@ jobs:
       - name: Link Supabase project
         run: supabase link --project-ref ${{ env.SUPABASE_PROJECT_REF }}
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
       # ========================================================================
@@ -202,6 +206,7 @@ jobs:
           echo "$OUTPUT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
       # ========================================================================
