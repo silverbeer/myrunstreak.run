@@ -57,6 +57,7 @@ permissions:
 
 env:
   SUPABASE_PROJECT_REF: dnwllbukmvdddwhlsmqb
+  SUPABASE_CLI_VERSION: "2.75.0"
 
 # Prevent overlapping migration runs
 concurrency:
@@ -84,6 +85,8 @@ jobs:
       # ========================================================================
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
 
       # ========================================================================
       # Step 3: Link to Supabase project
@@ -176,6 +179,8 @@ jobs:
       # ========================================================================
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
 
       # ========================================================================
       # Step 4: Link to Supabase project
