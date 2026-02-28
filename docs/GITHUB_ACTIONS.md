@@ -22,6 +22,7 @@ We use GitHub Actions for **automated CI/CD**:
 - **Terraform Plan** - Preview infrastructure changes on PRs
 - **Terraform Apply** - Deploy infrastructure when merged to main
 - **Lambda Deploy** - Deploy code changes independently
+- **Supabase Migrations** - Validate and apply database migrations
 
 **Why separate Terraform and Lambda?**
 - Code changes are frequent (daily/weekly)
@@ -86,6 +87,24 @@ We use GitHub Actions for **automated CI/CD**:
 4. Updates Lambda function code
 5. Runs smoke test
 6. Posts deployment summary
+
+### 4. Supabase Migrations (`.github/workflows/supabase-migrations.yml`)
+
+**Triggers:**
+- Pull requests that modify `supabase/migrations/**`
+- Push to `main` branch (after PR merge)
+- Manual dispatch (with confirmation)
+
+**What it does:**
+- **On PR:** Dry-runs `supabase db push --dry-run` and posts results as a PR comment
+- **On merge:** Applies pending migrations with `supabase db push`
+- **Manual:** Applies migrations after typing "migrate" to confirm
+
+**Safety features:**
+- Dry-run on PRs catches errors before merge
+- Concurrency group prevents overlapping migration runs
+- Manual dispatch requires typing "migrate"
+- Failure step with troubleshooting guidance and Supabase console links
 
 ---
 
@@ -176,6 +195,7 @@ Go to your GitHub repository → Settings → Secrets and variables → Actions 
 | `SMASHRUN_ACCESS_TOKEN` | SmashRun OAuth access token | From OAuth flow |
 | `SMASHRUN_REFRESH_TOKEN` | SmashRun OAuth refresh token | From OAuth flow |
 | `API_KEY_PERSONAL` | API Gateway API key | Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `SUPABASE_DB_PASSWORD` | Supabase database password | Dashboard > Settings > Database > Database password |
 
 ### Adding Secrets via GitHub CLI
 
@@ -194,6 +214,7 @@ gh secret set SMASHRUN_CLIENT_SECRET --body "your-client-secret"
 gh secret set SMASHRUN_ACCESS_TOKEN --body "your-access-token"
 gh secret set SMASHRUN_REFRESH_TOKEN --body "your-refresh-token"
 gh secret set API_KEY_PERSONAL --body "$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+gh secret set SUPABASE_DB_PASSWORD --body "your-database-password"
 ```
 
 ---
@@ -347,6 +368,19 @@ PR Merged → main branch → src/** changes → lambda-deploy.yml runs
 gh workflow run lambda-deploy.yml
 ```
 
+### Supabase Migrations
+
+**Automatic triggers:**
+```
+Pull Request → supabase/migrations/** changes → migration-check (dry-run)
+PR Merged → main branch → supabase/migrations/** changes → migration-apply
+```
+
+**Manual trigger (USE WITH CAUTION):**
+```bash
+gh workflow run supabase-migrations.yml -f confirm=migrate
+```
+
 ---
 
 ## Troubleshooting
@@ -489,10 +523,11 @@ Benefits:
 
 You now have:
 
-✅ **3 automated workflows:**
+✅ **4 automated workflows:**
 - Terraform Plan (on PRs)
 - Terraform Apply (on merge)
 - Lambda Deploy (on code changes)
+- Supabase Migrations (on migration changes)
 
 ✅ **Secure authentication:**
 - AWS OIDC (no long-lived credentials)
