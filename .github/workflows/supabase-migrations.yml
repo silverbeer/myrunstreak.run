@@ -1,0 +1,282 @@
+# ==============================================================================
+# GitHub Actions Workflow - Supabase Migrations
+# ==============================================================================
+# This workflow manages database migrations for the Supabase-hosted PostgreSQL
+# database. It validates migrations on PRs and applies them on merge to main.
+#
+# Triggers:
+# - Pull requests that modify supabase/migrations/**
+# - Push to main branch (when PR is merged)
+# - Manual workflow dispatch (with safety confirmation)
+#
+# What it does:
+# - On PR: Dry-run migrations and post results as PR comment
+# - On merge: Apply pending migrations to the remote database
+# - Manual: Apply migrations with safety confirmation
+#
+# Prerequisites:
+# - SUPABASE_ACCESS_TOKEN secret must be configured (Management API)
+# - SUPABASE_DB_PASSWORD secret must be configured (database connection)
+# - Supabase project must exist (project ref: dnwllbukmvdddwhlsmqb)
+#
+# Security:
+# - Database password stored as GitHub Secret
+# - Manual dispatch requires typing "migrate" to confirm
+# - Concurrency group prevents overlapping migration runs
+# ==============================================================================
+
+name: "Supabase Migrations"
+
+on:
+  # Validate migrations on PRs
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "supabase/migrations/**"
+      - ".github/workflows/supabase-migrations.yml"
+
+  # Apply migrations when merged to main
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/migrations/**"
+      - ".github/workflows/supabase-migrations.yml"
+
+  # Allow manual trigger (USE WITH CAUTION)
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "migrate" to confirm manual migration'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  SUPABASE_PROJECT_REF: dnwllbukmvdddwhlsmqb
+  SUPABASE_CLI_VERSION: "2.75.0"
+
+# Prevent overlapping migration runs
+concurrency:
+  group: supabase-migrations
+  cancel-in-progress: false
+
+jobs:
+  # ==========================================================================
+  # Job 1: Validate Migrations (PR only)
+  # ==========================================================================
+  migration-check:
+    name: "Migration Dry Run"
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      # ========================================================================
+      # Step 1: Check out code
+      # ========================================================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ========================================================================
+      # Step 2: Set up Supabase CLI
+      # ========================================================================
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      # ========================================================================
+      # Step 3: Link to Supabase project
+      # ========================================================================
+      - name: Link Supabase project
+        run: supabase link --project-ref ${{ env.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      # ========================================================================
+      # Step 4: Dry-run migrations
+      # ========================================================================
+      - name: Dry-run migrations
+        id: dry-run
+        run: |
+          OUTPUT=$(supabase db push --dry-run 2>&1) || true
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # Check if there are pending migrations
+          if echo "$OUTPUT" | grep -q "Would push"; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          elif echo "$OUTPUT" | grep -q "No pending migrations"; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=unknown" >> $GITHUB_OUTPUT
+          fi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      # ========================================================================
+      # Step 5: Post results as PR comment
+      # ========================================================================
+      - name: Post Dry Run Results to PR
+        uses: actions/github-script@v7
+        env:
+          DRY_RUN_OUTPUT: ${{ steps.dry-run.outputs.output }}
+          HAS_CHANGES: ${{ steps.dry-run.outputs.has_changes }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const dryRunOutput = process.env.DRY_RUN_OUTPUT;
+            const hasChanges = process.env.HAS_CHANGES;
+            const body = [
+              '#### Supabase Migration Dry Run',
+              '',
+              `**Status:** \`${hasChanges}\` pending changes`,
+              '',
+              '<details><summary>Show Dry Run Output</summary>',
+              '',
+              '```',
+              dryRunOutput,
+              '```',
+              '',
+              '</details>',
+              '',
+              `*Pusher: @${{ github.actor }}, Workflow: \`${{ github.workflow }}\`*`
+            ].join('\n');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  # ==========================================================================
+  # Job 2: Apply Migrations (merge to main or manual dispatch)
+  # ==========================================================================
+  migration-apply:
+    name: "Apply Migrations"
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      # ========================================================================
+      # Step 1: Safety check for manual dispatch
+      # ========================================================================
+      - name: Verify Manual Confirmation
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "migrate" ]; then
+            echo "❌ Manual confirmation failed. Must type 'migrate' to proceed."
+            exit 1
+          fi
+          echo "✅ Manual confirmation received"
+
+      # ========================================================================
+      # Step 2: Check out code
+      # ========================================================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ========================================================================
+      # Step 3: Set up Supabase CLI
+      # ========================================================================
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      # ========================================================================
+      # Step 4: Link to Supabase project
+      # ========================================================================
+      - name: Link Supabase project
+        run: supabase link --project-ref ${{ env.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      # ========================================================================
+      # Step 5: Apply pending migrations
+      # ========================================================================
+      - name: Apply Migrations
+        id: push
+        run: |
+          OUTPUT=$(supabase db push 2>&1)
+          echo "$OUTPUT"
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      # ========================================================================
+      # Step 6: Create deployment summary
+      # ========================================================================
+      - name: Create Migration Summary
+        if: success()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          ## 🗄️ Supabase Migrations Applied
+
+          **Project:** \`${{ env.SUPABASE_PROJECT_REF }}\`
+          **Applied At:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          **Triggered By:** @${{ github.actor }}
+          **Trigger:** \`${{ github.event_name }}\`
+
+          ---
+
+          ### 📋 Migration Output
+
+          \`\`\`
+          ${{ steps.push.outputs.output }}
+          \`\`\`
+
+          ---
+
+          ### 📊 Supabase Console Links
+
+          - [Database](https://supabase.com/dashboard/project/${{ env.SUPABASE_PROJECT_REF }}/editor)
+          - [Migrations](https://supabase.com/dashboard/project/${{ env.SUPABASE_PROJECT_REF }}/database/migrations)
+          - [Logs](https://supabase.com/dashboard/project/${{ env.SUPABASE_PROJECT_REF }}/logs/postgres-logs)
+
+          EOF
+
+      # ========================================================================
+      # Step 7: Handle migration failure
+      # ========================================================================
+      - name: Migration Failed
+        if: failure()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          ## ❌ Supabase Migration Failed
+
+          **Project:** \`${{ env.SUPABASE_PROJECT_REF }}\`
+          **Failed At:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          **Triggered By:** @${{ github.actor }}
+
+          ---
+
+          ### 🔍 Troubleshooting
+
+          1. Check the error output above
+          2. Verify \`SUPABASE_DB_PASSWORD\` secret is correct
+          3. Check [Supabase Dashboard](https://supabase.com/dashboard/project/${{ env.SUPABASE_PROJECT_REF }}/database/migrations) for migration state
+          4. Run \`supabase db push --dry-run\` locally to debug
+
+          ### 🔄 Recovery
+
+          If a migration partially applied:
+          1. Check which migrations succeeded in the Supabase Dashboard
+          2. Fix the failing migration SQL
+          3. Push a new commit or re-run the workflow manually
+
+          EOF
+
+          exit 1
