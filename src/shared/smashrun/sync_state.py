@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import boto3
@@ -91,7 +91,7 @@ class SyncStateManager:
 
         state_data = {
             "last_sync_date": sync_date.isoformat(),
-            "last_sync_timestamp": datetime.utcnow().isoformat(),
+            "last_sync_timestamp": datetime.now(UTC).isoformat(),
             "runs_synced": runs_synced,
         }
 

@@ -112,7 +112,7 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
 
                 # Recalculate user stats (aggregation table)
                 try:
-                    stats = runs_repo.recalculate_user_stats(user_id)
+                    stats = runs_repo.recalculate_user_stats(user_id, timezone="America/New_York")
                     logger.info(
                         f"Recalculated stats for user {user_id}: "
                         f"{stats.get('current_streak_days')} day streak, "
@@ -145,8 +145,7 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
         if sources_synced > 0:
             try:
                 publish_function_name = os.environ.get(
-                    "PUBLISH_STATUS_FUNCTION_NAME",
-                    "myrunstreak-publish-status-dev"
+                    "PUBLISH_STATUS_FUNCTION_NAME", "myrunstreak-publish-status-dev"
                 )
                 lambda_client = boto3.client("lambda", region_name=settings.aws_region)
                 lambda_client.invoke(

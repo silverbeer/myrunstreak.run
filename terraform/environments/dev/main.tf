@@ -199,7 +199,8 @@ module "lambda" {
   # Additional environment variables needed by the sync handler
   # Note: Secrets (Supabase, SmashRun credentials) are fetched from Secrets Manager
   extra_environment_variables = {
-    SMASHRUN_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob" # Out-of-band redirect for CLI
+    SMASHRUN_REDIRECT_URI        = "urn:ietf:wg:oauth:2.0:oob" # Out-of-band redirect for CLI
+    PUBLISH_STATUS_FUNCTION_NAME = "${local.project_name}-publish-status-${var.environment}"
   }
 
   tags = local.common_tags
@@ -254,9 +255,7 @@ module "lambda_query" {
 
   # Environment variables for query handler
   # Note: Supabase credentials are fetched from Secrets Manager
-  extra_environment_variables = {
-    PUBLISH_STATUS_FUNCTION_NAME = "${local.project_name}-publish-status-${var.environment}"
-  }
+  extra_environment_variables = {}
 
   tags = local.common_tags
 
@@ -390,6 +389,50 @@ module "eventbridge" {
 
   depends_on = [module.lambda]
 }
+
+# ==============================================================================
+# Module: EventBridge for Publish Status
+# ==============================================================================
+# Independent schedule for publish_status so widget stays fresh even if sync fails.
+# Runs every 3 hours to ensure the status widget is never stale for long.
+
+module "eventbridge_publish" {
+  source = "../../modules/eventbridge"
+
+  project_name        = local.project_name
+  environment         = var.environment
+  lambda_function_arn = module.lambda_publish_status.function_arn
+
+  # Run every 3 hours to keep the status widget fresh independently of sync
+  schedules = [
+    {
+      name        = "publish-status"
+      expression  = "rate(3 hours)"
+      description = "Refresh status widget every 3 hours"
+    }
+  ]
+
+  # Enable/disable with the same flag as sync schedule
+  enabled = var.eventbridge_enabled
+
+  # Custom input to distinguish EventBridge-triggered from sync-triggered
+  custom_input = {
+    source = "eventbridge"
+    action = "scheduled_publish"
+  }
+
+  # Retry configuration
+  maximum_event_age_seconds = 1800 # 30 minutes
+  maximum_retry_attempts    = 2
+
+  # Monitoring
+  enable_alarms = true
+
+  tags = local.common_tags
+
+  depends_on = [module.lambda_publish_status]
+}
+
 # ==============================================================================
 # Lambda Permissions
 # ==============================================================================
@@ -408,10 +451,22 @@ resource "aws_lambda_permission" "eventbridge_invoke" {
   source_arn = each.value
 }
 
+# EventBridge permissions for publish_status Lambda
+resource "aws_lambda_permission" "eventbridge_publish_invoke" {
+  for_each = module.eventbridge_publish.rule_arns
+
+  statement_id  = "AllowEventBridgePublishInvoke-${each.key}"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_publish_status.function_name
+  principal     = "events.amazonaws.com"
+
+  source_arn = each.value
+}
+
 # ==============================================================================
 # IAM Policy for Lambda-to-Lambda Invocation
 # ==============================================================================
-# Allow query Lambda to invoke publish_status Lambda after sync
+# Allow sync Lambda to invoke publish_status Lambda after sync
 
 resource "aws_iam_role_policy" "lambda_invoke_publish_status" {
   name = "${local.project_name}-invoke-publish-status-${var.environment}"
