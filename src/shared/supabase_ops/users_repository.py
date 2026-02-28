@@ -1,7 +1,7 @@
 """Repository for users and data sources operations in Supabase."""
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
 
@@ -255,7 +255,7 @@ class UsersRepository:
         Args:
             source_id: Source UUID
         """
-        self.update_source_sync_status(source_id, datetime.utcnow(), last_sync_status="success")
+        self.update_source_sync_status(source_id, datetime.now(UTC), last_sync_status="success")
 
     def get_all_active_sources(self, source_type: str | None = None) -> list[dict[str, Any]]:
         """

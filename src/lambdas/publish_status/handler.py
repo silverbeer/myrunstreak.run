@@ -180,7 +180,7 @@ def build_status_data(user_id: UUID, runs_repo: RunsRepository) -> dict[str, Any
         # Fallback: recalculate stats if not available
         logger.warning(f"No pre-calculated stats for user {user_id}, recalculating...")
         try:
-            stats = runs_repo.recalculate_user_stats(user_id)
+            stats = runs_repo.recalculate_user_stats(user_id, timezone="America/New_York")
             streak_days = stats.get("current_streak_days", 0)
             streak_start = stats.get("current_streak_start")
             streak_total_km = float(stats.get("current_streak_distance_km", 0))

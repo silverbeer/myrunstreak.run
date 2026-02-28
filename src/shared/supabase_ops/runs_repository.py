@@ -4,6 +4,7 @@ import logging
 from datetime import date
 from typing import Any, cast
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from supabase import Client
 
@@ -262,7 +263,9 @@ class RunsRepository:
             return 0
 
         run_dates = {date.fromisoformat(row["start_date"]) for row in data_list}
-        current_date = date.today()
+        from datetime import datetime
+
+        current_date = datetime.now(ZoneInfo("America/New_York")).date()
         streak = 0
 
         if current_date not in run_dates:
@@ -328,7 +331,9 @@ class RunsRepository:
         self.supabase.table("runs").delete().eq("id", str(run_id)).execute()
         logger.info(f"Deleted run {run_id}")
 
-    def recalculate_user_stats(self, user_id: UUID) -> dict[str, Any]:
+    def recalculate_user_stats(
+        self, user_id: UUID, timezone: str = "America/New_York"
+    ) -> dict[str, Any]:
         """
         Recalculate and store all running statistics for a user.
 
@@ -338,6 +343,7 @@ class RunsRepository:
 
         Args:
             user_id: User UUID
+            timezone: IANA timezone for accurate date boundaries (default: America/New_York)
 
         Returns:
             Dict with calculated statistics
@@ -347,7 +353,8 @@ class RunsRepository:
         """
         try:
             result = self.supabase.rpc(
-                "recalculate_user_stats", {"p_user_id": str(user_id)}
+                "recalculate_user_stats",
+                {"p_user_id": str(user_id), "p_timezone": timezone},
             ).execute()
 
             if result.data:

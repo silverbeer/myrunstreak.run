@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import boto3
@@ -11,6 +11,18 @@ from botocore.exceptions import ClientError
 from .oauth import SmashRunOAuthClient
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_to_utc(dt_str: str) -> datetime:
+    """Parse an ISO datetime string to a UTC-aware datetime.
+
+    Handles naive timestamps (assumes UTC), Z suffix, and +00:00 offsets.
+    """
+    parsed = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        # Naive datetime from old datetime.utcnow() calls — treat as UTC
+        return parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 class TokenManager:
@@ -83,13 +95,13 @@ class TokenManager:
         logger.info(f"Updating tokens in secret: {self.secret_name}")
 
         # Calculate expiration timestamp
-        expires_at = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat()
+        expires_at = (datetime.now(UTC) + timedelta(seconds=expires_in)).isoformat()
 
         secret_data = {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "expires_at": expires_at,
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
         }
 
         try:
@@ -123,14 +135,14 @@ class TokenManager:
         expires_at_str = tokens.get("expires_at")
         updated_at_str = tokens.get("updated_at") or tokens.get("created_at")
         if expires_at_str:
-            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-            now = datetime.utcnow().replace(tzinfo=expires_at.tzinfo)
+            expires_at = _parse_to_utc(expires_at_str)
+            now = datetime.now(UTC)
 
             # Refresh at the halfway point of the token lifetime.
             # SmashRun tokens last ~12 weeks, so this refreshes around week 6,
             # well before the refresh token also expires.
             if updated_at_str:
-                issued_at = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
+                issued_at = _parse_to_utc(updated_at_str)
                 halflife = (expires_at - issued_at) / 2
                 refresh_after = issued_at + halflife
             else:
@@ -200,13 +212,13 @@ class TokenManager:
         """
         logger.info(f"Initializing tokens in secret: {self.secret_name}")
 
-        expires_at = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat()
+        expires_at = (datetime.now(UTC) + timedelta(seconds=expires_in)).isoformat()
 
         secret_data = {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "expires_at": expires_at,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
 
         try:
