@@ -243,6 +243,19 @@ def sync_user_source(
         # Store in Supabase
         for activity_data in activities:
             try:
+                # Fetch full activity detail for higher-precision distance.
+                # The bulk search endpoint returns ~3 decimal places (e.g. 1.641 km)
+                # while the detail endpoint returns 5 (e.g. 1.64145 km). The ~1 m/run
+                # truncation accumulates enough to turn a 100-mile month into 99.98.
+                activity_id = activity_data.get("activityId")
+                if activity_id:
+                    try:
+                        activity_data = api_client.get_activity_by_id(str(activity_id))
+                    except Exception as e:
+                        logger.warning(
+                            f"Detail fetch failed for {activity_id}, using bulk data: {e}"
+                        )
+
                 # Parse activity
                 activity = api_client.parse_activity(activity_data)
 
