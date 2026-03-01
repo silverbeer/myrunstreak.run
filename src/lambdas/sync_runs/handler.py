@@ -1,6 +1,7 @@
 """Lambda function handler for multi-user SmashRun sync."""
 
 import os
+import time
 from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -250,6 +251,8 @@ def sync_user_source(
                 activity_id = activity_data.get("activityId")
                 if activity_id:
                     try:
+                        # Throttle to stay under SmashRun's 80 req/10s rate limit
+                        time.sleep(0.15)
                         activity_data = api_client.get_activity_by_id(str(activity_id))
                     except Exception as e:
                         logger.warning(
