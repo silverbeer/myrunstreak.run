@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import httpx
 
-from ..models import Activity, Split
+from ..models import Activity, Goal, Split
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +93,7 @@ class SmashRunAPIClient:
         # not by activity date. Only use it for incremental syncs.
         if since and incremental:
             from datetime import datetime
+
             # Convert date to Unix timestamp (start of day UTC)
             since_dt = datetime.combine(since, datetime.min.time(), tzinfo=UTC)
             params["fromDate"] = int(since_dt.timestamp())
@@ -269,6 +270,42 @@ class SmashRunAPIClient:
             ValidationError: If splits data is invalid
         """
         return [Split(**split) for split in splits_data]
+
+    def get_goal(self, year: int, month: int | None = None) -> Goal | None:
+        """
+        Fetch the goal for a given year (or year+month) for the authenticated user.
+
+        SmashRun API returns null when no goal is set for the period.
+
+        Args:
+            year: Goal year (e.g., 2026)
+            month: Optional month (1-12). If None, fetches the yearly goal.
+
+        Returns:
+            Goal model with progress, or None if no goal is set for the period.
+
+        Raises:
+            ValueError: If month is out of range.
+            httpx.HTTPStatusError: If API request fails.
+        """
+        if month is not None and not (1 <= month <= 12):
+            raise ValueError("month must be between 1 and 12")
+
+        path = f"/my/goals/{year}" if month is None else f"/my/goals/{year}/{month}"
+        logger.info(f"Fetching goal for {year}" + (f"/{month}" if month else ""))
+
+        response = self.client.get(path)
+        response.raise_for_status()
+
+        data = response.json()
+        if data is None:
+            logger.info(f"No goal set for {year}" + (f"/{month}" if month else ""))
+            return None
+
+        goal_data = cast(dict[str, Any], data)
+        # Merge period into payload so Goal can be constructed directly from API response.
+        goal_data = {**goal_data, "year": year, "month": month}
+        return Goal.model_validate(goal_data)
 
     def get_user_info(self) -> dict[str, Any]:
         """

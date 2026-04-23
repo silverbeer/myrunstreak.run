@@ -9,6 +9,7 @@ from .enums import (
     Terrain,
     WeatherType,
 )
+from .goal import Goal
 from .nested import HeartRateRecovery, Lap, Song
 from .split import Split
 from .units import (
@@ -22,6 +23,7 @@ from .units import (
 __all__ = [
     # Main models
     "Activity",
+    "Goal",
     "Split",
     # Nested models
     "Lap",

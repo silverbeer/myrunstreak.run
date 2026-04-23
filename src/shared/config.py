@@ -98,6 +98,18 @@ class Settings(BaseSettings):
         description="Logging level",
     )
 
+    # Goals Sync Cache Control
+    goal_yearly_staleness_days: int = Field(
+        default=14,
+        description="Re-fetch yearly goal if stored copy is older than this many days",
+        ge=1,
+    )
+    goal_monthly_staleness_days: int = Field(
+        default=3,
+        description="Re-fetch monthly goal if stored copy is older than this many days",
+        ge=1,
+    )
+
 
 # Singleton instance
 _settings: Settings | None = None
@@ -172,6 +184,8 @@ def get_settings() -> Settings:
             aws_region=base_settings.aws_region,
             environment=base_settings.environment,
             log_level=base_settings.log_level,
+            goal_yearly_staleness_days=base_settings.goal_yearly_staleness_days,
+            goal_monthly_staleness_days=base_settings.goal_monthly_staleness_days,
         )
     else:
         # Locally: Just load from .env file
