@@ -15,6 +15,7 @@ from src.shared.smashrun import SmashRunAPIClient, SmashRunOAuthClient
 from src.shared.smashrun.token_manager import TokenManager
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import (
+    GoalsRepository,
     RunsRepository,
     UsersRepository,
     activity_to_run_dict,
@@ -51,6 +52,7 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
         supabase = get_supabase_client()
         users_repo = UsersRepository(supabase)
         runs_repo = RunsRepository(supabase)
+        goals_repo = GoalsRepository(supabase)
 
         # Get all active SmashRun sources
         logger.info("Fetching all active SmashRun sources")
@@ -104,6 +106,7 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
                     access_token_secret=access_token_secret,
                     since_date=since_date,
                     runs_repo=runs_repo,
+                    goals_repo=goals_repo,
                     settings=settings,
                 )
 
@@ -189,6 +192,7 @@ def sync_user_source(
     access_token_secret: str,
     since_date: date,
     runs_repo: RunsRepository,
+    goals_repo: GoalsRepository,
     settings: Any,
 ) -> int:
     """
@@ -200,6 +204,7 @@ def sync_user_source(
         access_token_secret: AWS Secrets Manager path for OAuth tokens
         since_date: Fetch runs on or after this date
         runs_repo: RunsRepository for storing runs
+        goals_repo: GoalsRepository for storing yearly/monthly goals
         settings: Application settings
 
     Returns:
@@ -264,5 +269,71 @@ def sync_user_source(
                 # Continue with next activity
                 continue
 
+        # Refresh yearly + monthly goals for current period if stale/missing.
+        # Keeps us from re-fetching the same goal every day.
+        try:
+            sync_current_goals(
+                user_id=user_id,
+                source_id=source_id,
+                api_client=api_client,
+                goals_repo=goals_repo,
+                settings=settings,
+            )
+        except Exception as e:
+            logger.warning(f"Goal sync failed for source {source_id}: {e}")
+            # Don't fail the whole sync if goals refresh fails
+
     logger.info(f"Successfully synced {runs_synced} runs for source {source_id}")
     return runs_synced
+
+
+def sync_current_goals(
+    user_id: UUID,
+    source_id: UUID,
+    api_client: SmashRunAPIClient,
+    goals_repo: GoalsRepository,
+    settings: Any,
+) -> None:
+    """
+    Refresh current-year and current-month goals from SmashRun if stale.
+
+    Yearly goal staleness defaults to 14 days, monthly to 3 days (configurable
+    via settings.goal_yearly_staleness_days / goal_monthly_staleness_days).
+    Missing rows are always fetched. Periods with no goal set on SmashRun are
+    recorded as "absent" so we don't hammer the API.
+
+    Args:
+        user_id: User UUID
+        source_id: Source UUID
+        api_client: Active SmashRunAPIClient (inside context manager)
+        goals_repo: GoalsRepository
+        settings: Application settings
+    """
+    today = date.today()
+    yearly_ttl = timedelta(days=settings.goal_yearly_staleness_days)
+    monthly_ttl = timedelta(days=settings.goal_monthly_staleness_days)
+
+    periods: list[tuple[int, int | None, timedelta]] = [
+        (today.year, None, yearly_ttl),
+        (today.year, today.month, monthly_ttl),
+    ]
+
+    for year, month, ttl in periods:
+        label = f"{year}" if month is None else f"{year}/{month}"
+        existing = goals_repo.get_by_period(user_id, source_id, year, month)
+
+        if not goals_repo.is_stale(existing, ttl):
+            logger.debug(f"Goal {label} is fresh, skipping fetch")
+            continue
+
+        logger.info(f"Fetching goal {label} from SmashRun")
+        goal = api_client.get_goal(year, month)
+
+        if goal is None:
+            goals_repo.mark_absent(user_id, source_id, year, month)
+            logger.info(f"No goal set on SmashRun for {label}")
+        else:
+            goals_repo.upsert(user_id, source_id, goal)
+            logger.info(
+                f"Stored goal {label}: {goal.goal_km} km goal, {goal.progress_km} km progress"
+            )

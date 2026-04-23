@@ -13,6 +13,7 @@ from google.oauth2 import service_account
 
 from src.shared.secrets import get_secret
 from src.shared.supabase_client import get_supabase_client
+from src.shared.supabase_ops.goals_repository import GoalsRepository
 from src.shared.supabase_ops.runs_repository import RunsRepository
 from src.shared.supabase_ops.users_repository import UsersRepository
 
@@ -115,7 +116,66 @@ def upload_to_gcs(data: dict[str, Any]) -> str:
     return f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/{GCS_OBJECT_PATH}"
 
 
-def build_status_data(user_id: UUID, runs_repo: RunsRepository) -> dict[str, Any]:
+def build_goals_block(
+    user_id: UUID,
+    source_id: UUID | None,
+    goals_repo: GoalsRepository,
+    today: date,
+) -> dict[str, Any]:
+    """
+    Build the goals block for status.json.
+
+    Reads yearly and current-month goals for the user from the goals table
+    (populated by the sync lambda). Distances are converted to miles for
+    consistency with the rest of the payload.
+
+    Args:
+        user_id: User UUID
+        source_id: Source UUID (None when user has no active SmashRun source)
+        goals_repo: Goals repository instance
+        today: Today's date (in user's timezone)
+
+    Returns:
+        Dict with 'yearly' and 'monthly' keys. Each is None if no goal stored
+        or no goal set on SmashRun (goal_km is null).
+    """
+    yearly: dict[str, Any] | None = None
+    monthly: dict[str, Any] | None = None
+
+    if source_id is None:
+        return {"yearly": None, "monthly": None}
+
+    def render(row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not row or row.get("goal_km") is None:
+            return None
+        goal_km = float(row["goal_km"])
+        progress_km = float(row.get("progress_km") or 0.0)
+        goal_mi = km_to_miles(goal_km)
+        progress_mi = km_to_miles(progress_km)
+        percent = (progress_km / goal_km * 100) if goal_km > 0 else None
+        return {
+            "goal_mi": round(goal_mi, 1),
+            "progress_mi": round(progress_mi, 1),
+            "percent": round(percent, 1) if percent is not None else None,
+            "text": row.get("goal_text"),
+            "fetched_at": row.get("fetched_at"),
+        }
+
+    yearly_row = goals_repo.get_by_period(user_id, source_id, today.year, None)
+    monthly_row = goals_repo.get_by_period(user_id, source_id, today.year, today.month)
+
+    yearly = render(yearly_row)
+    monthly = render(monthly_row)
+
+    return {"yearly": yearly, "monthly": monthly}
+
+
+def build_status_data(
+    user_id: UUID,
+    runs_repo: RunsRepository,
+    goals_repo: GoalsRepository,
+    source_id: UUID | None = None,
+) -> dict[str, Any]:
     """
     Build the status JSON structure.
 
@@ -125,6 +185,8 @@ def build_status_data(user_id: UUID, runs_repo: RunsRepository) -> dict[str, Any
     Args:
         user_id: User UUID
         runs_repo: Runs repository instance
+        goals_repo: Goals repository instance
+        source_id: Primary SmashRun source UUID (for goals lookup)
 
     Returns:
         Status data dictionary
@@ -199,6 +261,8 @@ def build_status_data(user_id: UUID, runs_repo: RunsRepository) -> dict[str, Any
     month_total_mi = round(km_to_miles(month_total_km), 1)
     year_total_mi = round(km_to_miles(year_total_km), 1)
 
+    goals = build_goals_block(user_id, source_id, goals_repo, today)
+
     return {
         "updated_at": datetime.now(UTC).isoformat(),
         "ran_today": ran_today,
@@ -212,6 +276,7 @@ def build_status_data(user_id: UUID, runs_repo: RunsRepository) -> dict[str, Any
         "last_7_days": last_7_days,
         "month_total_mi": month_total_mi,
         "year_total_mi": year_total_mi,
+        "goals": goals,
     }
 
 
@@ -238,9 +303,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         supabase = get_supabase_client()
         runs_repo = RunsRepository(supabase)
         users_repo = UsersRepository(supabase)
+        goals_repo = GoalsRepository(supabase)
 
         # Get user_id from event or use default (first active SmashRun user)
         user_id_str = event.get("user_id")
+        source_id: UUID | None = None
 
         if not user_id_str:
             # Get first active SmashRun source as default
@@ -248,12 +315,20 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             if not sources:
                 raise ValueError("No active SmashRun sources found")
             user_id = UUID(sources[0]["user_id"])
+            source_id = UUID(sources[0]["id"])
             logger.info(f"Using default user_id from first active source: {user_id}")
         else:
             user_id = UUID(user_id_str)
+            # Look up user's active SmashRun source for goals
+            user_sources = users_repo.get_user_sources(user_id, active_only=True)
+            smashrun_source = next(
+                (s for s in user_sources if s.get("source_type") == "smashrun"), None
+            )
+            if smashrun_source:
+                source_id = UUID(smashrun_source["id"])
 
         # Build status data
-        status_data = build_status_data(user_id, runs_repo)
+        status_data = build_status_data(user_id, runs_repo, goals_repo, source_id)
 
         # Upload to GCS
         public_url = upload_to_gcs(status_data)

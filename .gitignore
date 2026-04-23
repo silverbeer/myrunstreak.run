@@ -36,6 +36,11 @@ terraform.tfplan
 secrets.json
 credentials.json
 
+# Database dumps (may contain prod PII)
+*.dump
+prod_*.sql
+*_dump.sql
+
 # Testing & Coverage
 .pytest_cache/
 .coverage

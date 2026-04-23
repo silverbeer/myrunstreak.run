@@ -1,4 +1,4 @@
-.PHONY: help install test lint format type-check bootstrap-tf init-tf plan-tf apply-tf destroy-tf
+.PHONY: help install test lint format type-check bootstrap-tf init-tf plan-tf apply-tf destroy-tf restore-prod
 
 # Default target
 help:
@@ -17,6 +17,9 @@ help:
 	@echo "  make plan-tf       - Plan Terraform changes (dev environment)"
 	@echo "  make apply-tf      - Apply Terraform changes (dev environment)"
 	@echo "  make destroy-tf    - Destroy Terraform infrastructure (dev)"
+	@echo ""
+	@echo "Database:"
+	@echo "  make restore-prod  - Restore prod Supabase data to local (destroys local data)"
 	@echo ""
 	@echo "All-in-One:"
 	@echo "  make setup         - Complete setup (install + bootstrap)"
@@ -57,6 +60,10 @@ apply-tf:
 destroy-tf:
 	@echo "WARNING: This will destroy all infrastructure in dev environment"
 	@cd terraform/environments/dev && terraform destroy
+
+# Database
+restore-prod:
+	@scripts/restore_prod_to_local.sh
 
 # Complete setup
 setup: install
