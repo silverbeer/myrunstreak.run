@@ -204,8 +204,12 @@ jobs:
       # ========================================================================
       # Step 8: Run Smoke Test
       # ========================================================================
+      # The authorizer Lambda is invoked by API Gateway with a TOKEN-shaped
+      # event. A direct lambda:Invoke with a generic payload always raises
+      # "Unauthorized" by design — that's not a deploy failure, so skip it.
       - name: Smoke Test
         id: test
+        if: matrix.lambda.handler_module != 'authorizer'
         run: |
           RESULT=$(aws lambda invoke \
             --function-name ${{ matrix.lambda.function_name }} \
