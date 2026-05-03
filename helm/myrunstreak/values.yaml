@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/silverbeer/myrunstreak-frontend
-  tag: "4492cc4" # frontend-tag
+  tag: "bbdb8c2" # frontend-tag
   pullPolicy: IfNotPresent
 
 service:
