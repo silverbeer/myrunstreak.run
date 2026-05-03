@@ -39,12 +39,8 @@ ingress:
     - myrunstreak.run
     - www.myrunstreak.run
   # API host(s) routed to the FastAPI backend (only used when backend.enabled).
-  # Phase B step 1: declare api.myrunstreak.run on the ingress alongside api-v2
-  # so cert-manager has it ready when the Route 53 record flips. Step 2 is the
-  # DNS cutover. api-v2 stays for the moment as a fallback; removed in step 3.
   apiHosts:
     - api.myrunstreak.run
-    - api-v2.myrunstreak.run
   tls:
     secretName: myrunstreak-tls
 
