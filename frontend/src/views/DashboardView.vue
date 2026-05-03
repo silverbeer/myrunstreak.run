@@ -1,6 +1,6 @@
 <template>
   <div class="container-app py-8">
-    <div class="flex items-center justify-between mb-8">
+    <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p class="text-gray-500 text-sm mt-1">Welcome back, {{ userEmail }}</p>
@@ -9,10 +9,12 @@
     </div>
 
     <div v-if="initialLoading" class="space-y-4">
+      <div class="h-44 bg-white rounded-2xl border border-gray-100 animate-pulse" />
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div v-for="i in 4" :key="i" class="h-28 bg-white rounded-xl border border-gray-100 animate-pulse" />
       </div>
-      <div class="h-64 bg-white rounded-xl border border-gray-100 animate-pulse" />
+      <div class="h-44 bg-white rounded-xl border border-gray-100 animate-pulse" />
+      <div class="h-72 bg-white rounded-xl border border-gray-100 animate-pulse" />
     </div>
 
     <div v-else-if="loadError" class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
@@ -22,19 +24,12 @@
     <EmptyState v-else-if="isNewUser" @synced="reload" />
 
     <template v-else>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard
-          label="Current streak"
-          :value="`${streak?.current_streak ?? 0}`"
-          sublabel="days"
-          value-class="text-brand-600"
-        />
-        <StatCard
-          label="Longest streak"
-          :value="`${streak?.longest_streak ?? 0}`"
-          sublabel="days"
-          value-class="text-gray-800"
-        />
+      <StreakHero
+        :current="streak?.current_streak ?? 0"
+        :longest="streak?.longest_streak ?? 0"
+      />
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
           label="Total runs"
           :value="`${stats?.total_runs ?? 0}`"
@@ -47,9 +42,6 @@
           :sublabel="`${distanceLabel(unit)} all time`"
           value-class="text-gray-800"
         />
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
         <StatCard
           label="Longest run"
           :value="formatDistanceWithUnit(stats?.longest_run_km ?? 0, unit)"
@@ -60,6 +52,14 @@
           :value="formatPace(stats?.avg_pace_min_per_km ?? null, unit)"
           sublabel="across all runs"
         />
+      </div>
+
+      <div class="mb-6">
+        <StreakHeatmap :grid="heatmapGrid" :unit="unit" />
+      </div>
+
+      <div class="mb-6">
+        <MonthlyDistanceChart :months="months" :unit="unit" />
       </div>
 
       <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -74,7 +74,7 @@
         </div>
         <div v-else class="divide-y divide-gray-100">
           <RunRow
-            v-for="run in recentRuns"
+            v-for="run in recentRuns.slice(0, 7)"
             :key="run.activity_id"
             :date="run.date"
             :distance-km="run.distance_km"
@@ -96,8 +96,12 @@ import StatCard from '@/components/StatCard.vue'
 import RunRow from '@/components/RunRow.vue'
 import SyncButton from '@/components/SyncButton.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import StreakHero from '@/components/StreakHero.vue'
+import StreakHeatmap from '@/components/StreakHeatmap.vue'
+import MonthlyDistanceChart from '@/components/MonthlyDistanceChart.vue'
 import { useStats } from '@/composables/useStats'
 import { useRecentRuns } from '@/composables/useRecentRuns'
+import { useMonthlyStats } from '@/composables/useMonthlyStats'
 import { useUserPreferences } from '@/composables/useUserPreferences'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -106,6 +110,7 @@ import {
   formatPace,
   distanceLabel,
 } from '@/utils/format'
+import { buildHeatmapGrid } from '@/utils/heatmap'
 
 const auth = useAuthStore()
 const userEmail = computed(() => auth.user?.email ?? 'runner')
@@ -116,17 +121,23 @@ const {
   loading: recentLoading,
   error: recentError,
   load: loadRecent,
-} = useRecentRuns(7)
+} = useRecentRuns(100)
+const { months, loading: monthlyLoading, error: monthlyError, load: loadMonthly } = useMonthlyStats(12)
 const { unit } = useUserPreferences()
 
 const initialLoading = computed(
-  () => (statsLoading.value || recentLoading.value) && !stats.value && recentRuns.value.length === 0,
+  () =>
+    (statsLoading.value || recentLoading.value || monthlyLoading.value) &&
+    !stats.value &&
+    recentRuns.value.length === 0,
 )
-const loadError = computed(() => statsError.value || recentError.value)
+const loadError = computed(() => statsError.value || recentError.value || monthlyError.value)
 const isNewUser = computed(() => stats.value !== null && stats.value.total_runs === 0)
 
+const heatmapGrid = computed(() => buildHeatmapGrid(recentRuns.value, 12))
+
 const reload = async () => {
-  await Promise.all([loadStats(), loadRecent()])
+  await Promise.all([loadStats(), loadRecent(), loadMonthly()])
 }
 
 onMounted(reload)
