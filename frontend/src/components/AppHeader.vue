@@ -17,6 +17,7 @@
           >
             {{ link.name }}
           </RouterLink>
+          <SyncButton v-if="auth.isAuthenticated" mode="compact" />
           <button @click="handleSignOut" class="btn-secondary text-sm">
             Sign out
           </button>
@@ -64,6 +65,7 @@
 import { ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import SyncButton from '@/components/SyncButton.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -72,6 +74,7 @@ const mobileMenuOpen = ref(false)
 const navLinks = [
   { name: 'Dashboard', path: '/dashboard' },
   { name: 'Runs', path: '/runs' },
+  { name: 'Settings', path: '/settings' },
 ]
 
 const handleSignOut = async () => {
