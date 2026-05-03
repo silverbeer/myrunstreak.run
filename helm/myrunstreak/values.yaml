@@ -65,7 +65,7 @@ externalSecret:
 # migration rolls out.
 # ============================================================================
 backend:
-  enabled: false
+  enabled: true
   replicaCount: 1
   revisionHistoryLimit: 3
 
@@ -106,7 +106,7 @@ backend:
 # Redis (cache for backend stats endpoints) — disabled by default
 # ============================================================================
 redis:
-  enabled: false
+  enabled: true
   image:
     repository: redis
     tag: "7-alpine"
