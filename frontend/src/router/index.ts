@@ -31,6 +31,12 @@ const router = createRouter({
       component: () => import('@/views/RunsView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('@/views/SettingsView.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
   scrollBehavior(_to, _from, savedPosition) {
     return savedPosition ?? { top: 0 }
