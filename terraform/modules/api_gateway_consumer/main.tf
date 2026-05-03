@@ -158,6 +158,29 @@ resource "aws_api_gateway_integration_response" "sync_options" {
 }
 
 # ==============================================================================
+# JWT Lambda Authorizer
+# ==============================================================================
+# TOKEN-type authorizer: reads Authorization: Bearer <token>, verifies the
+# Supabase JWT, and injects user_id into the downstream Lambda context.
+
+resource "aws_api_gateway_authorizer" "jwt" {
+  name                             = "supabase-jwt-${var.environment}"
+  rest_api_id                      = local.api_gateway_id
+  authorizer_uri                   = var.authorizer_lambda_invoke_arn
+  type                             = "TOKEN"
+  identity_source                  = "method.request.header.Authorization"
+  authorizer_result_ttl_in_seconds = 300 # cache for 5 min — avoids per-request invocations
+}
+
+resource "aws_lambda_permission" "authorizer_lambda_api_gateway" {
+  statement_id  = "AllowAPIGatewayInvokeAuthorizer-${var.environment}"
+  action        = "lambda:InvokeFunction"
+  function_name = var.authorizer_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${local.api_execution_arn}/*/*"
+}
+
+# ==============================================================================
 # /stats Endpoints (Query Lambda)
 # ==============================================================================
 
@@ -177,7 +200,8 @@ resource "aws_api_gateway_method" "stats_proxy_get" {
   rest_api_id   = local.api_gateway_id
   resource_id   = aws_api_gateway_resource.stats_proxy.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.jwt.id
 }
 
 resource "aws_api_gateway_integration" "stats_proxy" {
@@ -203,7 +227,8 @@ resource "aws_api_gateway_method" "runs_get" {
   rest_api_id   = local.api_gateway_id
   resource_id   = aws_api_gateway_resource.runs.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.jwt.id
 }
 
 resource "aws_api_gateway_integration" "runs_get" {
@@ -225,7 +250,8 @@ resource "aws_api_gateway_method" "runs_proxy_get" {
   rest_api_id   = local.api_gateway_id
   resource_id   = aws_api_gateway_resource.runs_proxy.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.jwt.id
 }
 
 resource "aws_api_gateway_integration" "runs_proxy" {
@@ -251,7 +277,8 @@ resource "aws_api_gateway_method" "sync_user_post" {
   rest_api_id   = local.api_gateway_id
   resource_id   = aws_api_gateway_resource.sync_user.id
   http_method   = "POST"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.jwt.id
 }
 
 resource "aws_api_gateway_integration" "sync_user" {
@@ -284,7 +311,8 @@ resource "aws_api_gateway_method" "auth_store_tokens_post" {
   rest_api_id   = local.api_gateway_id
   resource_id   = aws_api_gateway_resource.auth_store_tokens.id
   http_method   = "POST"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.jwt.id
 }
 
 resource "aws_api_gateway_integration" "auth_store_tokens" {
@@ -372,6 +400,8 @@ resource "aws_api_gateway_deployment" "myrunstreak" {
 
   triggers = {
     redeployment = sha1(jsonencode([
+      # JWT authorizer
+      aws_api_gateway_authorizer.jwt.id,
       # Sync endpoint
       aws_api_gateway_resource.sync.id,
       aws_api_gateway_method.sync_post.id,

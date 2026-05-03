@@ -110,6 +110,7 @@ module "secrets" {
   # Supabase credentials
   supabase_url              = var.supabase_url
   supabase_service_role_key = var.supabase_service_role_key
+  supabase_jwt_secret       = var.supabase_jwt_secret
 
   # Optional features
   enable_rotation       = false # Manual token management for now
@@ -320,6 +321,48 @@ module "lambda_publish_status" {
 }
 
 # ==============================================================================
+# Module: JWT Authorizer Lambda
+# ==============================================================================
+# TOKEN-type API Gateway Lambda Authorizer that verifies Supabase JWTs.
+# Reads jwt_secret from the Supabase Secrets Manager secret at startup.
+
+module "lambda_authorizer" {
+  source = "../../modules/lambda"
+
+  function_name      = "${local.project_name}-authorizer-${var.environment}"
+  execution_role_arn = module.iam.lambda_execution_role_arn
+
+  package_type = "Image"
+  image_uri    = "${module.ecr.authorizer_repository_url}:latest"
+
+  environment = var.environment
+  aws_region  = data.aws_region.current.name
+
+  s3_bucket_name       = module.s3.bucket_id
+  smashrun_secret_name = null
+
+  # Authorizer must respond quickly — Lambda authorizers have a 10s default timeout
+  memory_size            = 256
+  timeout                = 10
+  ephemeral_storage_size = 512
+
+  log_level          = var.lambda_log_level
+  log_retention_days = 7
+
+  enable_xray_tracing = false
+  enable_alarms       = false
+
+  api_gateway_execution_arn = null
+  eventbridge_rule_arn      = null
+
+  extra_environment_variables = {}
+
+  tags = local.common_tags
+
+  depends_on = [module.iam, module.ecr]
+}
+
+# ==============================================================================
 # Module: API Gateway Consumer
 # ==============================================================================
 # Creates routes on the shared API Gateway (managed by runstreak-common).
@@ -339,7 +382,11 @@ module "api_gateway_consumer" {
   query_lambda_invoke_arn    = module.lambda_query.function_invoke_arn
   query_lambda_function_name = module.lambda_query.function_name
 
-  depends_on = [module.lambda, module.lambda_query]
+  # JWT Authorizer Lambda (TOKEN-type authorizer for all protected routes)
+  authorizer_lambda_invoke_arn    = module.lambda_authorizer.function_invoke_arn
+  authorizer_lambda_function_name = module.lambda_authorizer.function_name
+
+  depends_on = [module.lambda, module.lambda_query, module.lambda_authorizer]
 }
 
 # ==============================================================================

@@ -53,7 +53,7 @@ def get_supabase_credentials() -> dict[str, str]:
     Get Supabase credentials from Secrets Manager.
 
     Returns:
-        Dict with 'url' and 'key' keys
+        Dict with 'url', 'key', and 'jwt_secret' keys
 
     Example:
         ```python

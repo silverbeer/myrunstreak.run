@@ -116,6 +116,10 @@ jobs:
             function_name: myrunstreak-publish-status-dev
             handler_module: publish_status
             ecr_repository: myrunstreak-publish-status-dev
+          - name: "JWT Authorizer Lambda"
+            function_name: myrunstreak-authorizer-dev
+            handler_module: authorizer
+            ecr_repository: myrunstreak-authorizer-dev
 
     steps:
       # ========================================================================

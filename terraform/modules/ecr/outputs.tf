@@ -47,6 +47,16 @@ output "publish_status_repository_name" {
   value       = aws_ecr_repository.publish_status.name
 }
 
+output "authorizer_repository_url" {
+  description = "URL of the JWT authorizer Lambda ECR repository"
+  value       = aws_ecr_repository.authorizer.repository_url
+}
+
+output "authorizer_repository_name" {
+  description = "Name of the JWT authorizer Lambda ECR repository"
+  value       = aws_ecr_repository.authorizer.name
+}
+
 output "registry_id" {
   description = "The registry ID where the repositories are created"
   value       = aws_ecr_repository.sync.registry_id
