@@ -49,6 +49,12 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
                   key: supabase-service-key
+            # Legacy alias used by src/shared/supabase_client.py — same value.
+            - name: SUPABASE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                  key: supabase-service-key
             - name: SUPABASE_JWT_SECRET
               valueFrom:
                 secretKeyRef:
