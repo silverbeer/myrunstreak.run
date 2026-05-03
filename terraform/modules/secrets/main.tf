@@ -112,8 +112,9 @@ resource "aws_secretsmanager_secret_version" "supabase" {
   secret_id = aws_secretsmanager_secret.supabase.id
 
   secret_string = jsonencode({
-    url = var.supabase_url
-    key = var.supabase_service_role_key
+    url        = var.supabase_url
+    key        = var.supabase_service_role_key
+    jwt_secret = var.supabase_jwt_secret
   })
 
   lifecycle {

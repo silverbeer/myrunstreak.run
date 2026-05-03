@@ -70,6 +70,12 @@ variable "supabase_service_role_key" {
   sensitive   = true
 }
 
+variable "supabase_jwt_secret" {
+  description = "Supabase JWT signing secret (from Dashboard → Settings → API → JWT Secret)"
+  type        = string
+  sensitive   = true
+}
+
 # Optional Features
 variable "enable_rotation" {
   description = "Enable automatic secret rotation"

@@ -32,24 +32,30 @@ app = APIGatewayRestResolver()
 
 def get_user_id_from_request() -> UUID:
     """
-    Extract user_id from request.
+    Extract user_id from the Lambda JWT authorizer context.
 
-    For now, expects user_id as a query parameter.
-    In production, this would come from JWT token or API key.
+    API Gateway injects the authorizer's `context` dict into
+    event['requestContext']['authorizer']. The JWT authorizer sets
+    context.user_id = claims['sub'] (the Supabase user UUID).
 
     Returns:
         User UUID
 
     Raises:
-        ValueError: If user_id is missing or invalid
+        ValueError: If user_id is absent or malformed
     """
-    user_id_str = app.current_event.get_query_string_value("user_id")
+    try:
+        # APIGatewayProxyEvent (Lambda Powertools) is a DictWrapper — supports []
+        authorizer: dict[str, Any] = app.current_event["requestContext"]["authorizer"]
+    except (KeyError, TypeError):
+        raise ValueError("user_id not found in authorizer context") from None
 
+    user_id_str: str | None = authorizer.get("user_id")
     if not user_id_str:
-        raise ValueError("user_id query parameter is required")
+        raise ValueError("user_id missing from authorizer context")
 
     try:
-        return UUID(user_id_str)
+        return UUID(str(user_id_str))
     except ValueError as e:
         raise ValueError(f"Invalid user_id format: {user_id_str}") from e
 

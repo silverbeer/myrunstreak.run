@@ -39,3 +39,14 @@ variable "query_lambda_function_name" {
   description = "Name of the query Lambda function (for permissions)"
   type        = string
 }
+
+# JWT Authorizer Lambda
+variable "authorizer_lambda_invoke_arn" {
+  description = "Invoke ARN of the JWT authorizer Lambda function"
+  type        = string
+}
+
+variable "authorizer_lambda_function_name" {
+  description = "Name of the JWT authorizer Lambda function (for permissions)"
+  type        = string
+}

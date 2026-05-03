@@ -52,6 +52,12 @@ variable "supabase_service_role_key" {
   sensitive   = true
 }
 
+variable "supabase_jwt_secret" {
+  description = "Supabase JWT signing secret (Dashboard → Settings → API → JWT Secret)"
+  type        = string
+  sensitive   = true
+}
+
 variable "lambda_package_path" {
   description = "Path to Lambda deployment package (ZIP file) - for local development"
   type        = string

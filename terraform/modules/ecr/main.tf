@@ -250,3 +250,75 @@ resource "aws_ecr_repository_policy" "publish_status" {
     ]
   })
 }
+
+# ------------------------------------------------------------------------------
+# ECR Repository for Authorizer Lambda
+# ------------------------------------------------------------------------------
+
+resource "aws_ecr_repository" "authorizer" {
+  name                 = "${var.project_name}-authorizer-${var.environment}"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.project_name}-authorizer-${var.environment}"
+    }
+  )
+}
+
+resource "aws_ecr_lifecycle_policy" "authorizer" {
+  repository = aws_ecr_repository.authorizer.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last ${var.image_retention_count} images"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = var.image_retention_count
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_ecr_repository_policy" "authorizer" {
+  repository = aws_ecr_repository.authorizer.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowLambdaPull"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+        Action = [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability"
+        ]
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = var.account_id
+          }
+        }
+      }
+    ]
+  })
+}
