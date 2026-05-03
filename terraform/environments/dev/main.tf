@@ -363,16 +363,52 @@ module "lambda_authorizer" {
 }
 
 # ==============================================================================
+# Shared API Gateway configuration (managed by runstreak-common)
+# ==============================================================================
+# Read once here and pass plain strings into the api_gateway_consumer module.
+# Reading inside the consumer module caused AWS provider 5.100+ to cascade
+# sensitive-value markings onto every resource via rest_api_id, triggering
+# spurious "must be replaced" plans.
+
+data "aws_ssm_parameter" "shared_api_gateway_id" {
+  name = "/runstreak/shared/${var.environment}/api-gateway-id"
+}
+
+data "aws_ssm_parameter" "shared_api_gateway_root_resource_id" {
+  name = "/runstreak/shared/${var.environment}/api-gateway-root-resource-id"
+}
+
+data "aws_ssm_parameter" "shared_api_gateway_execution_arn" {
+  name = "/runstreak/shared/${var.environment}/api-gateway-execution-arn"
+}
+
+data "aws_ssm_parameter" "shared_api_gateway_stage_name" {
+  name = "/runstreak/shared/${var.environment}/api-gateway-stage-name"
+}
+
+data "aws_ssm_parameter" "shared_api_gateway_invoke_url" {
+  name = "/runstreak/shared/${var.environment}/api-gateway-invoke-url"
+}
+
+# ==============================================================================
 # Module: API Gateway Consumer
 # ==============================================================================
 # Creates routes on the shared API Gateway (managed by runstreak-common).
-# Reads API Gateway configuration from SSM Parameter Store.
 
 module "api_gateway_consumer" {
   source = "../../modules/api_gateway_consumer"
 
   environment = var.environment
   aws_region  = var.aws_region
+
+  # Shared API Gateway IDs — nonsensitive() strips the sensitive marking that
+  # AWS provider 5.100+ adds to data.aws_ssm_parameter.value, so the values
+  # flow into the module as plain strings.
+  api_gateway_id               = nonsensitive(data.aws_ssm_parameter.shared_api_gateway_id.value)
+  api_gateway_root_resource_id = nonsensitive(data.aws_ssm_parameter.shared_api_gateway_root_resource_id.value)
+  api_gateway_execution_arn    = nonsensitive(data.aws_ssm_parameter.shared_api_gateway_execution_arn.value)
+  api_gateway_stage_name       = nonsensitive(data.aws_ssm_parameter.shared_api_gateway_stage_name.value)
+  api_gateway_invoke_url       = nonsensitive(data.aws_ssm_parameter.shared_api_gateway_invoke_url.value)
 
   # Sync Lambda (for /sync endpoint)
   sync_lambda_invoke_arn    = module.lambda.function_invoke_arn

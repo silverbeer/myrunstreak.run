@@ -50,3 +50,34 @@ variable "authorizer_lambda_function_name" {
   description = "Name of the JWT authorizer Lambda function (for permissions)"
   type        = string
 }
+
+# Shared API Gateway IDs.
+# These were previously read inline via aws_ssm_parameter data sources, but
+# AWS provider 5.100+ marks data source values as sensitive, which cascaded
+# "(sensitive value) # forces replacement" onto every resource that referenced
+# rest_api_id/parent_id at plan time. Reading in the parent and passing as
+# plain string variables breaks that chain.
+variable "api_gateway_id" {
+  description = "ID of the shared REST API (from runstreak-common SSM)"
+  type        = string
+}
+
+variable "api_gateway_root_resource_id" {
+  description = "Root resource ID of the shared REST API"
+  type        = string
+}
+
+variable "api_gateway_execution_arn" {
+  description = "Execution ARN of the shared REST API"
+  type        = string
+}
+
+variable "api_gateway_stage_name" {
+  description = "Stage name (e.g., dev, prod)"
+  type        = string
+}
+
+variable "api_gateway_invoke_url" {
+  description = "Base invoke URL of the shared REST API stage"
+  type        = string
+}

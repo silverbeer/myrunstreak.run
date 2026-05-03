@@ -19,35 +19,18 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Read API Gateway Configuration from SSM
+# API Gateway Configuration (passed in as variables from parent)
 # ------------------------------------------------------------------------------
-
-data "aws_ssm_parameter" "api_gateway_id" {
-  name = "/runstreak/shared/${var.environment}/api-gateway-id"
-}
-
-data "aws_ssm_parameter" "api_gateway_root_resource_id" {
-  name = "/runstreak/shared/${var.environment}/api-gateway-root-resource-id"
-}
-
-data "aws_ssm_parameter" "api_gateway_execution_arn" {
-  name = "/runstreak/shared/${var.environment}/api-gateway-execution-arn"
-}
-
-data "aws_ssm_parameter" "api_gateway_stage_name" {
-  name = "/runstreak/shared/${var.environment}/api-gateway-stage-name"
-}
-
-data "aws_ssm_parameter" "api_gateway_invoke_url" {
-  name = "/runstreak/shared/${var.environment}/api-gateway-invoke-url"
-}
+# Previously read inline via data.aws_ssm_parameter; moved to parent because
+# AWS provider 5.100+ marks data source values sensitive, which made every
+# resource that referenced rest_api_id appear "must be replaced" at plan time.
 
 locals {
-  api_gateway_id    = data.aws_ssm_parameter.api_gateway_id.value
-  root_resource_id  = data.aws_ssm_parameter.api_gateway_root_resource_id.value
-  api_execution_arn = data.aws_ssm_parameter.api_gateway_execution_arn.value
-  stage_name        = data.aws_ssm_parameter.api_gateway_stage_name.value
-  api_invoke_url    = data.aws_ssm_parameter.api_gateway_invoke_url.value
+  api_gateway_id    = var.api_gateway_id
+  root_resource_id  = var.api_gateway_root_resource_id
+  api_execution_arn = var.api_gateway_execution_arn
+  stage_name        = var.api_gateway_stage_name
+  api_invoke_url    = var.api_gateway_invoke_url
 }
 
 # ==============================================================================
