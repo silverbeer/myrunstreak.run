@@ -1,0 +1,6 @@
+apiVersion: v2
+name: myrunstreak
+description: MyRunStreak frontend — Vue 3 SPA served by nginx
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
