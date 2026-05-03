@@ -371,6 +371,83 @@ resource "aws_api_gateway_integration" "auth_callback" {
 }
 
 # ==============================================================================
+# CORS preflight (OPTIONS) for protected routes
+# ==============================================================================
+# Browsers send a preflight OPTIONS for any cross-origin request that includes
+# Authorization or Content-Type: application/json. The protected routes below
+# previously had no OPTIONS method, so preflight returned 403 and the browser
+# blocked the actual request with a generic "CORS error". Each block below adds
+# a MOCK integration that responds 200 + CORS headers, mirroring the existing
+# /sync OPTIONS pattern.
+#
+# Bearer-token auth (no cookies) means ACAO="*" is safe.
+
+locals {
+  cors_options_resources = {
+    stats_proxy       = aws_api_gateway_resource.stats_proxy.id
+    runs              = aws_api_gateway_resource.runs.id
+    runs_proxy        = aws_api_gateway_resource.runs_proxy.id
+    sync_user         = aws_api_gateway_resource.sync_user.id
+    auth_store_tokens = aws_api_gateway_resource.auth_store_tokens.id
+    auth_login_url    = aws_api_gateway_resource.auth_login_url.id
+    auth_callback     = aws_api_gateway_resource.auth_callback.id
+  }
+}
+
+resource "aws_api_gateway_method" "cors_options" {
+  for_each      = local.cors_options_resources
+  rest_api_id   = local.api_gateway_id
+  resource_id   = each.value
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "cors_options" {
+  for_each    = local.cors_options_resources
+  rest_api_id = local.api_gateway_id
+  resource_id = each.value
+  http_method = aws_api_gateway_method.cors_options[each.key].http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = jsonencode({ statusCode = 200 })
+  }
+}
+
+resource "aws_api_gateway_method_response" "cors_options" {
+  for_each    = local.cors_options_resources
+  rest_api_id = local.api_gateway_id
+  resource_id = each.value
+  http_method = aws_api_gateway_method.cors_options[each.key].http_method
+  status_code = "200"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "cors_options" {
+  for_each    = local.cors_options_resources
+  rest_api_id = local.api_gateway_id
+  resource_id = each.value
+  http_method = aws_api_gateway_method.cors_options[each.key].http_method
+  status_code = aws_api_gateway_method_response.cors_options[each.key].status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Authorization,Content-Type,X-Api-Key'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+
+  depends_on = [aws_api_gateway_integration.cors_options]
+}
+
+# ==============================================================================
 # Lambda Permissions for API Gateway
 # ==============================================================================
 
@@ -435,6 +512,9 @@ resource "aws_api_gateway_deployment" "myrunstreak" {
       aws_api_gateway_resource.auth_callback.id,
       aws_api_gateway_method.auth_callback_post.id,
       aws_api_gateway_integration.auth_callback.id,
+      # CORS preflight (OPTIONS) for all protected routes
+      jsonencode([for k, v in aws_api_gateway_method.cors_options : v.id]),
+      jsonencode([for k, v in aws_api_gateway_integration.cors_options : v.id]),
     ]))
   }
 
@@ -452,6 +532,8 @@ resource "aws_api_gateway_deployment" "myrunstreak" {
     aws_api_gateway_integration.auth_store_tokens,
     aws_api_gateway_integration.auth_login_url,
     aws_api_gateway_integration.auth_callback,
+    aws_api_gateway_integration.cors_options,
+    aws_api_gateway_integration_response.cors_options,
   ]
 }
 

@@ -8,7 +8,7 @@ from uuid import UUID
 
 import boto3
 from aws_lambda_powertools import Logger, Metrics
-from aws_lambda_powertools.event_handler import APIGatewayRestResolver
+from aws_lambda_powertools.event_handler import APIGatewayRestResolver, CORSConfig
 from aws_lambda_powertools.metrics import MetricUnit
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
@@ -26,8 +26,16 @@ from src.shared.supabase_ops import (
 logger = Logger(service="myrunstreak-query")
 metrics = Metrics(namespace="MyRunStreak", service="myrunstreak-query")
 
-# API Gateway event handler
-app = APIGatewayRestResolver()
+# CORS: Bearer-token auth means ACAO="*" is safe (no cookie credentials).
+# Powertools auto-injects ACAO and handles OPTIONS preflight for any route
+# whose method is registered — but the OPTIONS request still needs a route
+# in API Gateway, which is added in terraform/modules/api_gateway_consumer.
+cors_config = CORSConfig(
+    allow_origin="*",
+    allow_headers=["Authorization", "Content-Type"],
+    max_age=300,
+)
+app = APIGatewayRestResolver(cors=cors_config)
 
 
 def get_user_id_from_request() -> UUID:
@@ -715,6 +723,10 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
     Uses Lambda Powertools API Gateway resolver to handle routing.
     All endpoints require user_id query parameter.
     """
+    cors_headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+    }
     try:
         return app.resolve(event, context)
     except ValueError as e:
@@ -722,13 +734,13 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
         logger.warning(f"Validation error: {e}")
         return {
             "statusCode": 400,
-            "headers": {"Content-Type": "application/json"},
+            "headers": cors_headers,
             "body": json.dumps({"error": "Bad request", "message": str(e)}),
         }
     except Exception as e:
         logger.exception(f"Query failed: {e}")
         return {
             "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
+            "headers": cors_headers,
             "body": json.dumps({"error": "Internal server error", "message": str(e)}),
         }
