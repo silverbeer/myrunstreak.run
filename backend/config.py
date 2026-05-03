@@ -1,0 +1,36 @@
+"""Runtime configuration loaded from env vars."""
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """All env-driven config in one place."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    environment: str = "dev"
+    log_level: str = "INFO"
+    cors_allow_origins: str = "*"
+
+    supabase_url: str
+    supabase_service_role_key: str
+    supabase_jwt_secret: str
+
+    smashrun_client_id: str = ""
+    smashrun_client_secret: str = ""
+    smashrun_redirect_uri: str = "urn:ietf:wg:oauth:2.0:oob"
+
+    redis_url: str = "redis://localhost:6379/0"
+    cache_enabled: bool = True
+    cache_default_ttl_seconds: int = 60
+
+
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """Singleton accessor — initialize once at first call."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
