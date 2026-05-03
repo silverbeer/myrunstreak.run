@@ -10,10 +10,9 @@ from datetime import date, timedelta
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends
-
 from backend.auth import authenticate_request
 from backend.cache import invalidate_user
+from fastapi import APIRouter, Body, Depends
 from src.shared.secrets import get_smashrun_oauth_credentials
 from src.shared.smashrun import SmashRunAPIClient, SmashRunOAuthClient
 from src.shared.supabase_client import get_supabase_client

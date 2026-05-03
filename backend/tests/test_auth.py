@@ -8,9 +8,8 @@ from uuid import UUID
 
 import jwt
 import pytest
-from fastapi import HTTPException, Request
-
 from backend.auth import authenticate_request
+from fastapi import HTTPException, Request
 
 JWT_SECRET = "test-jwt-secret-needs-to-be-long-enough-for-hs256"
 USER_UUID = "16eb502d-7fc0-4fce-9107-9931df747e28"

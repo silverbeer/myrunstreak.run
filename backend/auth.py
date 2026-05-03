@@ -10,10 +10,9 @@ from typing import Any
 from uuid import UUID
 
 import jwt
+from backend.config import get_settings
 from fastapi import HTTPException, Request, status
 from jwt import PyJWKClient
-
-from backend.config import get_settings
 
 
 @lru_cache(maxsize=1)

@@ -11,9 +11,8 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
-
 from backend.auth import authenticate_request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from src.shared.secrets import get_smashrun_oauth_credentials
 from src.shared.smashrun import SmashRunAPIClient, SmashRunOAuthClient
 from src.shared.supabase_client import get_supabase_client

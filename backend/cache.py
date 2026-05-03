@@ -18,7 +18,6 @@ from typing import Any, TypeVar
 from uuid import UUID
 
 import redis.asyncio as redis_asyncio
-
 from backend.config import get_settings
 
 logger = logging.getLogger(__name__)

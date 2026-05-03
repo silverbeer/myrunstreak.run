@@ -44,6 +44,20 @@ target-version = "py312"
 select = ["E", "W", "F", "I", "B", "C4", "UP"]
 ignore = ["E501"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI convention: Depends/Body/Query/Path are call-as-default. Ruff's B008
+# is correct in general but wrong here.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Body",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.File",
+    "fastapi.Form",
+]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true

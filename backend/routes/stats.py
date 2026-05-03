@@ -9,10 +9,9 @@ from __future__ import annotations
 from typing import Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
-
 from backend.auth import authenticate_request
 from backend.cache import cached
+from fastapi import APIRouter, Depends, Query
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import RunsRepository
 
