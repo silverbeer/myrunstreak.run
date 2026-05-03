@@ -1,0 +1,98 @@
+{{- if .Values.backend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "myrunstreak.fullname" . }}-backend
+  labels:
+    {{- include "myrunstreak.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount | default 1 }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      {{- include "myrunstreak.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "myrunstreak.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: ENVIRONMENT
+              value: {{ .Values.backend.env.environment | default "dev" | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.backend.env.logLevel | default "INFO" | quote }}
+            - name: CORS_ALLOW_ORIGINS
+              value: {{ .Values.backend.env.corsAllowOrigins | default "*" | quote }}
+            - name: REDIS_URL
+              value: "redis://{{ include "myrunstreak.fullname" . }}-redis:6379/0"
+            - name: CACHE_ENABLED
+              value: {{ .Values.backend.env.cacheEnabled | default "true" | quote }}
+            - name: CACHE_DEFAULT_TTL_SECONDS
+              value: {{ .Values.backend.env.cacheDefaultTtlSeconds | default 60 | quote }}
+            - name: SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                  key: supabase-url
+            - name: SUPABASE_SERVICE_ROLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                  key: supabase-service-key
+            - name: SUPABASE_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                  key: supabase-jwt-secret
+            - name: SMASHRUN_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                  key: smashrun-client-id
+            - name: SMASHRUN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                  key: smashrun-client-secret
+          resources:
+            {{- toYaml (.Values.backend.resources | default dict) | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "myrunstreak.fullname" . }}-backend
+  labels:
+    {{- include "myrunstreak.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: http
+      name: http
+  selector:
+    {{- include "myrunstreak.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+{{- end }}

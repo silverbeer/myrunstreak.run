@@ -38,7 +38,87 @@ ingress:
   hosts:
     - myrunstreak.run
     - www.myrunstreak.run
+  # API host(s) routed to the FastAPI backend (only used when backend.enabled).
+  # Phase A.2: deploy under api-v2 alongside Lambda. Cutover (Phase B) flips
+  # api.myrunstreak.run here once we're satisfied.
+  apiHosts:
+    - api-v2.myrunstreak.run
   tls:
     secretName: myrunstreak-tls
 
 env: []
+
+# ============================================================================
+# ExternalSecret (AWS Secrets Manager → k8s Secret via ESO)
+# ============================================================================
+# Replaces the previously-out-of-band ExternalSecret applied via kubectl from
+# missingtable-platform-bootstrap. Now ArgoCD-managed via this chart.
+externalSecret:
+  enabled: true
+  refreshInterval: 1h
+  secretStoreName: aws-secrets-manager
+  awsSecretName: myrunstreak-app-secrets
+  targetName: myrunstreak-secrets
+
+# ============================================================================
+# Backend (FastAPI) — disabled by default; toggle on per-env as the LKE
+# migration rolls out.
+# ============================================================================
+backend:
+  enabled: false
+  replicaCount: 1
+  revisionHistoryLimit: 3
+
+  image:
+    repository: ghcr.io/silverbeer/myrunstreak-backend
+    tag: "latest" # backend-tag
+    pullPolicy: IfNotPresent
+
+  env:
+    environment: dev
+    logLevel: INFO
+    corsAllowOrigins: "*"
+    cacheEnabled: "true"
+    cacheDefaultTtlSeconds: 60
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  cronjobs:
+    sync:
+      enabled: true
+      # 14:00 + 17:00 UTC matches the EventBridge schedule we're replacing.
+      schedule: "0 14,17 * * *"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
+# ============================================================================
+# Redis (cache for backend stats endpoints) — disabled by default
+# ============================================================================
+redis:
+  enabled: false
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  maxmemory: "128mb"
+  persistence:
+    size: 1Gi
+    storageClass: ""  # default storage class
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 192Mi

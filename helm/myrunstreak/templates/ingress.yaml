@@ -14,6 +14,11 @@ spec:
         {{- range .Values.ingress.hosts }}
         - {{ . }}
         {{- end }}
+        {{- if and $.Values.backend.enabled $.Values.ingress.apiHosts }}
+        {{- range $.Values.ingress.apiHosts }}
+        - {{ . }}
+        {{- end }}
+        {{- end }}
       secretName: {{ .Values.ingress.tls.secretName }}
   rules:
     {{- range .Values.ingress.hosts }}
@@ -27,5 +32,19 @@ spec:
                 name: {{ include "myrunstreak.fullname" $ }}-frontend
                 port:
                   number: {{ $.Values.service.port }}
+    {{- end }}
+    {{- if and $.Values.backend.enabled $.Values.ingress.apiHosts }}
+    {{- range $.Values.ingress.apiHosts }}
+    - host: {{ . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "myrunstreak.fullname" $ }}-backend
+                port:
+                  number: 8000
+    {{- end }}
     {{- end }}
 {{- end }}

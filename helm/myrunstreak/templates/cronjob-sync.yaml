@@ -1,0 +1,68 @@
+{{- if and .Values.backend.enabled .Values.backend.cronjobs.sync.enabled }}
+# Replaces the EventBridge → sync Lambda flow. Two schedules per day,
+# matching what was running on AWS.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "myrunstreak.fullname" . }}-sync
+  labels:
+    {{- include "myrunstreak.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sync-cron
+spec:
+  schedule: {{ .Values.backend.cronjobs.sync.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            {{- include "myrunstreak.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: sync-cron
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: sync
+              image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+              imagePullPolicy: {{ .Values.backend.image.pullPolicy | default "IfNotPresent" }}
+              command: ["python", "-m", "backend.jobs.sync_runs"]
+              env:
+                - name: ENVIRONMENT
+                  value: {{ .Values.backend.env.environment | default "dev" | quote }}
+                - name: LOG_LEVEL
+                  value: {{ .Values.backend.env.logLevel | default "INFO" | quote }}
+                - name: REDIS_URL
+                  value: "redis://{{ include "myrunstreak.fullname" . }}-redis:6379/0"
+                - name: CACHE_ENABLED
+                  value: {{ .Values.backend.env.cacheEnabled | default "true" | quote }}
+                - name: SUPABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-url
+                - name: SUPABASE_SERVICE_ROLE_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-service-key
+                - name: SUPABASE_JWT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-jwt-secret
+                - name: SMASHRUN_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: smashrun-client-id
+                - name: SMASHRUN_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: smashrun-client-secret
+              resources:
+                {{- toYaml (.Values.backend.cronjobs.sync.resources | default dict) | nindent 16 }}
+{{- end }}
