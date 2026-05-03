@@ -6,11 +6,14 @@ heavy ones are wrapped in @cached.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, cast
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from backend.auth import authenticate_request
 from backend.cache import cached
+from backend.streaks import compute_streaks
 from fastapi import APIRouter, Depends, Query
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import RunsRepository
@@ -34,22 +37,49 @@ async def get_overall_stats(
 @cached(ttl=60, key_prefix="stats:streaks")
 async def _streaks(user_id: UUID) -> dict[str, Any]:
     supabase = get_supabase_client()
-    runs_repo = RunsRepository(supabase)
-    current_streak = runs_repo.get_current_streak(user_id)
+
+    # Pull every distinct run-date for this user. With 4-5k rows the
+    # round-trip is fine; if a user ever exceeds 10k we'd push this into
+    # a Supabase RPC.
+    rows = (
+        supabase.table("runs")
+        .select("start_date")
+        .eq("user_id", str(user_id))
+        .order("start_date", desc=False)
+        .limit(10000)
+        .execute()
+    )
+    data = cast(list[dict[str, Any]], rows.data)
+    run_dates = [date.fromisoformat(r["start_date"]) for r in data]
+
+    today = _today_local()
+    streaks = compute_streaks(run_dates, today)
+
+    current = next((s for s in streaks if s.is_current), None)
+    longest_length = streaks[0].length_days if streaks else 0
+
+    top = [
+        {
+            "start_date": s.start_date.isoformat(),
+            "end_date": s.end_date.isoformat(),
+            "length_days": s.length_days,
+            "is_current": s.is_current,
+        }
+        for s in streaks[:5]
+    ]
+
     return {
-        "current_streak": current_streak,
-        "longest_streak": current_streak,  # TODO: compute longest properly
-        "top_streaks": [
-            {
-                "start_date": None,
-                "end_date": None,
-                "length_days": current_streak,
-                "is_current": True,
-            }
-        ]
-        if current_streak > 0
-        else [],
+        "current_streak": current.length_days if current else 0,
+        "longest_streak": longest_length,
+        "top_streaks": top,
     }
+
+
+def _today_local() -> date:
+    """Match get_current_streak's America/New_York anchor so /streaks
+    agrees with the legacy single-streak endpoint about what "today" is."""
+    from datetime import datetime
+    return datetime.now(ZoneInfo("America/New_York")).date()
 
 
 @router.get("/streaks")
