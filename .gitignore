@@ -62,3 +62,6 @@ Thumbs.db
 data/
 .tfplan
 tmp/
+
+# Local terraform plan artifacts
+terraform/environments/*/tfplan
