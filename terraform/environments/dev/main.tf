@@ -8,7 +8,6 @@
 #
 # Removed in Phase C: Lambda × 4, ECR × 4, API Gateway routes, EventBridge
 # rules, IAM roles, GitHub OIDC, terraform-managed secrets, S3 data bucket.
-# Module source code (terraform/modules/*) is retained for reference.
 
 terraform {
   required_version = ">= 1.5.0"
