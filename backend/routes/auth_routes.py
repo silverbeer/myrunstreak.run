@@ -1,8 +1,7 @@
 """/auth/* — SmashRun OAuth flow + token storage.
 
-Lifted from src/lambdas/query_runs/handler.py. Only /auth/store-tokens
-requires Supabase auth; the others are public so an unauthenticated user
-can begin the OAuth handshake.
+Only /auth/store-tokens requires Supabase auth; the others are public so an
+unauthenticated user can begin the OAuth handshake.
 """
 
 from __future__ import annotations

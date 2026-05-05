@@ -1,7 +1,6 @@
 """/stats/* — aggregations over a user's runs.
 
-Lifted from src/lambdas/query_runs/handler.py. All endpoints are JWT-gated;
-heavy ones are wrapped in @cached.
+All endpoints are JWT-gated; heavy ones are wrapped in @cached.
 """
 
 from __future__ import annotations
