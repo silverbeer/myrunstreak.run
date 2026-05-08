@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     cache_enabled: bool = True
     cache_default_ttl_seconds: int = 60
 
+    goal_yearly_staleness_days: int = 14
+    goal_monthly_staleness_days: int = 3
+
 
 _settings: Settings | None = None
 

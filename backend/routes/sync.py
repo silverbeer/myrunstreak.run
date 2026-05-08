@@ -6,17 +6,26 @@ same underlying ``run_user_sync`` helper.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 from typing import Any
 from uuid import UUID
 
 from backend.auth import authenticate_request
 from backend.cache import invalidate_user
+from backend.config import Settings, get_settings
 from fastapi import APIRouter, Body, Depends
 from src.shared.secrets import get_smashrun_oauth_credentials
 from src.shared.smashrun import SmashRunAPIClient, SmashRunOAuthClient
 from src.shared.supabase_client import get_supabase_client
-from src.shared.supabase_ops import RunsRepository, TokenRepository, activity_to_run_dict
+from src.shared.supabase_ops import (
+    GoalsRepository,
+    RunsRepository,
+    TokenRepository,
+    activity_to_run_dict,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["sync"])
 
@@ -40,6 +49,8 @@ def run_user_sync(
     supabase = get_supabase_client()
     runs_repo = RunsRepository(supabase)
     token_repo = TokenRepository(supabase)
+    goals_repo = GoalsRepository(supabase)
+    settings = get_settings()
 
     source_id = token_repo.get_source_id_for_user(user_id, "smashrun")
     if not source_id:
@@ -89,12 +100,70 @@ def run_user_sync(
             except Exception:  # noqa: BLE001
                 continue
 
+        # Refresh yearly + monthly goals for the current period if stale or
+        # missing. Failure here must not fail the whole sync.
+        try:
+            sync_current_goals(
+                user_id=user_id,
+                source_id=source_id,
+                api=api,
+                goals_repo=goals_repo,
+                settings=settings,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Goal sync failed for source {source_id}: {exc}")
+
     return {
         "message": "Sync completed",
         "runs_synced": runs_synced,
         "since": since_date.isoformat(),
         "until": until_date.isoformat(),
     }
+
+
+def sync_current_goals(
+    user_id: UUID,
+    source_id: UUID,
+    api: SmashRunAPIClient,
+    goals_repo: GoalsRepository,
+    settings: Settings,
+) -> None:
+    """Refresh current-year and current-month goals from SmashRun if stale.
+
+    Yearly and monthly periods have separate staleness thresholds
+    (``settings.goal_yearly_staleness_days`` / ``goal_monthly_staleness_days``)
+    so we don't re-fetch the same goal every sync. Periods with no goal set on
+    SmashRun are recorded as "absent" via :meth:`GoalsRepository.mark_absent`
+    so we don't keep hammering the API.
+    """
+    today = date.today()
+    yearly_ttl = timedelta(days=settings.goal_yearly_staleness_days)
+    monthly_ttl = timedelta(days=settings.goal_monthly_staleness_days)
+
+    periods: list[tuple[int, int | None, timedelta]] = [
+        (today.year, None, yearly_ttl),
+        (today.year, today.month, monthly_ttl),
+    ]
+
+    for year, month, ttl in periods:
+        label = f"{year}" if month is None else f"{year}/{month}"
+        existing = goals_repo.get_by_period(user_id, source_id, year, month)
+
+        if not goals_repo.is_stale(existing, ttl):
+            logger.debug(f"Goal {label} is fresh, skipping fetch")
+            continue
+
+        logger.info(f"Fetching goal {label} from SmashRun")
+        goal = api.get_goal(year, month)
+
+        if goal is None:
+            goals_repo.mark_absent(user_id, source_id, year, month)
+            logger.info(f"No goal set on SmashRun for {label}")
+        else:
+            goals_repo.upsert(user_id, source_id, goal)
+            logger.info(
+                f"Stored goal {label}: goal_km={goal.goal_km} progress_km={goal.progress_km}"
+            )
 
 
 @router.post("/sync-user")
