@@ -43,6 +43,11 @@ spec:
                     secretKeyRef:
                       name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
                       key: supabase-url
+                - name: SUPABASE_ANON_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-anon-key
                 - name: SUPABASE_SERVICE_ROLE_KEY
                   valueFrom:
                     secretKeyRef:
