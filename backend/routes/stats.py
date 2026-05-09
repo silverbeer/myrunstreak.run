@@ -12,10 +12,11 @@ from zoneinfo import ZoneInfo
 
 from backend.auth import authenticate_request
 from backend.cache import cached
+from backend.goals import build_goals_block
 from backend.streaks import compute_streaks
 from fastapi import APIRouter, Depends, Query
 from src.shared.supabase_client import get_supabase_client
-from src.shared.supabase_ops import RunsRepository
+from src.shared.supabase_ops import GoalsRepository, RunsRepository, TokenRepository
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -179,3 +180,28 @@ async def get_records(
     user_id: UUID = Depends(authenticate_request),
 ) -> dict[str, Any]:
     return await _records(user_id)
+
+
+@cached(ttl=60, key_prefix="stats:goals")
+async def _goals(user_id: UUID) -> dict[str, Any]:
+    supabase = get_supabase_client()
+    token_repo = TokenRepository(supabase)
+    goals_repo = GoalsRepository(supabase)
+
+    source_id = token_repo.get_source_id_for_user(user_id, "smashrun")
+    return build_goals_block(user_id, source_id, goals_repo, _today_local())
+
+
+@router.get("/goals")
+async def get_goals(
+    user_id: UUID = Depends(authenticate_request),
+) -> dict[str, Any]:
+    """Current-year and current-month distance goals for the authenticated user.
+
+    Reads from the ``goals`` table (populated on each sync). Either field is
+    null when no goal is stored for that period or no SmashRun source is
+    linked. Shape matches what the publish_status job emits to status.json,
+    so the dashboard and the public qualityplaybook.dev tile share the same
+    GoalProgress structure.
+    """
+    return await _goals(user_id)
