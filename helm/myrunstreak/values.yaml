@@ -99,6 +99,19 @@ backend:
         limits:
           cpu: 500m
           memory: 512Mi
+    publishStatus:
+      enabled: true
+      # Every 15 min — matches what AWS EventBridge ran. The bucket itself
+      # has Cache-Control: max-age=300, so consumers never see > 5 min of
+      # extra staleness on top of the publish cadence.
+      schedule: "*/15 * * * *"
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
 
 # ============================================================================
 # Redis (cache for backend stats endpoints) — disabled by default
