@@ -24,10 +24,16 @@
     <EmptyState v-else-if="isNewUser" @synced="reload" />
 
     <template v-else>
-      <StreakHero
-        :current="streak?.current_streak ?? 0"
-        :longest="streak?.longest_streak ?? 0"
-      />
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <StreakHero
+          :current="streak?.current_streak ?? 0"
+          :longest="streak?.longest_streak ?? 0"
+        />
+        <GoalsCard
+          :yearly="goals?.yearly ?? null"
+          :monthly="goals?.monthly ?? null"
+        />
+      </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
@@ -99,9 +105,11 @@ import EmptyState from '@/components/EmptyState.vue'
 import StreakHero from '@/components/StreakHero.vue'
 import StreakHeatmap from '@/components/StreakHeatmap.vue'
 import MonthlyDistanceChart from '@/components/MonthlyDistanceChart.vue'
+import GoalsCard from '@/components/GoalsCard.vue'
 import { useStats } from '@/composables/useStats'
 import { useRecentRuns } from '@/composables/useRecentRuns'
 import { useMonthlyStats } from '@/composables/useMonthlyStats'
+import { useGoals } from '@/composables/useGoals'
 import { useUserPreferences } from '@/composables/useUserPreferences'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -123,6 +131,7 @@ const {
   load: loadRecent,
 } = useRecentRuns(100)
 const { months, loading: monthlyLoading, error: monthlyError, load: loadMonthly } = useMonthlyStats(12)
+const { goals, error: goalsError, load: loadGoals } = useGoals()
 const { unit } = useUserPreferences()
 
 const initialLoading = computed(
@@ -131,13 +140,15 @@ const initialLoading = computed(
     !stats.value &&
     recentRuns.value.length === 0,
 )
-const loadError = computed(() => statsError.value || recentError.value || monthlyError.value)
+const loadError = computed(
+  () => statsError.value || recentError.value || monthlyError.value || goalsError.value,
+)
 const isNewUser = computed(() => stats.value !== null && stats.value.total_runs === 0)
 
 const heatmapGrid = computed(() => buildHeatmapGrid(recentRuns.value, 12))
 
 const reload = async () => {
-  await Promise.all([loadStats(), loadRecent(), loadMonthly()])
+  await Promise.all([loadStats(), loadRecent(), loadMonthly(), loadGoals()])
 }
 
 onMounted(reload)
