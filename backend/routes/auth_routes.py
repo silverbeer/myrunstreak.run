@@ -1,7 +1,11 @@
-"""/auth/* — SmashRun OAuth flow + token storage.
+"""/auth/* — Supabase Auth proxy + SmashRun OAuth linking.
 
-Only /auth/store-tokens requires Supabase auth; the others are public so an
-unauthenticated user can begin the OAuth handshake.
+The signup/login/refresh endpoints proxy to Supabase Auth so that clients
+(stk CLI, web frontend) only need to know about api.myrunstreak.run.
+Supabase URL/keys never leave the backend.
+
+The link/login-url + link/callback endpoints handle SmashRun OAuth account
+linking after a user is authenticated.
 """
 
 from __future__ import annotations
@@ -10,8 +14,11 @@ import logging
 from typing import Any
 from uuid import UUID
 
+import httpx
 from backend.auth import authenticate_request
+from backend.config import get_settings
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, EmailStr
 from src.shared.secrets import get_smashrun_oauth_credentials
 from src.shared.smashrun import SmashRunAPIClient, SmashRunOAuthClient
 from src.shared.supabase_client import get_supabase_client
@@ -20,6 +27,125 @@ from src.shared.supabase_ops import TokenRepository, UsersRepository
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_SUPABASE_TIMEOUT = 10.0
+
+
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+def _supabase_auth_url(path: str) -> str:
+    settings = get_settings()
+    return f"{settings.supabase_url.rstrip('/')}/auth/v1{path}"
+
+
+def _supabase_headers() -> dict[str, str]:
+    settings = get_settings()
+    return {
+        "apikey": settings.supabase_anon_key,
+        "Content-Type": "application/json",
+    }
+
+
+def _proxy_supabase_auth(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """POST to Supabase Auth and surface its error JSON on failure.
+
+    Supabase returns ``{"msg": "..."}`` on most auth errors; we forward both
+    the status code and a sanitized message so the CLI/frontend can show
+    something useful without leaking implementation details.
+    """
+    try:
+        response = httpx.post(
+            _supabase_auth_url(path),
+            headers=_supabase_headers(),
+            json=payload,
+            timeout=_SUPABASE_TIMEOUT,
+        )
+    except httpx.RequestError as exc:
+        logger.exception("Supabase auth request failed")
+        raise HTTPException(status_code=503, detail="Auth service unavailable") from exc
+
+    if response.status_code >= 400:
+        detail = "Authentication failed"
+        try:
+            body = response.json()
+            if isinstance(body, dict):
+                detail = body.get("msg") or body.get("error_description") or body.get("error") or detail
+        except ValueError:
+            pass
+        raise HTTPException(status_code=response.status_code, detail=detail)
+
+    result: dict[str, Any] = response.json()
+    return result
+
+
+@router.post("/signup")
+async def signup(body: SignupRequest) -> dict[str, Any]:
+    """Create a new myrunstreak account.
+
+    Returns a session immediately when email-confirmation is disabled.
+    When enabled, returns ``session=None`` and a message instructing the
+    user to confirm via email before logging in.
+    """
+    data = _proxy_supabase_auth("/signup", {"email": body.email, "password": body.password})
+    user = data.get("user") or {}
+    session = data.get("session")
+    if session:
+        return {
+            "user": {"id": user.get("id"), "email": user.get("email")},
+            "access_token": session["access_token"],
+            "refresh_token": session["refresh_token"],
+            "expires_in": session.get("expires_in"),
+            "message": "Account created.",
+        }
+    return {
+        "user": {"id": user.get("id"), "email": user.get("email")},
+        "access_token": None,
+        "refresh_token": None,
+        "expires_in": None,
+        "message": "Account created. Check your email to confirm before logging in.",
+    }
+
+
+@router.post("/login")
+async def login(body: LoginRequest) -> dict[str, Any]:
+    """Exchange email + password for an access/refresh token pair."""
+    data = _proxy_supabase_auth(
+        "/token?grant_type=password",
+        {"email": body.email, "password": body.password},
+    )
+    user = data.get("user") or {}
+    return {
+        "access_token": data["access_token"],
+        "refresh_token": data["refresh_token"],
+        "expires_in": data.get("expires_in"),
+        "user": {"id": user.get("id"), "email": user.get("email")},
+    }
+
+
+@router.post("/refresh")
+async def refresh(body: RefreshRequest) -> dict[str, Any]:
+    """Exchange a refresh token for a fresh access/refresh pair."""
+    data = _proxy_supabase_auth(
+        "/token?grant_type=refresh_token",
+        {"refresh_token": body.refresh_token},
+    )
+    return {
+        "access_token": data["access_token"],
+        "refresh_token": data["refresh_token"],
+        "expires_in": data.get("expires_in"),
+    }
 
 
 @router.get("/login-url")
