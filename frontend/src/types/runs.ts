@@ -73,3 +73,16 @@ export interface SyncResponse {
   since: string
   until: string
 }
+
+export interface GoalProgress {
+  goal_mi: number
+  progress_mi: number
+  percent: number | null
+  text: string | null
+  fetched_at: string | null
+}
+
+export interface GoalsData {
+  yearly: GoalProgress | null
+  monthly: GoalProgress | null
+}

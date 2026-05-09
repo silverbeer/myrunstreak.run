@@ -1,35 +1,35 @@
 <template>
   <div
-    class="relative overflow-hidden rounded-2xl shadow-md text-white p-8 sm:p-10 mb-6"
+    class="relative overflow-hidden rounded-2xl shadow-md text-white p-6 h-full"
     :class="gradientClass"
   >
     <div class="absolute inset-0 opacity-20">
-      <div class="absolute -top-16 -right-16 w-72 h-72 rounded-full bg-white blur-3xl" />
-      <div class="absolute -bottom-20 -left-10 w-72 h-72 rounded-full bg-white blur-3xl" />
+      <div class="absolute -top-12 -right-12 w-56 h-56 rounded-full bg-white blur-3xl" />
+      <div class="absolute -bottom-16 -left-8 w-56 h-56 rounded-full bg-white blur-3xl" />
     </div>
 
-    <div class="relative flex flex-col sm:flex-row items-start sm:items-end justify-between gap-6">
-      <div>
-        <div class="flex items-center gap-2 text-white/80 text-sm font-semibold uppercase tracking-wide mb-1">
-          <span class="text-xl">🔥</span>
-          <span>Current streak</span>
-        </div>
-        <p class="text-7xl sm:text-8xl font-extrabold leading-none tabular-nums">
-          {{ animatedCurrent }}
-        </p>
-        <p class="text-white/80 text-base mt-2">
-          {{ current === 1 ? 'day' : 'days' }} of running
-        </p>
+    <div class="relative flex flex-col h-full">
+      <div class="flex items-center gap-2 text-white/80 text-xs font-semibold uppercase tracking-wide mb-1">
+        <span class="text-lg">🔥</span>
+        <span>Current streak</span>
       </div>
+      <p class="text-5xl sm:text-6xl font-extrabold leading-none tabular-nums">
+        {{ animatedCurrent }}
+      </p>
+      <p class="text-white/80 text-sm mt-1">
+        {{ current === 1 ? 'day' : 'days' }} of running
+      </p>
 
-      <div class="sm:text-right">
-        <p class="text-white/70 text-xs font-semibold uppercase tracking-wide">
+      <div class="mt-auto pt-4 border-t border-white/15">
+        <p class="text-white/70 text-[11px] font-semibold uppercase tracking-wide">
           Longest streak
         </p>
-        <p class="text-3xl sm:text-4xl font-bold tabular-nums">
+        <p class="text-2xl font-bold tabular-nums leading-tight">
           {{ animatedLongest }}
+          <span class="text-white/70 text-sm font-normal ml-1">
+            {{ longest === 1 ? 'day' : 'days' }}
+          </span>
         </p>
-        <p class="text-white/70 text-sm">{{ longest === 1 ? 'day' : 'days' }}</p>
       </div>
     </div>
   </div>
