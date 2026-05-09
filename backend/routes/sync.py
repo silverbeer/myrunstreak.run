@@ -113,6 +113,15 @@ def run_user_sync(
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Goal sync failed for source {source_id}: {exc}")
 
+    # Refresh user_running_stats so streak/totals reflect the runs we just
+    # upserted. The aggregation row is what status.json + the dashboard
+    # both read; without this call it stays frozen at the prior sync's
+    # values (e.g. last_run_date never advances past the old streak end).
+    try:
+        runs_repo.recalculate_user_stats(user_id, timezone="America/New_York")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"recalculate_user_stats failed for {user_id}: {exc}")
+
     return {
         "message": "Sync completed",
         "runs_synced": runs_synced,
