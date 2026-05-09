@@ -68,14 +68,22 @@ def get_supabase_credentials() -> dict[str, str]:
 
 def get_smashrun_oauth_credentials() -> dict[str, str]:
     """
-    Get SmashRun OAuth client credentials from Secrets Manager.
+    Get SmashRun OAuth client credentials.
+
+    Prefers env vars (``SMASHRUN_CLIENT_ID`` / ``SMASHRUN_CLIENT_SECRET``)
+    when both are set — that's how the LKE backend gets them via
+    ExternalSecrets → k8s Secret. Falls back to AWS Secrets Manager only
+    when env vars are absent (legacy Lambda path; reachable only with AWS
+    creds + region available, which the LKE pods don't have).
 
     Returns:
-        Dict with OAuth credentials including:
-        - access_token
-        - refresh_token
-        - (future: client_id, client_secret)
+        Dict with ``client_id`` and ``client_secret`` keys.
     """
+    client_id = os.environ.get("SMASHRUN_CLIENT_ID")
+    client_secret = os.environ.get("SMASHRUN_CLIENT_SECRET")
+    if client_id and client_secret:
+        return {"client_id": client_id, "client_secret": client_secret}
+
     environment = os.environ.get("ENVIRONMENT", "dev")
     secret_name = f"myrunstreak/{environment}/smashrun/oauth"
     return get_secret(secret_name)
