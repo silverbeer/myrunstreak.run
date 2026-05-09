@@ -21,6 +21,7 @@ from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from backend.goals import build_goals_block, km_to_miles
 from dateutil.relativedelta import relativedelta
 from google.cloud import storage
 from google.oauth2 import service_account
@@ -30,13 +31,8 @@ from src.shared.supabase_ops import GoalsRepository, RunsRepository, UsersReposi
 GCS_BUCKET_NAME = "myrunstreak-public"
 GCS_OBJECT_PATH = "status.json"
 USER_TIMEZONE = ZoneInfo("America/New_York")
-KM_TO_MILES = 0.621371
 
 logger = logging.getLogger(__name__)
-
-
-def km_to_miles(km: float) -> float:
-    return km * KM_TO_MILES
 
 
 def format_streak_duration(streak_start: str | None, today: date) -> str | None:
@@ -91,40 +87,6 @@ def upload_to_gcs(data: dict[str, Any]) -> str:
     public_url = f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/{GCS_OBJECT_PATH}"
     logger.info(f"Uploaded status to {public_url}")
     return public_url
-
-
-def build_goals_block(
-    user_id: UUID,
-    source_id: UUID | None,
-    goals_repo: GoalsRepository,
-    today: date,
-) -> dict[str, Any]:
-    """Yearly + monthly goal progress, in miles. Each is None when the user
-    has no goal stored for the period (or no SmashRun source at all).
-
-    Shape matches the GoalProgress interface in
-    qualityplaybook.dev/frontend/src/components/RunningStreak.vue.
-    """
-    if source_id is None:
-        return {"yearly": None, "monthly": None}
-
-    def render(row: dict[str, Any] | None) -> dict[str, Any] | None:
-        if not row or row.get("goal_km") is None:
-            return None
-        goal_km = float(row["goal_km"])
-        progress_km = float(row.get("progress_km") or 0.0)
-        percent = (progress_km / goal_km * 100) if goal_km > 0 else None
-        return {
-            "goal_mi": round(km_to_miles(goal_km), 1),
-            "progress_mi": round(km_to_miles(progress_km), 1),
-            "percent": round(percent, 1) if percent is not None else None,
-            "text": row.get("goal_text"),
-            "fetched_at": row.get("fetched_at"),
-        }
-
-    yearly_row = goals_repo.get_by_period(user_id, source_id, today.year, None)
-    monthly_row = goals_repo.get_by_period(user_id, source_id, today.year, today.month)
-    return {"yearly": render(yearly_row), "monthly": render(monthly_row)}
 
 
 def build_status_data(
