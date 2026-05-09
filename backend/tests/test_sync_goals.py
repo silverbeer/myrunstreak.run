@@ -127,3 +127,75 @@ def test_settings_drive_per_period_ttl() -> None:
     ttl_args = [call.args[1] for call in repo.is_stale.call_args_list]
     assert timedelta(days=settings.goal_yearly_staleness_days) in ttl_args
     assert timedelta(days=settings.goal_monthly_staleness_days) in ttl_args
+
+
+def test_run_user_sync_recalculates_user_stats() -> None:
+    """sync must call RunsRepository.recalculate_user_stats so the
+    user_running_stats aggregation row reflects the runs just upserted."""
+    user_id = uuid4()
+    source_id = uuid4()
+
+    token_repo = MagicMock()
+    token_repo.get_source_id_for_user.return_value = source_id
+    token_repo.get_user_tokens.return_value = {
+        "access_token": "tok",
+        "refresh_token": "ref",
+    }
+    token_repo.is_token_expired.return_value = False
+
+    runs_repo_instance = MagicMock()
+
+    api = MagicMock()
+    api.get_all_activities_since.return_value = []
+    api_ctx = MagicMock()
+    api_ctx.__enter__ = MagicMock(return_value=api)
+    api_ctx.__exit__ = MagicMock(return_value=False)
+
+    with (
+        patch("backend.routes.sync.get_supabase_client", return_value=MagicMock()),
+        patch("backend.routes.sync.RunsRepository", return_value=runs_repo_instance),
+        patch("backend.routes.sync.TokenRepository", return_value=token_repo),
+        patch("backend.routes.sync.GoalsRepository"),
+        patch("backend.routes.sync.SmashRunAPIClient", return_value=api_ctx),
+        patch("backend.routes.sync.sync_current_goals"),
+    ):
+        run_user_sync(user_id)
+
+    runs_repo_instance.recalculate_user_stats.assert_called_once_with(
+        user_id, timezone="America/New_York"
+    )
+
+
+def test_run_user_sync_swallows_recalc_failure() -> None:
+    """A recalculate_user_stats exception must not fail the whole sync."""
+    user_id = uuid4()
+    source_id = uuid4()
+
+    token_repo = MagicMock()
+    token_repo.get_source_id_for_user.return_value = source_id
+    token_repo.get_user_tokens.return_value = {
+        "access_token": "tok",
+        "refresh_token": "ref",
+    }
+    token_repo.is_token_expired.return_value = False
+
+    runs_repo_instance = MagicMock()
+    runs_repo_instance.recalculate_user_stats.side_effect = RuntimeError("supabase down")
+
+    api = MagicMock()
+    api.get_all_activities_since.return_value = []
+    api_ctx = MagicMock()
+    api_ctx.__enter__ = MagicMock(return_value=api)
+    api_ctx.__exit__ = MagicMock(return_value=False)
+
+    with (
+        patch("backend.routes.sync.get_supabase_client", return_value=MagicMock()),
+        patch("backend.routes.sync.RunsRepository", return_value=runs_repo_instance),
+        patch("backend.routes.sync.TokenRepository", return_value=token_repo),
+        patch("backend.routes.sync.GoalsRepository"),
+        patch("backend.routes.sync.SmashRunAPIClient", return_value=api_ctx),
+        patch("backend.routes.sync.sync_current_goals"),
+    ):
+        result = run_user_sync(user_id)
+
+    assert result["message"] == "Sync completed"
