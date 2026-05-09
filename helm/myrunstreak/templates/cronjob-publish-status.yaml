@@ -1,0 +1,60 @@
+{{- if and .Values.backend.enabled .Values.backend.cronjobs.publishStatus.enabled }}
+# Replaces the EventBridge → publish_status Lambda flow. Builds the
+# myrunstreak-public/status.json payload from Supabase and uploads it to GCS,
+# so the qualityplaybook.dev tile (and any other embed) gets fresh data.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "myrunstreak.fullname" . }}-publish-status
+  labels:
+    {{- include "myrunstreak.labels" . | nindent 4 }}
+    app.kubernetes.io/component: publish-status-cron
+spec:
+  schedule: {{ .Values.backend.cronjobs.publishStatus.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            {{- include "myrunstreak.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: publish-status-cron
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: publish-status
+              image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+              imagePullPolicy: {{ .Values.backend.image.pullPolicy | default "IfNotPresent" }}
+              command: ["python", "-m", "backend.jobs.publish_status"]
+              env:
+                - name: ENVIRONMENT
+                  value: {{ .Values.backend.env.environment | default "dev" | quote }}
+                - name: LOG_LEVEL
+                  value: {{ .Values.backend.env.logLevel | default "INFO" | quote }}
+                - name: SUPABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-url
+                - name: SUPABASE_SERVICE_ROLE_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-service-key
+                - name: SUPABASE_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-service-key
+                - name: GCS_SERVICE_ACCOUNT_JSON
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: gcs-service-account-json
+              resources:
+                {{- toYaml (.Values.backend.cronjobs.publishStatus.resources | default dict) | nindent 16 }}
+{{- end }}
