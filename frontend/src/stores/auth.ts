@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase, getOAuthRedirectUrl } from '@/config/supabase'
+import { apiCall } from '@/config/api'
 
 export const useAuthStore = defineStore('auth', () => {
   const session = ref<Session | null>(null)
@@ -98,10 +99,33 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     clearError()
     try {
-      const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
+      await apiCall<{ message: string }>('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          email,
+          redirect_to: `${window.location.origin}/auth/reset-password`,
+        }),
       })
-      if (err) throw err
+      return { success: true }
+    } catch (err: any) {
+      setError(err.message)
+      return { success: false, error: err.message }
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const applyPasswordReset = async (accessToken: string, newPassword: string) => {
+    loading.value = true
+    clearError()
+    try {
+      await apiCall<{ message: string }>('/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          access_token: accessToken,
+          new_password: newPassword,
+        }),
+      })
       return { success: true }
     } catch (err: any) {
       setError(err.message)
@@ -123,6 +147,7 @@ export const useAuthStore = defineStore('auth', () => {
     signUp,
     signOut,
     requestPasswordReset,
+    applyPasswordReset,
     clearError,
   }
 })
