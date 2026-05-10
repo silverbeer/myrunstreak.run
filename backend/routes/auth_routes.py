@@ -45,6 +45,22 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+    # Where Supabase sends the user after clicking the reset link in their
+    # inbox. Optional so the frontend can hand it to us, but we default to
+    # the production URL so a misconfigured client can't redirect mail to
+    # an arbitrary host.
+    redirect_to: str = "https://myrunstreak.run/auth/reset-password"
+
+
+class ResetPasswordRequest(BaseModel):
+    # The recovery access_token Supabase puts in the email-link URL fragment.
+    # The frontend extracts it from window.location.hash and forwards here.
+    access_token: str
+    new_password: str
+
+
 def _supabase_auth_url(path: str) -> str:
     settings = get_settings()
     return f"{settings.supabase_url.rstrip('/')}/auth/v1{path}"
@@ -58,17 +74,31 @@ def _supabase_headers() -> dict[str, str]:
     }
 
 
-def _proxy_supabase_auth(path: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """POST to Supabase Auth and surface its error JSON on failure.
+def _proxy_supabase_auth(
+    path: str,
+    payload: dict[str, Any],
+    *,
+    method: str = "POST",
+    bearer: str | None = None,
+) -> dict[str, Any]:
+    """Proxy a request to Supabase Auth and surface its error JSON on failure.
 
     Supabase returns ``{"msg": "..."}`` on most auth errors; we forward both
     the status code and a sanitized message so the CLI/frontend can show
     something useful without leaking implementation details.
+
+    ``bearer`` carries the user's access_token for endpoints that operate on
+    the authenticated user (e.g. ``PUT /user`` for password change).
     """
+    headers = _supabase_headers()
+    if bearer:
+        headers["Authorization"] = f"Bearer {bearer}"
+
     try:
-        response = httpx.post(
+        response = httpx.request(
+            method,
             _supabase_auth_url(path),
-            headers=_supabase_headers(),
+            headers=headers,
             json=payload,
             timeout=_SUPABASE_TIMEOUT,
         )
@@ -86,6 +116,10 @@ def _proxy_supabase_auth(path: str, payload: dict[str, Any]) -> dict[str, Any]:
             pass
         raise HTTPException(status_code=response.status_code, detail=detail)
 
+    # Some Supabase endpoints (notably /recover) return an empty body on
+    # success; treat that as {} so callers don't have to special-case it.
+    if not response.content:
+        return {}
     result: dict[str, Any] = response.json()
     return result
 
@@ -146,6 +180,40 @@ async def refresh(body: RefreshRequest) -> dict[str, Any]:
         "refresh_token": data["refresh_token"],
         "expires_in": data.get("expires_in"),
     }
+
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest) -> dict[str, str]:
+    """Trigger Supabase to email a password-recovery link to ``email``.
+
+    Always returns success-shape, even when the email doesn't exist —
+    standard practice to avoid leaking which addresses are registered.
+    Supabase itself does this; we just forward.
+    """
+    _proxy_supabase_auth(
+        "/recover",
+        {"email": body.email, "redirect_to": body.redirect_to},
+    )
+    return {"message": "If an account exists for that email, a reset link has been sent."}
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest) -> dict[str, str]:
+    """Apply a new password using the recovery access_token from the email link.
+
+    Body:
+        access_token: token Supabase put in the URL hash of the recovery link
+        new_password: the new password to set
+
+    Forwards to ``PUT /auth/v1/user`` with the recovery token as Bearer auth.
+    """
+    _proxy_supabase_auth(
+        "/user",
+        {"password": body.new_password},
+        method="PUT",
+        bearer=body.access_token,
+    )
+    return {"message": "Password updated. You can now log in."}
 
 
 @router.get("/login-url")
