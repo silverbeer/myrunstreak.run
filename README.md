@@ -128,6 +128,7 @@ See [docs/PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md).
 - [Goals & Multi-Metric Tracking](docs/GOALS_TRACKING.md) *(planned)*
 - [Sources, BYOK & Import](docs/SOURCES_AND_IMPORT.md) *(planned)*
 - [Gear & Device Tracking](docs/GEAR_TRACKING.md) *(planned)*
+- [Social & Community](docs/SOCIAL.md) *(planned)*
 
 ## License
 
