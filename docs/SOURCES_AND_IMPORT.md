@@ -6,12 +6,37 @@
 
 ## Goal
 
-Ingest runs from multiple sources, let users **bring their own credentials
-(BYOK)**, and **import runs from files** (single activity or a bulk zip) for
-sources without a live API — or for backfill/migration.
+Ingest runs from multiple sources, connect each user's source account
+(per-user credentials, see below), and **import runs from files** (single
+activity or a bulk zip) for sources without a live API — or for backfill.
 
 Today: SmashRun only (OAuth). The schema is already multi-source ready; this
 formalizes the abstraction and adds file import.
+
+> **Note on "BYOK".** The project name and earlier drafts say "bring your own
+> key," but for our main sources that's a misnomer — **SmashRun and Strava are
+> OAuth, the user never brings a key** (see [Credential models](#credential-models)).
+> True paste-a-key BYOK applies only to services that issue per-user API keys.
+
+## Positioning — SmashRun is the preferred source
+
+**SmashRun is the recommended, first-class data source for myrunstreak.run**, and
+**SmashRun paid (Pro) users are the primary target for the initial invite-only
+cohort.** Rationale:
+
+- SmashRun's API terms are permissive and free to integrate (no tiers, no stated
+  user cap) — the opposite of Strava's 2026 gatekeeping.
+- The owner already runs on SmashRun and wants to promote/support it.
+- Targeting engaged SmashRun (Pro) runners means inviting users who already have
+  rich run history to sync on day one.
+
+Other sources (Strava, file import) are **secondary / resilience** paths, not the
+front door. Onboarding copy and the "Connect a source" UI should lead with
+SmashRun.
+
+> Open: confirm whether SmashRun **free** accounts work over the API or whether
+> Pro is required (see [Open questions](#open-questions)). Primary target is Pro
+> users regardless, but the answer decides whether free users are even eligible.
 
 ## What already exists
 
@@ -32,7 +57,7 @@ same contract and register by `source_type`.
 
 ```
 SourceProvider:
-  connect(user) -> stores credentials in user_sources   # OAuth dance OR BYOK key
+  connect(user) -> stores credentials in user_sources   # OAuth flow (or paste-key, rare)
   fetch_activities(user_source, since) -> list[Activity]
   fetch_goals(user_source) -> Goal | None                # SmashRun only, optional
   normalize(raw) -> Activity                             # source format -> canonical
@@ -44,20 +69,33 @@ SourceProvider:
   `source_activity_id` / `external_id` stay the single normalization target for
   every provider, including import.
 
-## BYOK — bring your own credentials
+## Credential models
 
-Two credential shapes, both stored per-user in `user_sources`:
+Two shapes, both stored per-user in `user_sources`. **Our primary sources use
+the first one — there is no user-supplied key for SmashRun or Strava.**
 
-1. **OAuth providers** (SmashRun today; Strava/Garmin later) — the user
-   authorizes; we store their tokens. The *app* still holds the OAuth client
-   creds (read from env, per fix #74) — that's app config, not the user's key.
-2. **API-key providers** — the user pastes their own key/token (true BYOK).
-   Stored in `user_sources` (reuse the token columns, or add `api_key`).
+1. **OAuth providers — SmashRun, Strava (and most others).**
+   - The **app** holds **one** registered app credential (SmashRun app
+     ID/secret; Strava client ID/secret), server-side, from the app secret /
+     env. One registration covers *all* users — never per-user.
+   - The **user** authorizes on the *provider's* site and we receive a per-user
+     **OAuth token** (`access_token` / `refresh_token`). The user never sees,
+     holds, or pastes a key.
+   - This is **required**, not optional: SmashRun's terms forbid requesting or
+     storing user credentials and mandate the OAuth flow; its app secret "may
+     not be shared or used for more than one application." So per-user app
+     secrets or credential prompts would **violate** the terms. See
+     `docs/SMASHRUN_OAUTH.md`.
+2. **Per-user API-key providers (the actual "BYOK" case).** Only for services
+   that issue a key *to each user*. The user pastes their key; we store it.
+   **Does not apply to SmashRun or Strava.** Reuse the token columns or add
+   `api_key`.
 
-**Security (must-fix for BYOK):** credentials in `user_sources` are currently
-**plaintext columns**. Before onboarding other users' keys, encrypt at rest
-(pgcrypto or app-level envelope encryption) and keep these columns under strict
-RLS — never anon-readable. A leaked third-party running key is a real breach.
+**Security (must-fix before onboarding others):** the token columns in
+`user_sources` are currently **plaintext**. Encrypt at rest (pgcrypto or
+app-level envelope encryption) under strict RLS — never anon-readable. A leaked
+OAuth token (or a pasted key) is a real breach. Tie this to the invite-only work
+(SB-96) so no second user's tokens are ever stored in plaintext.
 
 ## Import — single run & bulk zip
 
@@ -130,7 +168,13 @@ how we integrate. Key points, from the June 2026 Strava API Team announcement:
 
 ## Open questions
 
-- Encryption approach for BYOK creds: pgcrypto vs. app-level envelope.
+- **SmashRun free vs Pro for API access.** The API Terms state no user-
+  subscription requirement, but are silent on product-level gating; SmashRun
+  does sell a paid "Pro" tier. Confirm whether **free** SmashRun accounts can be
+  read over the API, or whether some/all data needs Pro. **Verify by (1) testing
+  a free account against a dev build, and (2) emailing `api@smashrun.com`.**
+  (Primary target is Pro users either way.)
+- Encryption approach for stored tokens / keys: pgcrypto vs. app-level envelope.
 - `import` as a new `source_type` enum value vs. reuse `other` + a flag.
 - Where do uploaded raw files live — ephemeral (parse-and-discard) vs. retained
   in object storage for re-processing? Retention has privacy implications.
