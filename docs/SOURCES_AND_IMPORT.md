@@ -91,6 +91,36 @@ failed). This is the migration/backfill path; safe to re-run.
 - File-type allowlist (`.gpx`/`.tcx`/`.fit`/`.json`/`.zip`); reject everything
   else. Scope all writes to the authenticated user.
 
+## Strava specifics
+
+Strava is a planned provider, but its Developer Program (2026 changes) constrains
+how we integrate. Key points, from the June 2026 Strava API Team announcement:
+
+- **Direct API only — no intermediary/MCP layer.** Strava now *bans* apps that
+  route athlete data through third-party intermediary platforms (their anti-AI-
+  scraping measure). Our `SourceProvider` for Strava must be a **direct OAuth
+  integration**, which is explicitly still supported. We must **not** ingest
+  Strava data through Strava's official MCP or any proxy — that is the banned
+  pattern. (Strava's MCP is end-user AI tooling, not a data source for apps.)
+- **Tier caps scaling.** *Standard Tier* allows **up to 10 athletes** (self-serve,
+  higher rate limits, Strava subscription required for the developer). Past 10
+  users we need **Extended Access Tier** (Strava review/approval, greater user
+  capacity, no subscription). The invite-only 1→N plan must account for this cap —
+  Strava gates growth differently than SmashRun.
+- **Free athlete export feeds our import path.** Every Strava athlete can download
+  their data for free at any time. That export is a first-class input to the
+  single-run / bulk-zip importer below — a low-friction, policy-safe path that
+  sidesteps tier/subscription limits.
+- **June 1 2027 technical changes** to design for up front:
+  - OAuth tokens must be sent in **request headers**, not form params.
+  - Base URL changes: `https://www.strava.com/api/v3` → `https://www.api-v3.strava.com`.
+  - Use the new `oauth/revoke` endpoint; `oauth/deauthorize` is retired.
+
+> Inverse idea (separate, future): rather than consuming Strava's MCP, myrunstreak
+> could **expose its own MCP** over unified data (SmashRun + Strava + manual
+> metrics), so "ask AI about my training" works across all sources. Complementary
+> to Strava's MCP, not dependent on it. Tracked as a placeholder issue.
+
 ## Ties to the rest of the platform
 
 - Imported runs become `runs` rows → projected into `metric_entries`
