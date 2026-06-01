@@ -208,16 +208,20 @@ logger.info("Synced %s runs since %s" % (count, date))
 ### Module Organization
 
 ```
+backend/           # FastAPI app (app.py, routes/, jobs/, auth.py, cache.py)
+frontend/          # Vue 3 + Vite SPA
 src/
-  shared/          # Shared code used by multiple lambdas
+  cli/             # stk — thin-client CLI
+  shared/          # Shared code used by the backend and CLI
     models/        # Pydantic models
-    duckdb_ops/    # Database operations
-    smashrun/      # SmashRun integration
-  lambdas/         # Lambda function handlers
-    sync_runs/
-    api/
-  utils/           # General utilities
+    supabase_ops/  # Supabase repositories (runs, goals, users, tokens)
+    smashrun/      # SmashRun OAuth + API client
+helm/myrunstreak/  # Helm chart (deployed to LKE via ArgoCD)
+supabase/migrations/  # Postgres schema migrations
 ```
+
+> Note: the app runs as a FastAPI service on Kubernetes, not AWS Lambda. The
+> `src/shared/` package is imported by both `backend/` and `src/cli/`.
 
 ### Import Paths
 

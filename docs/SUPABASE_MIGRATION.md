@@ -1,5 +1,11 @@
 # Supabase Migration Guide
 
+> **Status: completed (historical record).** The DuckDB → Supabase Postgres
+> migration is done. Note this document predates the later LKE migration — the
+> "Lambda" components described below were subsequently replaced by the FastAPI
+> backend on Kubernetes. For the current system see [ARCHITECTURE.md](ARCHITECTURE.md)
+> and [DATA_MODEL.md](DATA_MODEL.md). Kept for history.
+
 Complete guide for migrating MyRunStreak.com from DuckDB to Supabase PostgreSQL with multi-user support.
 
 ## Overview

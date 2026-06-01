@@ -1,165 +1,132 @@
-# MyRunStreak.com
+# MyRunStreak.run
 
-A serverless multi-user running analytics platform powered by SmashRun, Supabase, and AWS.
+A multi-user running analytics platform that tracks daily running streaks from
+SmashRun. FastAPI backend + Vue 3 web app, running on Linode Kubernetes (LKE)
+with Supabase Postgres.
 
 ## Overview
 
-MyRunStreak.com automatically tracks and analyzes daily running streaks by connecting to the SmashRun API via OAuth. Run data is stored in Supabase PostgreSQL with multi-user support, providing scalable, serverless analytics.
-
-## Quick Start
-
-```bash
-# Install the CLI
-uv tool install git+https://github.com/silverbeer/myrunstreak.com
-
-# Login with SmashRun
-stk auth login
-
-# Sync your runs
-stk sync
-
-# View your stats
-stk stats
-```
-
-The CLI requires **no configuration** - it connects directly to `api.myrunstreak.run`.
+MyRunStreak connects to the SmashRun API via OAuth, syncs your runs into Supabase
+Postgres, and surfaces streaks, stats, and goal progress through a web dashboard
+and a thin-client CLI. Sync runs on a schedule; a public status feed powers
+embeds on other sites.
 
 ## Architecture
 
 | Component | Technology |
 |-----------|------------|
-| API | `api.myrunstreak.run` (API Gateway + Lambda) |
-| Database | Supabase PostgreSQL |
-| Auth | OAuth tokens stored in Supabase |
-| Scheduling | AWS EventBridge (daily sync) |
-| Secrets | AWS Secrets Manager |
-| IaC | Terraform |
-| CI/CD | GitHub Actions |
+| Frontend | Vue 3 + Vite + Tailwind + Pinia (`myrunstreak.run`) |
+| Backend API | FastAPI (`api.myrunstreak.run`) |
+| Database | Supabase Postgres (RLS, SQL migrations) |
+| Cache | Redis (stats endpoints) |
+| Auth | Supabase Auth (JWT); SmashRun OAuth for data sync |
+| Runtime | Linode Kubernetes Engine (LKE) |
+| Packaging | Helm chart (`helm/myrunstreak/`) |
+| Delivery | GitHub Actions → GHCR images → ArgoCD GitOps |
+| Scheduling | K8s CronJobs (daily sync, status publish) |
+| Secrets | AWS Secrets Manager → External Secrets Operator → K8s Secret |
 
-## CLI Commands
+AWS is used only for the Terraform state backend and a single Secrets Manager
+secret that the External Secrets Operator pulls into the cluster. All
+application infrastructure runs on LKE. (The original AWS Lambda + API Gateway
+stack was decommissioned — see `docs/ARCHITECTURE.md`.)
+
+```
+SmashRun API ──OAuth──> sync CronJob ──> Supabase Postgres
+                                              │
+                       FastAPI backend ◄──────┘   (Redis-cached)
+                              ▲
+              ┌───────────────┼────────────────┐
+        Vue web app       stk CLI        public status feed
+```
+
+## Repo layout
+
+```
+myrunstreak.run/
+├── backend/                # FastAPI app (see backend/README.md)
+│   ├── app.py              # entry — CORS, routes, /health
+│   ├── routes/             # stats, runs, sync, auth_routes
+│   ├── jobs/               # CronJob entrypoints (sync_runs, publish_status)
+│   ├── goals.py            # SmashRun goal-progress presentation
+│   └── streaks.py
+├── frontend/               # Vue 3 + Vite SPA (nginx-served)
+│   └── src/{views,components,composables,stores,router}
+├── src/
+│   ├── cli/                # stk — thin-client CLI (auth/sync/stats via backend)
+│   └── shared/             # Supabase ops, SmashRun client, Pydantic models
+├── helm/myrunstreak/       # Helm chart (backend, frontend, redis, cronjobs)
+├── supabase/migrations/    # Postgres schema migrations
+├── terraform/              # state backend + ASM secret only (see docs/TERRAFORM.md)
+└── docs/
+```
+
+## Quick start (local)
 
 ```bash
-stk auth login      # Authenticate with SmashRun
-stk auth status     # Check login status
-stk sync            # Sync recent runs
-stk sync --full     # Sync all runs
-stk stats           # Overall statistics
-stk runs            # List recent runs
-stk streak          # Current streak
+# Backend
+uv sync --all-extras
+supabase start                                   # local Postgres
+uv run uvicorn backend.app:app --reload --port 8000
+
+# Frontend
+cd frontend && npm install && npm run dev
 ```
 
-## Tech Stack
+See [QUICKSTART.md](QUICKSTART.md) and [docs/TESTING.md](docs/TESTING.md).
 
-- **Language**: Python 3.12+
-- **Package Manager**: UV
-- **Database**: Supabase PostgreSQL
-- **Cloud**: AWS (Lambda, API Gateway, Secrets Manager, EventBridge)
-- **IaC**: Terraform
-- **CLI**: Typer + Rich
+## CLI (`stk`)
 
-## Project Structure
+`stk` is a thin client — it authenticates and syncs through the backend, which
+holds the SmashRun OAuth credentials server-side.
 
+```bash
+stk auth login      # authenticate
+stk auth status     # check login status
+stk sync            # sync recent runs
+stk stats           # overall statistics
+stk runs            # list recent runs
+stk streak          # current streak
 ```
-myrunstreak.com/
-├── src/
-│   ├── cli/                    # CLI application (stk)
-│   ├── lambdas/
-│   │   ├── sync_runs/          # Daily sync Lambda
-│   │   └── query_runs/         # Query API Lambda
-│   └── shared/
-│       ├── supabase_ops/       # Database operations
-│       ├── smashrun/           # SmashRun API client
-│       └── models/             # Pydantic models
-├── terraform/
-│   ├── modules/                # Reusable Terraform modules
-│   └── environments/           # Environment configs (dev/prod)
-├── supabase/
-│   └── migrations/             # Database migrations
-└── tests/                      # Unit & integration tests
-```
+
+## Tech stack
+
+- **Backend**: Python 3.12, FastAPI, UV, Pydantic v2, Supabase, Redis
+- **Frontend**: Vue 3, Vite, Tailwind, Pinia, vue-router, supabase-js, Vitest
+- **Infra**: LKE, Helm, ArgoCD, GitHub Actions, GHCR, External Secrets
+- **Data**: Supabase Postgres (migrations under `supabase/migrations/`)
 
 ## Development
 
-### Prerequisites
-
-- Python 3.12+
-- UV package manager
-- AWS CLI
-- Terraform 1.5+
-- Supabase CLI
-
-### Setup
-
 ```bash
-# Clone and install
-git clone https://github.com/silverbeer/myrunstreak.com.git
-cd myrunstreak.com
 uv sync --all-extras
+uv run pytest                         # shared/CLI tests
+uv run --project backend pytest backend/tests/
+cd frontend && npm test               # vitest
 
-# Start local Supabase
-supabase start
-
-# Run tests
-uv run pytest
-```
-
-### Code Quality
-
-```bash
-uv run ruff check .      # Linting
-uv run ruff format .     # Formatting
-uv run mypy src/         # Type checking
+uv run ruff check .                   # lint
+uv run ruff format .                  # format
+uv run mypy src/                      # type check
 ```
 
 ## Deployment
 
-### 1. Bootstrap Terraform State
+CI builds backend/frontend images to GHCR on push, then bumps the image tag in
+`helm/myrunstreak/values.yaml`; ArgoCD reconciles the chart onto LKE. Supabase
+migrations apply via the `supabase-migrations` workflow.
 
-```bash
-cd terraform/bootstrap
-terraform init && terraform apply
-```
-
-See [docs/TERRAFORM_BOOTSTRAP.md](docs/TERRAFORM_BOOTSTRAP.md)
-
-### 2. Configure Secrets
-
-Store credentials in AWS Secrets Manager:
-- `myrunstreak/{env}/supabase/credentials`
-- `myrunstreak/{env}/smashrun/oauth`
-
-### 3. Deploy Infrastructure
-
-```bash
-cd terraform/environments/dev
-terraform init && terraform apply
-```
-
-See [docs/PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md)
+See [docs/PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md).
 
 ## Documentation
 
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [Terraform Bootstrap](docs/TERRAFORM_BOOTSTRAP.md)
-- [GitHub Actions CI/CD](docs/GITHUB_ACTIONS.md)
-- [GitHub OIDC Authentication](docs/GITHUB_OIDC.md) - Secure, token-free AWS authentication
-- [Production Deployment](docs/PRODUCTION_DEPLOYMENT.md)
-- [Local Testing](docs/LOCAL_TESTING.md)
-
-## Features
-
-**Current:**
-- Multi-user support with OAuth authentication
-- Automatic daily sync from SmashRun
-- Streak tracking and analytics
-- CLI tool with zero configuration
-- RESTful API at `api.myrunstreak.run`
-
-**Planned:**
-- Web dashboard
-- Multi-source support (Garmin, Strava)
-- Notifications for streak milestones
-- Social features
+- [Architecture](docs/ARCHITECTURE.md)
+- [Data Model](docs/DATA_MODEL.md)
+- [Testing](docs/TESTING.md)
+- [SmashRun OAuth](docs/SMASHRUN_OAUTH.md)
+- [Terraform (state backend only)](docs/TERRAFORM.md)
+- [Units](docs/UNITS.md)
+- [Goals & Multi-Metric Tracking](docs/GOALS_TRACKING.md) *(planned)*
+- [Sources, BYOK & Import](docs/SOURCES_AND_IMPORT.md) *(planned)*
 
 ## License
 

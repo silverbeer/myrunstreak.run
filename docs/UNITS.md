@@ -123,26 +123,22 @@ class Activity(BaseModel):
         return self.distance * 0.621371
 ```
 
-#### 2. DuckDB Views
-```sql
-CREATE VIEW runs_miles AS
-SELECT
-    activity_id,
-    distance_km * 0.621371 as distance_miles,
-    average_pace_min_per_km / 0.621371 as average_pace_min_per_mile,
-    average_speed_kph * 0.621371 as average_speed_mph,
-    ...
-FROM runs;
+#### 2. Backend (presentation edge)
+The FastAPI backend stores and queries kilometers, then converts to miles when
+building API responses — e.g. `km_to_miles()` in `backend/goals.py`. Conversion
+happens at the edge, not in the database.
+
+```python
+KM_TO_MILES = 0.621371
+
+def km_to_miles(km: float) -> float:
+    return km * KM_TO_MILES
 ```
 
-#### 3. API Layer (Future)
-```python
-# Lambda function automatically uses imperial views
-def get_run_summary():
-    # Queries runs_miles view by default
-    result = db.execute("SELECT * FROM runs_miles")
-    return result  # Already in miles!
-```
+#### 3. Frontend
+The Vue app renders miles by default and reads the user's unit preference via
+the `useUserPreferences` composable, so a future metric user can flip to km
+without touching stored data.
 
 ## 🌍 Supporting Future Users (Metric System)
 
