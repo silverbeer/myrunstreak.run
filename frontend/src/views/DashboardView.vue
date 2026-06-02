@@ -35,6 +35,11 @@
         />
       </div>
 
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <TodayCard :goals="metricGoals" :types="metricTypes" />
+        <QuickLog :types="metricTypes" @logged="loadMetricGoals" />
+      </div>
+
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
           label="Total runs"
@@ -106,7 +111,10 @@ import StreakHero from '@/components/StreakHero.vue'
 import StreakHeatmap from '@/components/StreakHeatmap.vue'
 import MonthlyDistanceChart from '@/components/MonthlyDistanceChart.vue'
 import GoalsCard from '@/components/GoalsCard.vue'
+import TodayCard from '@/components/TodayCard.vue'
+import QuickLog from '@/components/QuickLog.vue'
 import { useStats } from '@/composables/useStats'
+import { useMetrics } from '@/composables/useMetrics'
 import { useRecentRuns } from '@/composables/useRecentRuns'
 import { useMonthlyStats } from '@/composables/useMonthlyStats'
 import { useGoals } from '@/composables/useGoals'
@@ -132,6 +140,12 @@ const {
 } = useRecentRuns(100)
 const { months, loading: monthlyLoading, error: monthlyError, load: loadMonthly } = useMonthlyStats(12)
 const { goals, error: goalsError, load: loadGoals } = useGoals()
+const {
+  types: metricTypes,
+  goals: metricGoals,
+  loadTypes: loadMetricTypes,
+  loadGoals: loadMetricGoals,
+} = useMetrics()
 const { unit } = useUserPreferences()
 
 const initialLoading = computed(
@@ -148,8 +162,10 @@ const isNewUser = computed(() => stats.value !== null && stats.value.total_runs 
 const heatmapGrid = computed(() => buildHeatmapGrid(recentRuns.value, 12))
 
 const reload = async () => {
-  await Promise.all([loadStats(), loadRecent(), loadMonthly(), loadGoals()])
+  await Promise.all([loadStats(), loadRecent(), loadMonthly(), loadGoals(), loadMetricGoals()])
 }
 
-onMounted(reload)
+onMounted(async () => {
+  await Promise.all([reload(), loadMetricTypes()])
+})
 </script>
