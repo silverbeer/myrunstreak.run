@@ -1,175 +1,100 @@
-# MyRunStreak.com - Quick Start Guide
+# MyRunStreak.run — Quick Start
 
-This guide will walk you through setting up the project from scratch.
+Get the backend, frontend, and a local database running for development.
 
-## Prerequisites Checklist
+## Prerequisites
 
-- [ ] Python 3.12+ installed
-- [ ] UV package manager installed (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- [ ] AWS CLI installed and configured (`aws configure`)
-- [ ] Terraform 1.5+ installed
-- [ ] Git configured
-- [ ] SmashRun API credentials (Client ID & Secret) from https://smashrun.com/settings/api
+- [ ] Python 3.12+ and [UV](https://github.com/astral-sh/uv)
+      (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- [ ] Node.js 20+ (for the Vue frontend)
+- [ ] [Supabase CLI](https://supabase.com/docs/guides/cli) (local Postgres)
+- [ ] Docker (Supabase CLI runs Postgres in containers)
+- [ ] SmashRun API credentials (Client ID & Secret) from
+      https://smashrun.com/settings/api — only needed to exercise live sync
 
-## Step 1: Install Python Dependencies
-
-```bash
-# Install all Python dependencies
-make install
-
-# Or manually:
-uv sync --all-extras
-
-# Activate the virtual environment
-source .venv/bin/activate
-```
-
-## Step 2: Verify Installation
+## 1. Install dependencies
 
 ```bash
-# Run tests (should pass or skip if no tests yet)
-make test
-
-# Check linting
-make lint
-
-# Verify type checking
-make type-check
+uv sync --all-extras          # Python: backend, CLI, shared
+cd frontend && npm install && cd ..
 ```
 
-## Step 3: Bootstrap Terraform Remote State
-
-This creates the S3 bucket and DynamoDB table for Terraform state management.
+## 2. Start the local database
 
 ```bash
-# Get your AWS account ID
-aws sts get-caller-identity --query Account --output text
-
-# Create bootstrap config
-cd terraform/bootstrap
-cp terraform.tfvars.example terraform.tfvars
-
-# Edit terraform.tfvars and replace 123456789012 with your actual AWS account ID
-# Example: aws_account_id = "987654321098"
-
-# Bootstrap the remote state backend
-terraform init
-terraform plan
-terraform apply
-
-# IMPORTANT: Save the output - it shows your backend configuration
+supabase start                # spins up local Postgres + applies migrations
 ```
 
-## Step 4: Configure Dev Environment
+Note the printed API URL, anon key, and JWT secret — you'll need them for `.env`.
+
+## 3. Run the backend
 
 ```bash
-cd ../environments/dev
-
-# Create your tfvars file
-cp terraform.tfvars.example terraform.tfvars
-
-# Edit terraform.tfvars and add:
-# 1. Your SmashRun Client ID
-# 2. Your SmashRun Client Secret
-
-# Edit main.tf and uncomment the backend block (lines 6-12)
-# Replace <YOUR_ACCOUNT_ID> with your actual AWS account ID
+cp backend/.env.example backend/.env     # fill in Supabase URL / key / jwt_secret
+uv run uvicorn backend.app:app --reload --port 8000
+# health check
+curl localhost:8000/health
 ```
 
-## Step 5: Initialize Dev Environment
+## 4. Run the frontend
 
 ```bash
-# Initialize Terraform with remote backend
-terraform init
-
-# Verify configuration
-terraform plan
-
-# The plan should show resources to be created
+cd frontend
+cp .env.example .env          # point at the backend + Supabase (if present)
+npm run dev                   # Vite dev server
 ```
 
-## Step 6: Current Project Status
-
-At this point, you have:
-
-✅ Python project initialized with UV
-✅ All dependencies installed
-✅ Terraform remote state backend created
-✅ Dev environment configured
-✅ Proper .gitignore for secrets
-✅ Code quality tools (ruff, mypy, pytest)
-✅ Makefile for common operations
-
-## Next Steps
-
-Now you're ready to build the actual infrastructure:
-
-1. **Design DuckDB Schema** - Define the data model for run data
-2. **Create Terraform Modules** - Lambda, S3, API Gateway, EventBridge
-3. **Implement SmashRun Integration** - OAuth flow and API client
-4. **Build Lambda Functions** - Daily sync and API endpoints
-5. **Set up CI/CD** - GitHub Actions for automated deployments
-
-## Quick Reference
+## 5. Verify
 
 ```bash
-# Python Development
-make install      # Install dependencies
-make test         # Run tests
-make lint         # Lint code
-make format       # Format code
-make type-check   # Type checking
+uv run pytest                              # shared / CLI tests
+uv run --project backend pytest backend/tests/
+cd frontend && npm test                    # vitest
 
-# Terraform (from terraform/environments/dev)
-terraform plan    # Preview changes
-terraform apply   # Apply changes
-terraform destroy # Destroy infrastructure
+uv run ruff check . && uv run ruff format --check .
+uv run mypy src/
 ```
 
-## Troubleshooting
+See [docs/TESTING.md](docs/TESTING.md) for the full testing guide.
 
-### AWS Credentials Not Found
+## CLI (`stk`)
+
+`stk` is a thin client that authenticates and syncs through the backend.
 
 ```bash
-# Configure AWS CLI
-aws configure
-
-# Verify credentials
-aws sts get-caller-identity
+stk auth login        # authenticate via the backend
+stk auth status
+stk sync              # sync recent runs
+stk stats             # overall statistics
 ```
 
-### Terraform Backend Already Exists
+## Live SmashRun sync (optional)
 
-If you see "bucket already exists", it means the bootstrap was already run. This is normal - you only need to run it once.
+SmashRun OAuth client credentials are held **server-side** by the backend (in
+local dev, via `backend/.env`; in production, from the app secret). Connect your
+SmashRun account through the auth flow, then run a sync. See
+[docs/SMASHRUN_OAUTH.md](docs/SMASHRUN_OAUTH.md).
 
-### Permission Denied Errors
+## Make targets
 
-Make sure your AWS credentials have permissions to:
-- Create S3 buckets
-- Create DynamoDB tables
-- Create Lambda functions
-- Create API Gateway resources
-- Create IAM roles and policies
+```bash
+make install      # uv sync --all-extras
+make test         # pytest
+make lint         # ruff check
+make format       # ruff format
+make type-check   # mypy
+```
 
-## Getting SmashRun API Credentials
+> The `*-tf` Make targets manage only the Terraform **state backend** and the
+> app secret — not application infrastructure, which is deployed by Helm/ArgoCD
+> onto LKE. See [docs/TERRAFORM.md](docs/TERRAFORM.md).
 
-1. Go to https://smashrun.com/settings/api
-2. Log in with your SmashRun account
-3. Create a new application
-4. Copy the Client ID and Client Secret
-5. Add them to `terraform/environments/dev/terraform.tfvars`
+## Security reminders
 
-## Security Reminders
+🔒 Never commit `.env` files or `*.tfstate`. They're already in `.gitignore`.
 
-🔒 **NEVER commit these files:**
-- `terraform.tfvars` (contains secrets)
-- `.env` files (contains credentials)
-- `*.tfstate` files (contains infrastructure details)
+## Help
 
-✅ **These are already in .gitignore** - just don't force-add them!
-
-## Need Help?
-
-- Check the main [README.md](README.md) for architecture overview
-- Read [terraform/README.md](terraform/README.md) for Terraform details
-- Review the code - it's well-commented for learning!
+- [README.md](README.md) — overview
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how it all fits together
+- [docs/PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md) — deploy
