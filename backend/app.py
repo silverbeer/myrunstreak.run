@@ -3,7 +3,7 @@
 import logging
 
 from backend.config import get_settings
-from backend.routes import auth_routes, runs, stats, sync
+from backend.routes import auth_routes, metrics, runs, stats, sync
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -30,7 +30,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Api-Key"],
         max_age=300,
     )
@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(runs.router)
     app.include_router(sync.router)
     app.include_router(auth_routes.router)
+    app.include_router(metrics.router)
 
     return app
 

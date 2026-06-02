@@ -10,6 +10,20 @@ from .enums import (
     WeatherType,
 )
 from .goal import Goal
+from .metric import (
+    GoalComparator,
+    GoalKind,
+    GoalPeriod,
+    GoalProgress,
+    GoalStatus,
+    MetricAggregation,
+    MetricEntry,
+    MetricEntryCreate,
+    MetricGoal,
+    MetricGoalCreate,
+    MetricGoalUpdate,
+    MetricType,
+)
 from .nested import HeartRateRecovery, Lap, Song
 from .split import Split
 from .units import (
@@ -25,6 +39,19 @@ __all__ = [
     "Activity",
     "Goal",
     "Split",
+    # Metric tracking
+    "MetricType",
+    "MetricEntry",
+    "MetricEntryCreate",
+    "MetricGoal",
+    "MetricGoalCreate",
+    "MetricGoalUpdate",
+    "GoalProgress",
+    "MetricAggregation",
+    "GoalKind",
+    "GoalPeriod",
+    "GoalComparator",
+    "GoalStatus",
     # Nested models
     "Lap",
     "Song",
