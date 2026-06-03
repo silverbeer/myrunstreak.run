@@ -1,10 +1,19 @@
 <template>
   <div class="bg-white rounded-2xl shadow-md p-6 h-full border border-gray-100">
-    <div class="flex items-center gap-2 mb-4">
-      <span class="text-lg">📈</span>
-      <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-700">
-        Today
-      </h3>
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">📈</span>
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-700">
+          Today
+        </h3>
+      </div>
+      <button
+        type="button"
+        class="text-xs font-medium text-brand-600 hover:text-brand-700"
+        @click="$emit('create')"
+      >
+        + New goal
+      </button>
     </div>
 
     <div v-if="goals.length === 0" class="text-sm text-gray-500">
@@ -45,6 +54,8 @@ const props = defineProps<{
   goals: GoalProgress[]
   types: MetricType[]
 }>()
+
+defineEmits<{ create: [] }>()
 
 interface Row {
   id: string

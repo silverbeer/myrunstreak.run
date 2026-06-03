@@ -1,6 +1,17 @@
 import { ref } from 'vue'
 import { apiCall } from '@/config/api'
-import type { GoalProgress, MetricEntry, MetricType } from '@/types/metrics'
+import type { GoalProgress, MetricEntry, MetricGoal, MetricType } from '@/types/metrics'
+
+export interface NewGoalPayload {
+  metric_key: string
+  kind: string
+  period: string
+  target: number
+  comparator: string
+  rest_budget?: number
+  period_start?: string
+  period_end?: string
+}
 
 export function useMetrics() {
   const types = ref<MetricType[]>([])
@@ -35,5 +46,12 @@ export function useMetrics() {
     })
   }
 
-  return { types, goals, loading, error, loadTypes, loadGoals, logEntry }
+  const createGoal = async (payload: NewGoalPayload): Promise<MetricGoal> => {
+    return apiCall<MetricGoal>('/metrics/goals', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  }
+
+  return { types, goals, loading, error, loadTypes, loadGoals, logEntry, createGoal }
 }
