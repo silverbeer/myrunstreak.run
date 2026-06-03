@@ -105,6 +105,56 @@ two of them.
 The current app only understands #3, only for running. The engine understands
 all three for every metric.
 
+## Qualified & layered streaks (Phase 1)
+
+The base taxonomy counts *days with any entry*. Real streaks are richer — they
+have a **per-period threshold** and they **nest**. Motivating example (a real
+11-year streak):
+
+- **Outer:** run **≥ 1 mile every day** — for 11+ years.
+- **Inner:** within that, run **≥ 100 miles every month** — every month.
+- **This month:** run **≥ 5 miles, at least 5 times**.
+
+These need two additive concepts on `metric_goals` — **no change to
+`metric_entries`, no data migration** (the run log already holds every value +
+date; only goal *interpretation* changes):
+
+### 1. Qualifier — "a unit only counts if it clears a threshold"
+
+Add to a goal:
+- `qualifier_unit` — `day | week | month`: the granularity each tally is measured over.
+- `qualifier_threshold` + `qualifier_comparator` (`gte`/`lte`): the metric's
+  aggregate over that unit must satisfy this to count.
+
+A null qualifier = today's behavior ("any entry counts"). One field set powers
+every example:
+
+| Goal | kind | qualifier_unit | qualifier | target |
+|---|---|---|---|---|
+| Daily 1-mile streak | streak | day | sum ≥ 1 mi | (ongoing) |
+| 100-mi-every-month streak | streak | **month** | sum ≥ 100 mi | (ongoing) |
+| 5 mi × 5 times this month | frequency | day | sum ≥ 5 mi | 5 |
+| plain "run every day" | streak | day | (none) | (ongoing) |
+
+This also generalizes **streaks to period granularity**: a streak becomes
+"consecutive **units** (day/week/month), each clearing the qualifier," counted
+with `rest_budget` tolerance — not just consecutive days.
+
+### 2. Nesting — "a streak within a streak"
+
+The relationship ("the monthly-100 streak lives inside the daily streak") is
+**presentation**, not math: the daily and monthly streaks are *independent*
+qualified streaks computed over the same entries. Add an optional
+`parent_goal_id` (self-FK on `metric_goals`) to express the nesting for grouped
+display. The progress engine computes each layer independently; the parent link
+only drives how they render (a streak nested inside a streak).
+
+**Why it's additive:** a few nullable columns on `metric_goals` + extra branches
+in `backend/metrics_progress.py` (per-unit aggregation + qualify check). The
+entries model and existing goals are untouched — the generic-engine bet paying
+off again. (Showing a multi-year streak needs the historical runs as entries;
+SmashRun sync carries that history, with file import as the backfill path.)
+
 ## Motivation mechanics
 
 Proven patterns, prioritized by impact:
@@ -216,7 +266,8 @@ from a common base.
   One-tap logging + a Today card. Goal: owner is tracking new metrics on June 1.
 - **Phase 1 — pace, consistency & install.** Pace/projection engine.
   Generalized streak + heatmap per metric. Frequency goals (weigh-in count).
-  **Installable PWA + offline logging queue.**
+  **Qualified & layered streaks** (per-period threshold + nesting — see section
+  above). **Installable PWA + offline logging queue.**
 - **Phase 2 — strength + rewards.** Weight training (session check-ins, then
   volume). Milestones/badges. Rest-day budget / streak-freeze.
 - **Phase 3 — polish + nudges.** UX pass; push nudges via the existing
