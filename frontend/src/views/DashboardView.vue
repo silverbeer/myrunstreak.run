@@ -36,9 +36,16 @@
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        <TodayCard :goals="metricGoals" :types="metricTypes" />
+        <TodayCard :goals="metricGoals" :types="metricTypes" @create="showNewGoal = true" />
         <QuickLog :types="metricTypes" @logged="loadMetricGoals" />
       </div>
+
+      <NewGoalForm
+        :show="showNewGoal"
+        :types="metricTypes"
+        @created="onGoalCreated"
+        @cancel="showNewGoal = false"
+      />
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
@@ -101,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import StatCard from '@/components/StatCard.vue'
 import RunRow from '@/components/RunRow.vue'
@@ -113,6 +120,7 @@ import MonthlyDistanceChart from '@/components/MonthlyDistanceChart.vue'
 import GoalsCard from '@/components/GoalsCard.vue'
 import TodayCard from '@/components/TodayCard.vue'
 import QuickLog from '@/components/QuickLog.vue'
+import NewGoalForm from '@/components/NewGoalForm.vue'
 import { useStats } from '@/composables/useStats'
 import { useMetrics } from '@/composables/useMetrics'
 import { useRecentRuns } from '@/composables/useRecentRuns'
@@ -147,6 +155,12 @@ const {
   loadGoals: loadMetricGoals,
 } = useMetrics()
 const { unit } = useUserPreferences()
+
+const showNewGoal = ref(false)
+const onGoalCreated = async () => {
+  showNewGoal.value = false
+  await loadMetricGoals()
+}
 
 const initialLoading = computed(
   () =>
