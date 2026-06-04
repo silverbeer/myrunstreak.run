@@ -75,6 +75,16 @@ cd frontend && npm install && npm run dev
 
 See [QUICKSTART.md](QUICKSTART.md) and [docs/TESTING.md](docs/TESTING.md).
 
+### Local Supabase port convention (SB-113)
+
+Each silverbeer repo gets its own 100-port block so local stacks run side-by-side:
+
+| Repo | Block | API | DB | Studio |
+|------|-------|-----|----|--------|
+| myrunstreak (this repo) | 543xx (defaults) | 54321 | 54322 | 54323 |
+| missing-table | 553xx | 55321 | 55322 | 55323 |
+| *(next repo)* | 563xx | 56321 | 56322 | 56323 |
+
 ## CLI (`stk`)
 
 `stk` is a thin client — it authenticates and syncs through the backend, which
