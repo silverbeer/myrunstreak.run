@@ -60,6 +60,14 @@ stk = "cli.main:cli"
 requires = ["uv_build>=0.9.5,<0.10.0"]
 build-backend = "uv_build"
 
+[tool.uv]
+# The root project is a virtual workspace: code is imported via the `src.*` path
+# (see tests + tooling), not installed as a `myrunstreak` wheel. Building it as a
+# package fails on newer uv (no `src/myrunstreak/` module) and is unnecessary for
+# tests. Matches backend/pyproject.toml. Packaging the `stk` script is a separate
+# concern handled at build/deploy time.
+package = false
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

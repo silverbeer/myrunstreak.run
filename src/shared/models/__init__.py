@@ -25,6 +25,18 @@ from .metric import (
     MetricType,
 )
 from .nested import HeartRateRecovery, Lap, Song
+from .planning import (
+    ActualEntry,
+    FeasibilityStatus,
+    GoalPlanStatus,
+    PlanConstraint,
+    PlanDay,
+    PlanDayKind,
+    PlanningGoal,
+    PlanResult,
+    Readiness,
+    ReadinessStatus,
+)
 from .split import Split
 from .units import (
     UnitSystem,
@@ -52,6 +64,17 @@ __all__ = [
     "GoalPeriod",
     "GoalComparator",
     "GoalStatus",
+    # Planning
+    "ActualEntry",
+    "PlanConstraint",
+    "PlanDay",
+    "PlanDayKind",
+    "PlanningGoal",
+    "PlanResult",
+    "Readiness",
+    "ReadinessStatus",
+    "GoalPlanStatus",
+    "FeasibilityStatus",
     # Nested models
     "Lap",
     "Song",
