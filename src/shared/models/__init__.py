@@ -30,6 +30,7 @@ from .planning import (
     FeasibilityStatus,
     GoalPlanStatus,
     PlanConstraint,
+    PlanConstraintRecord,
     PlanDay,
     PlanDayKind,
     PlanningGoal,
@@ -67,6 +68,7 @@ __all__ = [
     # Planning
     "ActualEntry",
     "PlanConstraint",
+    "PlanConstraintRecord",
     "PlanDay",
     "PlanDayKind",
     "PlanningGoal",

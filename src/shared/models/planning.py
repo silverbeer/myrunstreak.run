@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import date
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -84,6 +85,12 @@ class PlanConstraint(BaseModel):
     def pinned_value(self) -> float | None:
         """The value a covered day is locked to: cap if set, else floor."""
         return self.cap if self.cap is not None else self.floor
+
+
+class PlanConstraintRecord(PlanConstraint):
+    """A stored constraint, with its row id — the API read shape."""
+
+    id: UUID
 
 
 class Readiness(BaseModel):

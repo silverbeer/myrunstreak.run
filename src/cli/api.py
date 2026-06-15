@@ -135,6 +135,32 @@ def request(endpoint: str, params: dict[str, Any] | None = None) -> dict[str, An
     return result
 
 
+def delete_request(endpoint: str, timeout: float | None = None) -> None:
+    """Authenticated DELETE. Same auto-refresh behavior; expects a 2xx/204."""
+    s = _ensure_fresh(_require_session())
+    url = f"{get_api_url()}/{endpoint.lstrip('/')}"
+    request_timeout = timeout if timeout else TIMEOUT
+    try:
+        response = httpx.delete(url, headers=_auth_headers(s), timeout=request_timeout)
+    except httpx.TimeoutException:
+        display_error(f"Request timed out after {request_timeout}s")
+        sys.exit(1)
+    except httpx.RequestError as e:
+        display_error(f"Request failed: {e}")
+        sys.exit(1)
+
+    if response.status_code == 401:
+        refreshed = _refresh_session(s)
+        if refreshed is None:
+            display_error("Session expired")
+            display_info("Run 'stk auth login' to sign in again")
+            sys.exit(1)
+        response = httpx.delete(url, headers=_auth_headers(refreshed), timeout=request_timeout)
+
+    if response.status_code >= 400:
+        _exit_with_error(response)
+
+
 def post_request(
     endpoint: str,
     data: dict[str, Any] | None = None,
