@@ -65,3 +65,7 @@ tmp/
 
 # Local terraform plan artifacts
 terraform/environments/*/tfplan
+
+# Ephemeral design/planning scratch — superseded by Linear tickets + the shipped
+# user guide. Not committed; deleted once the feature lands.
+docs/PLANNING.md
