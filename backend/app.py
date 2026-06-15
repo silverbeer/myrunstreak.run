@@ -3,7 +3,7 @@
 import logging
 
 from backend.config import get_settings
-from backend.routes import auth_routes, metrics, runs, stats, sync
+from backend.routes import auth_routes, metrics, plan, runs, stats, sync
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -44,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(sync.router)
     app.include_router(auth_routes.router)
     app.include_router(metrics.router)
+    app.include_router(plan.router)
 
     return app
 

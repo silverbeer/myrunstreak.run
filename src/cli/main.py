@@ -17,7 +17,7 @@ import typer
 from rich.console import Console
 
 from cli import __version__
-from cli.commands import auth, runs, stats, sync
+from cli.commands import auth, plan, runs, stats, sync
 
 # Create the main app
 app = typer.Typer(
@@ -29,6 +29,9 @@ app = typer.Typer(
 
 # Add command groups
 app.add_typer(auth.app, name="auth", help="Authentication commands")
+app.add_typer(plan.plan_app, name="plan", help="Adaptive monthly plan")
+app.add_typer(plan.constraint_app, name="constraint", help="Plan constraints (travel, injury)")
+app.add_typer(plan.readiness_app, name="readiness", help="Daily readiness check-in")
 
 # Console for output
 console = Console()

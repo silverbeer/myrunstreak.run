@@ -112,6 +112,19 @@ backend:
         limits:
           cpu: 200m
           memory: 256Mi
+    recomputePlans:
+      enabled: true
+      # 08:00 UTC (~03:00-04:00 ET) — after the day rolls over and the morning
+      # SmashRun sync, so the day's plan reflects yesterday's runs. The plan is a
+      # derived cache; this rebuilds it (SB-164).
+      schedule: "0 8 * * *"
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
 
 # ============================================================================
 # Redis (cache for backend stats endpoints) — disabled by default

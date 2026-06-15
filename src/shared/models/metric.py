@@ -98,6 +98,8 @@ class MetricGoalCreate(BaseModel):
     rest_budget: int = Field(default=0, ge=0)
     period_start: date | None = None
     period_end: date | None = None
+    qualifier_threshold: float | None = Field(default=None, ge=0)
+    per_event_min: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _custom_needs_bounds(self) -> MetricGoalCreate:
@@ -118,6 +120,8 @@ class MetricGoalUpdate(BaseModel):
     status: GoalStatus | None = None
     period_start: date | None = None
     period_end: date | None = None
+    qualifier_threshold: float | None = Field(default=None, ge=0)
+    per_event_min: float | None = Field(default=None, ge=0)
 
 
 class MetricGoal(BaseModel):
@@ -134,6 +138,8 @@ class MetricGoal(BaseModel):
     comparator: GoalComparator = GoalComparator.gte
     rest_budget: int = 0
     status: GoalStatus = GoalStatus.active
+    qualifier_threshold: float | None = None
+    per_event_min: float | None = None
     created_at: datetime | None = None
 
 
