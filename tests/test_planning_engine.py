@@ -241,6 +241,33 @@ def test_on_track_when_ahead_of_pace():
 
 
 # --------------------------------------------------------------------------- #
+# Regression: prior-month runs (pulled only for the ramp ceiling) must NOT
+# count as this month's progress. Caught in live e2e — June runs were inflating
+# July's "done" and shrinking the plan. today=Jul 1 with a full June of entries.
+# --------------------------------------------------------------------------- #
+def test_prior_month_entries_do_not_count_as_done():
+    june_runs = [
+        ActualEntry(metric_key=RUNNING_KEY, occurred_on=date(2026, 6, d), value=miles_to_km(6.0))
+        for d in range(1, 31)  # 30 June days, 6 mi each, several over the 5-mi long-run bar
+    ]
+    result = generate_plan(
+        period_start=JUL_START,
+        period_end=JUL_END,
+        today=JUL_START,  # plan all of July; nothing done IN July yet
+        goals=_july_goals(),
+        entries=june_runs,
+        constraints=[_chicago()],
+    )
+    vol = next(g for g in result.goals if g.kind is GoalKind.volume)
+    assert vol.done == pytest.approx(0.0, abs=1e-6)  # June must not leak in
+    # The full target is still planned across July, not just a remainder.
+    planned = sum(d.prescribed_value for d in result.days_for(RUNNING_KEY))
+    assert planned == pytest.approx(TOTAL_MI, abs=0.5)
+    # And all 4 long runs are placed (no June run miscounted as a done long run).
+    assert sum(1 for d in result.days_for(RUNNING_KEY) if d.kind is PlanDayKind.long) == 4
+
+
+# --------------------------------------------------------------------------- #
 # Readiness: a sick day becomes rest but keeps the streak floor
 # --------------------------------------------------------------------------- #
 def test_sick_day_is_rest_but_keeps_streak_floor():
