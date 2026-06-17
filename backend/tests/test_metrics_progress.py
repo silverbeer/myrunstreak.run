@@ -45,11 +45,20 @@ def _goal(**kw) -> MetricGoal:
     return MetricGoal(**base)
 
 
-PUSHUPS = MetricType(key="pushups", display_name="Push-ups", unit="reps", aggregation=MetricAggregation.sum)
-WEIGHT = MetricType(key="body_weight", display_name="Body weight", unit="kg", aggregation=MetricAggregation.latest, higher_is_better=False)
+PUSHUPS = MetricType(
+    key="pushups", display_name="Push-ups", unit="reps", aggregation=MetricAggregation.sum
+)
+WEIGHT = MetricType(
+    key="body_weight",
+    display_name="Body weight",
+    unit="kg",
+    aggregation=MetricAggregation.latest,
+    higher_is_better=False,
+)
 
 
 # ---- resolve_window ----
+
 
 def test_window_year():
     s, e = resolve_window(_goal(period=GoalPeriod.year), date(2026, 6, 2))
@@ -73,6 +82,7 @@ def test_window_custom():
 
 
 # ---- volume ----
+
 
 def test_volume_sum_and_pace():
     today = date(2026, 6, 10)  # day 10 of a 30-day month
@@ -110,19 +120,25 @@ def test_volume_excludes_out_of_window_entries():
 
 def test_weight_latest_lte_comparator():
     today = date(2026, 6, 20)
-    g = _goal(metric_key="body_weight", kind=GoalKind.volume, period=GoalPeriod.month,
-              target=80.0, comparator=GoalComparator.lte)
+    g = _goal(
+        metric_key="body_weight",
+        kind=GoalKind.volume,
+        period=GoalPeriod.month,
+        target=80.0,
+        comparator=GoalComparator.lte,
+    )
     entries = [
         _entry("body_weight", date(2026, 6, 1), 82.0, at=datetime(2026, 6, 1, tzinfo=UTC)),
         _entry("body_weight", date(2026, 6, 18), 79.5, at=datetime(2026, 6, 18, tzinfo=UTC)),
     ]
     p = compute_progress(g, WEIGHT, entries, today)
-    assert p.progress == 79.5      # latest, not sum
-    assert p.met is True           # 79.5 <= 80
-    assert p.on_pace is None       # pace only for volume+gte
+    assert p.progress == 79.5  # latest, not sum
+    assert p.met is True  # 79.5 <= 80
+    assert p.on_pace is None  # pace only for volume+gte
 
 
 # ---- frequency ----
+
 
 def test_frequency_counts_distinct_days():
     today = date(2026, 6, 3)  # week Mon 06-01..Sun 06-07
@@ -139,6 +155,7 @@ def test_frequency_counts_distinct_days():
 
 # ---- streak ----
 
+
 def test_current_streak_basic_and_gap_breaks():
     today = date(2026, 6, 10)
     days = {date(2026, 6, 10), date(2026, 6, 9), date(2026, 6, 7)}  # gap on the 8th
@@ -153,9 +170,75 @@ def test_current_streak_rest_budget_tolerates_gap():
 
 def test_streak_goal_progress():
     today = date(2026, 6, 10)
-    g = _goal(metric_key="running_distance", kind=GoalKind.streak, period=GoalPeriod.year, target=30.0, rest_budget=0)
+    g = _goal(
+        metric_key="running_distance",
+        kind=GoalKind.streak,
+        period=GoalPeriod.year,
+        target=30.0,
+        rest_budget=0,
+    )
     entries = [_entry("running_distance", date(2026, 6, d), 5.0) for d in (10, 9, 8)]
-    rd = MetricType(key="running_distance", display_name="Running", unit="km", aggregation=MetricAggregation.sum)
+    rd = MetricType(
+        key="running_distance", display_name="Running", unit="km", aggregation=MetricAggregation.sum
+    )
     p = compute_progress(g, rd, entries, today)
     assert p.progress == 3.0
     assert p.met is False
+
+
+# ---- before_time (start-by clock time) frequency goals ----
+
+from datetime import time as _time  # noqa: E402
+from zoneinfo import ZoneInfo as _ZoneInfo  # noqa: E402
+
+_NY = _ZoneInfo("America/New_York")
+RUNNING = MetricType(
+    key="running_distance", display_name="Running", unit="km", aggregation=MetricAggregation.sum
+)
+
+
+def _early_week_entries() -> list[MetricEntry]:
+    # Mon/Tue/Wed of the same ISO week, with varying local start times.
+    return [
+        _entry("running_distance", date(2026, 6, 1), 5.0, datetime(2026, 6, 1, 7, 30, tzinfo=_NY)),
+        _entry("running_distance", date(2026, 6, 2), 5.0, datetime(2026, 6, 2, 9, 0, tzinfo=_NY)),
+        _entry("running_distance", date(2026, 6, 3), 5.0, datetime(2026, 6, 3, 8, 0, tzinfo=_NY)),
+    ]
+
+
+def test_before_time_counts_only_early_starts():
+    goal = _goal(
+        metric_key="running_distance",
+        kind=GoalKind.frequency,
+        period=GoalPeriod.week,
+        target=3.0,
+        before_time=_time(8, 0),
+    )
+    p = compute_progress(goal, RUNNING, _early_week_entries(), date(2026, 6, 3))
+    assert p.progress == 2.0  # 7:30 ✓ and 8:00 ✓ (<=); 9:00 ✗
+    assert p.met is False  # 2 of 3
+
+
+def test_no_before_time_counts_every_day():
+    goal = _goal(
+        metric_key="running_distance",
+        kind=GoalKind.frequency,
+        period=GoalPeriod.week,
+        target=3.0,
+    )
+    p = compute_progress(goal, RUNNING, _early_week_entries(), date(2026, 6, 3))
+    assert p.progress == 3.0
+    assert p.met is True
+
+
+def test_before_time_excludes_entries_without_timestamp():
+    goal = _goal(
+        metric_key="running_distance",
+        kind=GoalKind.frequency,
+        period=GoalPeriod.week,
+        target=1.0,
+        before_time=_time(8, 0),
+    )
+    entries = [_entry("running_distance", date(2026, 6, 1), 5.0, at=None)]
+    p = compute_progress(goal, RUNNING, entries, date(2026, 6, 1))
+    assert p.progress == 0.0  # no precise start time → can't satisfy a time goal

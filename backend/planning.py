@@ -78,9 +78,19 @@ def to_planning_goal(row: dict[str, Any], period_start: date, period_end: date) 
 
 
 def _is_plan_goal(row: dict[str, Any]) -> bool:
-    """Monthly-planning goals only — yearly goals (e.g. the SmashRun mirror's
-    cadence) are not a month's daily plan."""
-    return row.get("period") != "year"
+    """Monthly-planning goals only.
+
+    Excludes:
+      - yearly goals (the SmashRun mirror's cadence, not a month's daily plan),
+      - weekly goals (the monthly planner doesn't schedule a weekly cadence),
+      - time-of-day goals (``before_time`` — a habit tracked + coached via the
+        goals/progress engine; it doesn't change what distance to run).
+    """
+    if row.get("period") in ("year", "week"):
+        return False
+    if row.get("before_time") is not None:
+        return False
+    return True
 
 
 def build_plan(
