@@ -119,10 +119,10 @@ def generate_plan(
     for metric_key, mgoals in by_metric.items():
         if metric_key == RUNNING_KEY:
             days, st = _plan_running(
-                metric_key, mgoals, entries, constraints, readiness, today, period_end
+                metric_key, mgoals, entries, constraints, readiness, period_start, today, period_end
             )
         else:
-            days, st = _plan_simple(metric_key, mgoals, entries, today, period_end)
+            days, st = _plan_simple(metric_key, mgoals, entries, period_start, today, period_end)
         plan_days.extend(days)
         statuses.extend(st)
 
@@ -159,6 +159,7 @@ def _plan_running(
     entries: Sequence[ActualEntry],
     constraints: Sequence[PlanConstraint],
     readiness: Sequence[Readiness],
+    period_start: date,
     today: date,
     period_end: date,
 ) -> tuple[list[PlanDay], list[GoalPlanStatus]]:
@@ -189,11 +190,16 @@ def _plan_running(
             rested.add(day)  # rest day: only the streak floor, no long/extra
         free.append(day)
 
-    # ---- progress so far (entries strictly before today) ----
-    done_volume = sum(v for d, v in totals.items() if d < today)
+    # ---- progress so far: entries within the period, strictly before today ----
+    # Bounded to [period_start, today) — trailing history (used only for the ramp
+    # ceiling below) must NOT count as goal progress, or last month's runs inflate
+    # this month's "done".
+    done_volume = sum(v for d, v in totals.items() if period_start <= d < today)
     long_threshold: float = (long_goal.qualifier_threshold or 0.0) if long_goal else 0.0
     qualifying_done = (
-        sum(1 for d, v in totals.items() if d < today and v >= long_threshold - _EPS)
+        sum(
+            1 for d, v in totals.items() if period_start <= d < today and v >= long_threshold - _EPS
+        )
         if long_goal
         else 0
     )
@@ -276,7 +282,13 @@ def _plan_running(
                 metric_key=metric_key,
                 kind=GoalKind.streak,
                 target=streak.target,
-                done=float(sum(1 for d in totals if d < today and totals[d] >= floor_km - _EPS)),
+                done=float(
+                    sum(
+                        1
+                        for d in totals
+                        if period_start <= d < today and totals[d] >= floor_km - _EPS
+                    )
+                ),
                 remaining=float(len(horizon)),
                 status=FeasibilityStatus.on_track if not below else FeasibilityStatus.at_risk,
                 detail=None
@@ -357,6 +369,7 @@ def _plan_simple(
     metric_key: str,
     goals: Sequence[PlanningGoal],
     entries: Sequence[ActualEntry],
+    period_start: date,
     today: date,
     period_end: date,
 ) -> tuple[list[PlanDay], list[GoalPlanStatus]]:
@@ -370,7 +383,9 @@ def _plan_simple(
             # P0 only needs frequency for the non-running metrics (sessions, weigh-ins).
             continue
         threshold = goal.per_event_min if goal.per_event_min else _EPS
-        done_count = sum(1 for d, v in totals.items() if d < today and v >= threshold - _EPS)
+        done_count = sum(
+            1 for d, v in totals.items() if period_start <= d < today and v >= threshold - _EPS
+        )
         needed = max(0, math.ceil(goal.target) - done_count)
         chosen = _spread(horizon, needed)
         value = goal.per_event_min if goal.per_event_min else 1.0
