@@ -187,9 +187,10 @@ async def _goals(user_id: UUID) -> dict[str, Any]:
     supabase = get_supabase_client()
     token_repo = TokenRepository(supabase)
     goals_repo = GoalsRepository(supabase)
+    runs_repo = RunsRepository(supabase)
 
     source_id = token_repo.get_source_id_for_user(user_id, "smashrun")
-    return build_goals_block(user_id, source_id, goals_repo, _today_local())
+    return build_goals_block(user_id, source_id, goals_repo, _today_local(), runs_repo)
 
 
 @router.get("/goals")

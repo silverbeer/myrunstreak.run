@@ -89,3 +89,32 @@ def test_build_goals_block_handles_one_period_missing() -> None:
 
     assert result["yearly"] is None
     assert result["monthly"] is not None
+
+
+def test_render_goal_override_uses_runs_not_stale_mirror() -> None:
+    """progress_km_override (from synced runs) wins over the mirror's progress_km."""
+    row = {"goal_km": 209.2, "progress_km": 112.3, "goal_text": "month", "fetched_at": "Z"}
+    result = render_goal(row, progress_km_override=125.2)
+    assert result is not None
+    assert result["progress_mi"] == pytest.approx(km_to_miles(125.2), abs=0.1)  # not 112.3
+
+
+def test_build_goals_block_progress_from_run_stats() -> None:
+    """With a runs_repo, progress comes from the accurate year/month-to-date
+    aggregates — not SmashRun's stale cached goal-progress field."""
+    user_id, source_id = uuid4(), uuid4()
+    repo = MagicMock()
+    repo.get_by_period.side_effect = [
+        {"goal_km": 1931.2, "progress_km": 950.0, "goal_text": "year", "fetched_at": "Z"},
+        {"goal_km": 209.2, "progress_km": 112.3, "goal_text": "month", "fetched_at": "Z"},
+    ]
+    runs_repo = MagicMock()
+    runs_repo.get_user_running_stats.return_value = {
+        "year_to_date_distance_km": 1026.5,
+        "month_to_date_distance_km": 125.2,
+    }
+
+    result = build_goals_block(user_id, source_id, repo, date(2026, 6, 18), runs_repo)
+
+    assert result["yearly"]["progress_mi"] == pytest.approx(km_to_miles(1026.5), abs=0.1)
+    assert result["monthly"]["progress_mi"] == pytest.approx(km_to_miles(125.2), abs=0.1)

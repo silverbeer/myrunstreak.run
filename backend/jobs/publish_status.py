@@ -148,7 +148,7 @@ def build_status_data(
         "last_7_days": last_7_days,
         "month_total_mi": round(km_to_miles(month_total_km), 1),
         "year_total_mi": round(km_to_miles(year_total_km), 1),
-        "goals": build_goals_block(user_id, source_id, goals_repo, today),
+        "goals": build_goals_block(user_id, source_id, goals_repo, today, runs_repo),
     }
 
 
