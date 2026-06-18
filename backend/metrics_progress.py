@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import calendar
 from datetime import date, timedelta
+from zoneinfo import ZoneInfo
 
 from src.shared.models.metric import (
     GoalComparator,
@@ -20,6 +21,27 @@ from src.shared.models.metric import (
     MetricGoal,
     MetricType,
 )
+
+# App-wide local anchor (matches /stats, /metrics, and the cron jobs).
+_LOCAL_TZ = ZoneInfo("America/New_York")
+
+
+def _qualifying_days(entries: list[MetricEntry], goal: MetricGoal) -> set[date]:
+    """Distinct days that count toward a frequency goal.
+
+    Honors ``before_time`` — a day counts only if its entry started at/before that
+    local clock time (e.g. "out the door by 8am"). An entry without a precise
+    ``occurred_at`` can't satisfy a time goal, so it's excluded when one is set.
+    """
+    if goal.before_time is None:
+        return {e.occurred_on for e in entries}
+    days: set[date] = set()
+    for e in entries:
+        if e.occurred_at is None:
+            continue
+        if e.occurred_at.astimezone(_LOCAL_TZ).timetz().replace(tzinfo=None) <= goal.before_time:
+            days.add(e.occurred_on)
+    return days
 
 
 def resolve_window(goal: MetricGoal, today: date) -> tuple[date, date]:
@@ -38,7 +60,9 @@ def resolve_window(goal: MetricGoal, today: date) -> tuple[date, date]:
     return goal.period_start, goal.period_end
 
 
-def _aggregate(values: list[float], agg: MetricAggregation, entries_in_window: list[MetricEntry]) -> float:
+def _aggregate(
+    values: list[float], agg: MetricAggregation, entries_in_window: list[MetricEntry]
+) -> float:
     if not values:
         return 0.0
     if agg == MetricAggregation.sum:
@@ -50,7 +74,10 @@ def _aggregate(values: list[float], agg: MetricAggregation, entries_in_window: l
     # latest: value of the most recent entry (by occurred_at, then occurred_on).
     latest = max(
         entries_in_window,
-        key=lambda e: (e.occurred_at.timestamp() if e.occurred_at else 0.0, e.occurred_on.toordinal()),
+        key=lambda e: (
+            e.occurred_at.timestamp() if e.occurred_at else 0.0,
+            e.occurred_on.toordinal(),
+        ),
     )
     return float(latest.value)
 
@@ -90,14 +117,16 @@ def compute_progress(
     if goal.kind == GoalKind.volume:
         progress = _aggregate([e.value for e in in_window], metric.aggregation, in_window)
     elif goal.kind == GoalKind.frequency:
-        # Count distinct days with any entry.
-        progress = float(len({e.occurred_on for e in in_window}))
+        # Count distinct qualifying days (honors before_time if set).
+        progress = float(len(_qualifying_days(in_window, goal)))
     else:  # streak
         progress = float(current_streak({e.occurred_on for e in entries}, today, goal.rest_budget))
 
     percent = (progress / goal.target * 100.0) if goal.target else None
-    met = progress >= goal.target if goal.comparator == GoalComparator.gte else (
-        0 < progress <= goal.target
+    met = (
+        progress >= goal.target
+        if goal.comparator == GoalComparator.gte
+        else (0 < progress <= goal.target)
     )
 
     result = GoalProgress(

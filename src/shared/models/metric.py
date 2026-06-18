@@ -7,7 +7,7 @@ See docs/GOALS_TRACKING.md.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from enum import Enum
 from typing import Any
 from uuid import UUID
@@ -100,6 +100,9 @@ class MetricGoalCreate(BaseModel):
     period_end: date | None = None
     qualifier_threshold: float | None = Field(default=None, ge=0)
     per_event_min: float | None = Field(default=None, ge=0)
+    before_time: time | None = Field(
+        default=None, description='Start-by clock time, e.g. 08:00 — "out the door by 8am"'
+    )
 
     @model_validator(mode="after")
     def _custom_needs_bounds(self) -> MetricGoalCreate:
@@ -122,6 +125,7 @@ class MetricGoalUpdate(BaseModel):
     period_end: date | None = None
     qualifier_threshold: float | None = Field(default=None, ge=0)
     per_event_min: float | None = Field(default=None, ge=0)
+    before_time: time | None = None
 
 
 class MetricGoal(BaseModel):
@@ -140,6 +144,7 @@ class MetricGoal(BaseModel):
     status: GoalStatus = GoalStatus.active
     qualifier_threshold: float | None = None
     per_event_min: float | None = None
+    before_time: time | None = None
     created_at: datetime | None = None
 
 
