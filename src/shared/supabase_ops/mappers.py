@@ -69,7 +69,9 @@ def activity_to_run_dict(activity: Activity, user_id: UUID, source_id: UUID) -> 
         "cadence_min": int(activity.cadence_min) if activity.cadence_min else None,
         "cadence_max": int(activity.cadence_max) if activity.cadence_max else None,
         # Heart rate (cast to int - database expects integer)
-        "heart_rate_average": int(activity.heart_rate_average) if activity.heart_rate_average else None,
+        "heart_rate_average": int(activity.heart_rate_average)
+        if activity.heart_rate_average
+        else None,
         "heart_rate_min": int(activity.heart_rate_min) if activity.heart_rate_min else None,
         "heart_rate_max": int(activity.heart_rate_max) if activity.heart_rate_max else None,
         # Health & subjective (filter "none" string values to NULL for enums)
@@ -86,7 +88,9 @@ def activity_to_run_dict(activity: Activity, user_id: UUID, source_id: UUID) -> 
             else None
         ),
         "temperature_celsius": (float(activity.temperature) if activity.temperature else None),
-        "weather_type": map_weather_type(activity.weather_type.value if activity.weather_type else None),
+        "weather_type": map_weather_type(
+            activity.weather_type.value if activity.weather_type else None
+        ),
         "humidity_percent": int(activity.humidity) if activity.humidity else None,
         "wind_speed_kph": activity.wind_speed,
         # User content
@@ -108,22 +112,42 @@ def activity_to_run_dict(activity: Activity, user_id: UUID, source_id: UUID) -> 
     }
 
 
-def split_to_dict(split: Split, run_id: UUID) -> dict[str, Any]:
+MILES_TO_KM = 1.609344
+
+
+def split_to_dict(
+    split: Split,
+    run_id: UUID,
+    split_number: int | None = None,
+    unit: str | None = None,
+) -> dict[str, Any]:
     """
     Convert Split model to Supabase splits table format.
+
+    ``split_number`` and ``unit`` are assigned at store time (SmashRun's splits
+    payload carries neither). When ``unit == "mi"`` the split's
+    ``cumulative_distance`` comes back in **miles**, so it's converted to km for
+    the canonical ``cumulative_distance_km`` column; ``split_unit`` still records
+    that these are **mile-boundary** splits (what "1st mile / 2nd mile" needs).
 
     Args:
         split: Split model
         run_id: Run UUID (foreign key)
+        split_number: 1-based sequence; falls back to the model's value
+        unit: "mi" or "km"; falls back to the model's value
 
     Returns:
         Dict ready for Supabase insert/upsert
     """
+    resolved_unit = unit if unit is not None else split.split_unit
+    distance = float(split.cumulative_distance)
+    if resolved_unit == "mi":
+        distance *= MILES_TO_KM
     return {
         "run_id": str(run_id),
-        "split_number": split.split_number,
-        "split_unit": split.split_unit,
-        "cumulative_distance_km": float(split.cumulative_distance),
+        "split_number": split_number if split_number is not None else split.split_number,
+        "split_unit": resolved_unit,
+        "cumulative_distance_km": distance,
         "cumulative_seconds": float(split.cumulative_seconds),
         "speed_kph": float(split.speed_kph) if split.speed_kph else None,
         "heart_rate": split.heart_rate,
