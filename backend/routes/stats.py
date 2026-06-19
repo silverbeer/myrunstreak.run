@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from backend.auth import authenticate_request
 from backend.cache import cached
 from backend.goals import build_goals_block
+from backend.splits_analysis import analyze_run, summarize
 from backend.streaks import compute_streaks
 from fastapi import APIRouter, Depends, Query
 from src.shared.supabase_client import get_supabase_client
@@ -206,3 +207,38 @@ async def get_goals(
     GoalProgress structure.
     """
     return await _goals(user_id)
+
+
+@router.get("/splits")
+def get_split_analysis(
+    user_id: UUID = Depends(authenticate_request),
+    since: date | None = Query(default=None, description="Only runs on/after this date"),
+    until: date | None = Query(default=None, description="Only runs on/before this date"),
+    limit: int = Query(default=30, ge=1, le=200, description="Most-recent N runs with splits"),
+) -> dict[str, Any]:
+    """Negative-split / per-mile pace analysis over recent runs that have splits.
+
+    Returns a headline summary (negative-split rate, avg 1st vs last mile, fade)
+    plus a per-run breakdown. Empty when no runs have splits yet (run
+    ``stk splits backfill`` first).
+    """
+    supabase = get_supabase_client()
+    runs_repo = RunsRepository(supabase)
+    runs = runs_repo.get_runs_with_splits(user_id, since=since, until=until, limit=limit)
+
+    per_run: list[dict[str, Any]] = []
+    for run in runs:
+        rows = runs_repo.get_splits_for_run(UUID(run["id"]))
+        analysis = analyze_run(rows)
+        if analysis is None:
+            continue
+        per_run.append(
+            {
+                "run_id": run["id"],
+                "date": run.get("start_date"),
+                "distance_km": run.get("distance_km"),
+                **{k: v for k, v in analysis.items() if k != "splits"},
+            }
+        )
+
+    return {"summary": summarize(list(per_run)), "runs": per_run}

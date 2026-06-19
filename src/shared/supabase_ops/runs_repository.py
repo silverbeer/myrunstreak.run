@@ -321,6 +321,27 @@ class RunsRepository:
 
         return cast(list[dict[str, Any]], result.data)
 
+    def get_runs_with_splits(
+        self,
+        user_id: UUID,
+        since: date | None = None,
+        until: date | None = None,
+        limit: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Runs that have stored splits (has_splits = TRUE), newest first."""
+        query = (
+            self.supabase.table("runs")
+            .select("id, start_date, distance_km")
+            .eq("user_id", str(user_id))
+            .eq("has_splits", True)
+        )
+        if since is not None:
+            query = query.gte("start_date", since.isoformat())
+        if until is not None:
+            query = query.lte("start_date", until.isoformat())
+        result = query.order("start_date", desc=True).limit(limit).execute()
+        return cast(list[dict[str, Any]], result.data)
+
     def set_has_splits(self, run_id: UUID, value: bool = True) -> None:
         """Flag a run as having (or not having) stored splits."""
         self.supabase.table("runs").update({"has_splits": value}).eq("id", str(run_id)).execute()

@@ -1,15 +1,66 @@
-"""Splits commands for stk CLI — per-mile splits backfill (analysis: PR2)."""
+"""Splits commands for stk CLI — backfill + negative-split analysis."""
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import typer
 
-from cli import display
+from cli import api, display
 from cli.api import post_request
 
-splits_app = typer.Typer(help="Per-mile splits — backfill from SmashRun.")
+splits_app = typer.Typer(help="Per-mile splits — backfill + analysis.")
+
+
+def _fmt_pace(p: float | None) -> str:
+    if p is None:
+        return "—"
+    m = int(p)
+    s = round((p - m) * 60)
+    if s == 60:
+        m, s = m + 1, 0
+    return f"{m}:{s:02d}"
+
+
+def show(
+    since: str = typer.Option(None, "--since", "-s", help="Only runs on/after YYYY-MM-DD"),
+    limit: int = typer.Option(30, "--limit", "-l", help="Most-recent N runs with splits"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+) -> None:
+    """Negative-split analysis: per-mile pace, 1st-vs-last mile, fade.
+
+    stk splits show --since 2026-06-01
+    """
+    params: dict[str, Any] = {"limit": limit}
+    if since is not None:
+        params["since"] = since
+    data = api.request("stats/splits", params)
+
+    if json_output:
+        print(json.dumps(data, indent=2, default=str))
+        return
+
+    s = data.get("summary", {})
+    if not s.get("runs_analyzed"):
+        display.display_info("No runs with splits yet. Run 'stk splits backfill' first.")
+        return
+    display.console.print(
+        f"[bold]Splits — {s['runs_analyzed']} runs[/bold]  "
+        f"negative-split rate [cyan]{s['negative_split_rate_pct']}%[/cyan]"
+    )
+    display.console.print(
+        f"  avg 1st mile {_fmt_pace(s['avg_first_mile_pace'])}  ·  "
+        f"avg last mile {_fmt_pace(s['avg_last_mile_pace'])}  ·  "
+        f"avg fade {s['avg_fade_pct']:+}%"
+    )
+    display.console.print()
+    for r in data.get("runs", [])[:limit]:
+        flag = "📉 neg" if r["negative_split"] else f"{r['fade_pct']:+}%"
+        display.console.print(
+            f"  {r['date']}  {_fmt_pace(r['first_mile_pace'])}→{_fmt_pace(r['last_mile_pace'])}"
+            f"  fastest {_fmt_pace(r['fastest_mile_pace'])}  [{flag}]"
+        )
 
 
 def backfill(
@@ -47,3 +98,4 @@ def backfill(
 
 
 splits_app.command(name="backfill")(backfill)
+splits_app.command(name="show")(show)
