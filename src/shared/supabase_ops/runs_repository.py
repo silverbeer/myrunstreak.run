@@ -321,6 +321,34 @@ class RunsRepository:
 
         return cast(list[dict[str, Any]], result.data)
 
+    def set_has_splits(self, run_id: UUID, value: bool = True) -> None:
+        """Flag a run as having (or not having) stored splits."""
+        self.supabase.table("runs").update({"has_splits": value}).eq("id", str(run_id)).execute()
+
+    def get_runs_missing_splits(
+        self,
+        user_id: UUID,
+        since: date | None = None,
+        until: date | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Runs that have no stored splits yet (has_splits = FALSE), newest first.
+
+        Returns just the fields a splits backfill needs: id + source_activity_id.
+        """
+        query = (
+            self.supabase.table("runs")
+            .select("id, source_activity_id, start_date")
+            .eq("user_id", str(user_id))
+            .eq("has_splits", False)
+        )
+        if since is not None:
+            query = query.gte("start_date", since.isoformat())
+        if until is not None:
+            query = query.lte("start_date", until.isoformat())
+        result = query.order("start_date", desc=True).limit(limit).execute()
+        return cast(list[dict[str, Any]], result.data)
+
     def delete_run(self, run_id: UUID) -> None:
         """
         Delete a run and all related data (cascades to splits, laps, etc.).
