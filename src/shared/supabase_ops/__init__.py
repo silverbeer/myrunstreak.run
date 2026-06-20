@@ -13,6 +13,11 @@ from .planning_repository import (
     ReadinessRepository,
 )
 from .runs_repository import RunsRepository
+from .workout_repository import (
+    ExercisesRepository,
+    WorkoutSessionsRepository,
+    WorkoutTemplatesRepository,
+)
 from .token_repository import TokenRepository
 from .users_repository import UsersRepository
 
@@ -27,6 +32,9 @@ __all__ = [
     "RunsRepository",
     "TokenRepository",
     "UsersRepository",
+    "ExercisesRepository",
+    "WorkoutTemplatesRepository",
+    "WorkoutSessionsRepository",
     "activity_to_run_dict",
     "split_to_dict",
 ]

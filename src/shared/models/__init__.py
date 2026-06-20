@@ -46,6 +46,19 @@ from .units import (
     km_to_miles,
     miles_to_km,
 )
+from .workout import (
+    Exercise,
+    ExerciseCategory,
+    ExerciseSet,
+    ExerciseSetCreate,
+    TemplateItem,
+    TemplateItemCreate,
+    WorkoutSession,
+    WorkoutSessionCreate,
+    WorkoutTemplate,
+    WorkoutTemplateCreate,
+    WorkoutType,
+)
 
 __all__ = [
     # Main models
@@ -65,6 +78,18 @@ __all__ = [
     "GoalPeriod",
     "GoalComparator",
     "GoalStatus",
+    # Workouts
+    "Exercise",
+    "ExerciseCategory",
+    "WorkoutType",
+    "TemplateItem",
+    "TemplateItemCreate",
+    "WorkoutTemplate",
+    "WorkoutTemplateCreate",
+    "ExerciseSet",
+    "ExerciseSetCreate",
+    "WorkoutSession",
+    "WorkoutSessionCreate",
     # Planning
     "ActualEntry",
     "PlanConstraint",
