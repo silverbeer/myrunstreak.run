@@ -210,9 +210,10 @@ logger.info("Synced %s runs since %s" % (count, date))
 ```
 backend/           # FastAPI app (app.py, routes/, jobs/, auth.py, cache.py)
 frontend/          # Vue 3 + Vite SPA
+stk/               # stk CLI — its own installable project (SB-169)
+  src/cli/         # thin HTTP client; `uv tool install ./stk`
 src/
-  cli/             # stk — thin-client CLI
-  shared/          # Shared code used by the backend and CLI
+  shared/          # Shared code used by the backend
     models/        # Pydantic models
     supabase_ops/  # Supabase repositories (runs, goals, users, tokens)
     smashrun/      # SmashRun OAuth + API client
@@ -221,7 +222,9 @@ supabase/migrations/  # Postgres schema migrations
 ```
 
 > Note: the app runs as a FastAPI service on Kubernetes, not AWS Lambda. The
-> `src/shared/` package is imported by both `backend/` and `src/cli/`.
+> `src/shared/` package is imported by `backend/`. The `stk/` CLI is a
+> standalone thin client (talks to the API over HTTPS) with no shared-code
+> dependency, so it packages and installs on its own.
 
 ### Import Paths
 
