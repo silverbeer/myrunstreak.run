@@ -96,6 +96,13 @@ python_files = "test_*.py"
 python_functions = "test_*"
 addopts = "-v --cov=src --cov-report=term-missing"
 
+[tool.coverage.run]
+# The CLI is a thin client exercised end-to-end against the live API, not by
+# the root unit suite — measuring it here would only depress the floor with
+# untestable glue. The coverage gate (SB-174) tracks the pure logic in
+# src/shared.
+omit = ["src/cli/*"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
