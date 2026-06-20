@@ -160,3 +160,63 @@ def test_issue_invite_route_admin_issues_token() -> None:
     _, kwargs = repo.create.call_args
     assert kwargs["created_by"] == admin
     assert len(kwargs["token"]) >= 32  # token_urlsafe(32)
+
+
+def _future() -> str:
+    return (datetime.now(UTC) + timedelta(days=1)).isoformat()
+
+
+def _past() -> str:
+    return (datetime.now(UTC) - timedelta(days=1)).isoformat()
+
+
+def _redeem(invite_row: dict[str, Any] | None) -> Any:
+    """Call redeem_invite with the repo + supabase stubbed; return (result, repo)."""
+    from backend.routes.invites import RedeemRequest, redeem_invite
+
+    repo = MagicMock()
+    repo.get_by_token.return_value = invite_row
+    with (
+        patch("backend.routes.invites.get_supabase_client", return_value=MagicMock()),
+        patch("backend.routes.invites.InvitesRepository", return_value=repo),
+        patch("backend.routes.invites.UsersRepository", return_value=MagicMock()),
+        patch(
+            "backend.routes.invites._admin_create_user",
+            return_value={"id": str(uuid4())},
+        ),
+        patch(
+            "backend.routes.invites._proxy_supabase_auth",
+            return_value={"access_token": "at", "refresh_token": "rt", "expires_in": 3600},
+        ),
+    ):
+        return redeem_invite(RedeemRequest(token="tok-abcdef", password="secret1")), repo
+
+
+def test_redeem_unknown_token_404() -> None:
+    with pytest.raises(HTTPException) as exc:
+        _redeem(None)
+    assert exc.value.status_code == 404
+
+
+def test_redeem_already_redeemed_409() -> None:
+    row = {"email": "x@example.com", "expires_at": _future(), "redeemed_at": _future()}
+    with pytest.raises(HTTPException) as exc:
+        _redeem(row)
+    assert exc.value.status_code == 409
+
+
+def test_redeem_expired_410() -> None:
+    row = {"email": "x@example.com", "expires_at": _past(), "redeemed_at": None}
+    with pytest.raises(HTTPException) as exc:
+        _redeem(row)
+    assert exc.value.status_code == 410
+
+
+def test_redeem_happy_path_creates_user_and_returns_session() -> None:
+    row = {"email": "friend@example.com", "expires_at": _future(), "redeemed_at": None}
+    result, repo = _redeem(row)
+    assert result["access_token"] == "at"
+    assert result["user"]["email"] == "friend@example.com"
+    # invite consumed; account email comes from the invite, not the request
+    repo.mark_redeemed.assert_called_once()
+    assert repo.mark_redeemed.call_args[0][0] == "tok-abcdef"
