@@ -17,7 +17,7 @@ import typer
 from rich.console import Console
 
 from cli import __version__
-from cli.commands import auth, plan, runs, splits, stats, sync
+from cli.commands import auth, plan, runs, splits, stats, sync, workout
 
 # Create the main app
 app = typer.Typer(
@@ -33,6 +33,7 @@ app.add_typer(plan.plan_app, name="plan", help="Adaptive monthly plan")
 app.add_typer(plan.constraint_app, name="constraint", help="Plan constraints (travel, injury)")
 app.add_typer(plan.readiness_app, name="readiness", help="Daily readiness check-in")
 app.add_typer(splits.splits_app, name="splits", help="Per-mile splits")
+app.add_typer(workout.workout_app, name="workout", help="Athlete workout tracker")
 
 # Console for output
 console = Console()
