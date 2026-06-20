@@ -40,6 +40,7 @@ def _today_local() -> date:
 
 # ---------------------------------------------------------------- types
 
+
 @router.get("/types", response_model=list[MetricType])
 def list_metric_types(
     _user_id: UUID = Depends(authenticate_request),
@@ -49,6 +50,7 @@ def list_metric_types(
 
 
 # ---------------------------------------------------------------- entries
+
 
 @router.post("/entries", response_model=MetricEntry, status_code=status.HTTP_201_CREATED)
 async def create_entry(
@@ -95,6 +97,7 @@ async def delete_entry(
 
 
 # ---------------------------------------------------------------- goals
+
 
 def _progress_for(supabase, user_id: UUID, goal: MetricGoal) -> GoalProgress:
     metric = MetricTypesRepository(supabase).get(goal.metric_key)

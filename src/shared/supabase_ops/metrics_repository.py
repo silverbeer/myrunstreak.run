@@ -50,11 +50,7 @@ class MetricEntriesRepository:
         date_to: date | None = None,
         limit: int = 1000,
     ) -> list[dict[str, Any]]:
-        query = (
-            self.supabase.table("metric_entries")
-            .select("*")
-            .eq("user_id", str(user_id))
-        )
+        query = self.supabase.table("metric_entries").select("*").eq("user_id", str(user_id))
         if metric_key is not None:
             query = query.eq("metric_key", metric_key)
         if date_from is not None:
@@ -88,11 +84,7 @@ class MetricGoalsRepository:
         return cast(list[dict[str, Any]], result.data)[0]
 
     def list(self, user_id: UUID, status: str | None = None) -> list[dict[str, Any]]:
-        query = (
-            self.supabase.table("metric_goals")
-            .select("*")
-            .eq("user_id", str(user_id))
-        )
+        query = self.supabase.table("metric_goals").select("*").eq("user_id", str(user_id))
         if status is not None:
             query = query.eq("status", status)
         result = query.order("created_at", desc=True).execute()

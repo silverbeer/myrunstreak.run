@@ -28,8 +28,11 @@ class TestComputeStreaks:
 
     def test_two_separate_streaks(self) -> None:
         days = [
-            date(2026, 4, 1), date(2026, 4, 2), date(2026, 4, 3),  # 3-day
-            date(2026, 5, 1), date(2026, 5, 2),  # 2-day, ending yesterday
+            date(2026, 4, 1),
+            date(2026, 4, 2),
+            date(2026, 4, 3),  # 3-day
+            date(2026, 5, 1),
+            date(2026, 5, 2),  # 2-day, ending yesterday
         ]
         s = compute_streaks(days, TODAY)
         assert len(s) == 2
@@ -62,8 +65,11 @@ class TestComputeStreaks:
 
     def test_sorted_descending_by_length(self) -> None:
         days = [
-            date(2026, 1, 1), date(2026, 1, 2),  # 2-day (older)
-            date(2026, 4, 1), date(2026, 4, 2), date(2026, 4, 3),  # 3-day
+            date(2026, 1, 1),
+            date(2026, 1, 2),  # 2-day (older)
+            date(2026, 4, 1),
+            date(2026, 4, 2),
+            date(2026, 4, 3),  # 3-day
             date(2026, 5, 3),  # 1-day, today
         ]
         s = compute_streaks(days, TODAY)
@@ -79,7 +85,8 @@ class TestComputeStreaks:
 
     def test_gap_of_one_day_breaks_streak(self) -> None:
         days = [
-            date(2026, 5, 1), date(2026, 5, 2),  # 2-day
+            date(2026, 5, 1),
+            date(2026, 5, 2),  # 2-day
             # missing 5/3
             date(2026, 5, 4),  # 1-day
         ]

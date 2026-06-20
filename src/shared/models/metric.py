@@ -25,9 +25,9 @@ class MetricAggregation(str, Enum):
 
 
 class GoalKind(str, Enum):
-    volume = "volume"        # accumulate toward a target (sum to target)
+    volume = "volume"  # accumulate toward a target (sum to target)
     frequency = "frequency"  # do it N times in a window (count of qualifying days)
-    streak = "streak"        # daily chain
+    streak = "streak"  # daily chain
 
 
 class GoalPeriod(str, Enum):

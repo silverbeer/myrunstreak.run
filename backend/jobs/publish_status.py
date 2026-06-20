@@ -185,8 +185,7 @@ def main() -> int:
         upload_to_gcs(status)
 
         logger.info(
-            f"Published: ran_today={status['ran_today']} "
-            f"streak={status['streak']['current_days']}"
+            f"Published: ran_today={status['ran_today']} streak={status['streak']['current_days']}"
         )
         return 0
     except Exception as exc:  # noqa: BLE001

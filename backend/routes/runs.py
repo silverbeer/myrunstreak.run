@@ -26,9 +26,7 @@ async def _recent(user_id: UUID, limit: int) -> dict[str, Any]:
             "duration_seconds": float(r["duration_seconds"]),
             "duration_minutes": round(float(r["duration_seconds"]) / 60, 1),
             "avg_pace_min_per_km": (
-                float(r["average_pace_min_per_km"])
-                if r["average_pace_min_per_km"]
-                else None
+                float(r["average_pace_min_per_km"]) if r["average_pace_min_per_km"] else None
             ),
             "heart_rate_avg": r.get("heart_rate_average"),
             "temperature_celsius": r.get("temperature_celsius"),
@@ -54,10 +52,7 @@ async def _list_runs(user_id: UUID, offset: int, limit: int) -> dict[str, Any]:
     runs_data = runs_repo.get_runs_by_user(user_id, limit=limit, offset=offset)
 
     total_result = (
-        supabase.table("runs")
-        .select("*", count="exact")
-        .eq("user_id", str(user_id))
-        .execute()
+        supabase.table("runs").select("*", count="exact").eq("user_id", str(user_id)).execute()
     )
     total = total_result.count or 0
 
@@ -68,9 +63,7 @@ async def _list_runs(user_id: UUID, offset: int, limit: int) -> dict[str, Any]:
             "distance_km": float(r["distance_km"]),
             "duration_minutes": round(float(r["duration_seconds"]) / 60, 1),
             "avg_pace_min_per_km": (
-                float(r["average_pace_min_per_km"])
-                if r["average_pace_min_per_km"]
-                else None
+                float(r["average_pace_min_per_km"]) if r["average_pace_min_per_km"] else None
             ),
         }
         for r in runs_data

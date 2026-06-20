@@ -43,14 +43,21 @@ def test_signup_returns_session_when_email_confirmation_disabled(client: TestCli
             "expires_in": 3600,
         },
     }
-    with patch("backend.routes.auth_routes.httpx.request", return_value=_mock_response(200, supabase_body)):
-        r = client.post("/auth/signup", json={"email": "new@example.com", "password": "hunter2hunter2"})
+    with patch(
+        "backend.routes.auth_routes.httpx.request", return_value=_mock_response(200, supabase_body)
+    ):
+        r = client.post(
+            "/auth/signup", json={"email": "new@example.com", "password": "hunter2hunter2"}
+        )
 
     assert r.status_code == 200
     body = r.json()
     assert body["access_token"] == "atk"
     assert body["refresh_token"] == "rtk"
-    assert body["user"] == {"id": "00000000-0000-0000-0000-000000000001", "email": "new@example.com"}
+    assert body["user"] == {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "email": "new@example.com",
+    }
     assert "Account created" in body["message"]
 
 
@@ -59,7 +66,9 @@ def test_signup_returns_no_session_when_confirmation_required(client: TestClient
         "user": {"id": "00000000-0000-0000-0000-000000000002", "email": "pending@example.com"},
         "session": None,
     }
-    with patch("backend.routes.auth_routes.httpx.request", return_value=_mock_response(200, supabase_body)):
+    with patch(
+        "backend.routes.auth_routes.httpx.request", return_value=_mock_response(200, supabase_body)
+    ):
         r = client.post(
             "/auth/signup", json={"email": "pending@example.com", "password": "hunter2hunter2"}
         )
@@ -77,7 +86,9 @@ def test_signup_propagates_supabase_error(client: TestClient) -> None:
         "backend.routes.auth_routes.httpx.request",
         return_value=_mock_response(422, supabase_body),
     ):
-        r = client.post("/auth/signup", json={"email": "dup@example.com", "password": "hunter2hunter2"})
+        r = client.post(
+            "/auth/signup", json={"email": "dup@example.com", "password": "hunter2hunter2"}
+        )
 
     assert r.status_code == 422
     assert r.json()["detail"] == "User already registered"
@@ -100,8 +111,12 @@ def test_login_returns_session(client: TestClient) -> None:
         "expires_in": 3600,
         "user": {"id": "00000000-0000-0000-0000-000000000003", "email": "u@example.com"},
     }
-    with patch("backend.routes.auth_routes.httpx.request", return_value=_mock_response(200, supabase_body)):
-        r = client.post("/auth/login", json={"email": "u@example.com", "password": "hunter2hunter2"})
+    with patch(
+        "backend.routes.auth_routes.httpx.request", return_value=_mock_response(200, supabase_body)
+    ):
+        r = client.post(
+            "/auth/login", json={"email": "u@example.com", "password": "hunter2hunter2"}
+        )
 
     assert r.status_code == 200
     body = r.json()
@@ -133,7 +148,9 @@ def test_refresh_returns_new_tokens(client: TestClient) -> None:
         "refresh_token": "rtk2",
         "expires_in": 3600,
     }
-    with patch("backend.routes.auth_routes.httpx.request", return_value=_mock_response(200, supabase_body)):
+    with patch(
+        "backend.routes.auth_routes.httpx.request", return_value=_mock_response(200, supabase_body)
+    ):
         r = client.post("/auth/refresh", json={"refresh_token": "rtk1"})
 
     assert r.status_code == 200
@@ -162,7 +179,9 @@ def test_supabase_unreachable_returns_503(client: TestClient) -> None:
         "backend.routes.auth_routes.httpx.request",
         side_effect=httpx.ConnectError("connection refused"),
     ):
-        r = client.post("/auth/login", json={"email": "u@example.com", "password": "hunter2hunter2"})
+        r = client.post(
+            "/auth/login", json={"email": "u@example.com", "password": "hunter2hunter2"}
+        )
 
     assert r.status_code == 503
     assert "unavailable" in r.json()["detail"].lower()
@@ -203,7 +222,10 @@ def test_forgot_password_accepts_explicit_redirect(client: TestClient) -> None:
     ) as mock_req:
         r = client.post(
             "/auth/forgot-password",
-            json={"email": "u@example.com", "redirect_to": "http://localhost:5174/auth/reset-password"},
+            json={
+                "email": "u@example.com",
+                "redirect_to": "http://localhost:5174/auth/reset-password",
+            },
         )
 
     assert r.status_code == 200
