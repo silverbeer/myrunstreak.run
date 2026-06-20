@@ -69,13 +69,25 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  const signUp = async (email: string, password: string) => {
+  // Invite-only onboarding (SB-188): redeem a token → backend creates the
+  // account + returns a session, which we adopt into the Supabase client so
+  // the app is logged straight in. Open signup is intentionally gone.
+  const redeemInvite = async (token: string, password: string) => {
     loading.value = true
     clearError()
     try {
-      const { error: err } = await supabase.auth.signUp({ email, password })
+      const data = await apiCall<{ access_token: string; refresh_token: string }>(
+        '/invites/redeem',
+        { method: 'POST', body: JSON.stringify({ token, password }) },
+      )
+      const { data: sess, error: err } = await supabase.auth.setSession({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+      })
       if (err) throw err
-      return { success: true, message: 'Check your email to confirm your account.' }
+      session.value = sess.session
+      user.value = sess.user
+      return { success: true }
     } catch (err: any) {
       setError(err.message)
       return { success: false, error: err.message }
@@ -144,7 +156,7 @@ export const useAuthStore = defineStore('auth', () => {
     initialize,
     signIn,
     signInWithGoogle,
-    signUp,
+    redeemInvite,
     signOut,
     requestPasswordReset,
     applyPasswordReset,
