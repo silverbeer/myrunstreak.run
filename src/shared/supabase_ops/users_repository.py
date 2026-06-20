@@ -52,6 +52,22 @@ class UsersRepository:
 
         return data_list[0]
 
+    def upsert_user_with_id(
+        self, user_id: UUID, email: str | None = None, display_name: str | None = None
+    ) -> dict[str, Any]:
+        """Create (or no-op if present) a users row with an explicit user_id.
+
+        Used at invite redemption so users.user_id == the Supabase auth uid —
+        the invariant RLS (user_id = auth.uid()) and the invites FK depend on.
+        """
+        row: dict[str, Any] = {"user_id": str(user_id)}
+        if email:
+            row["email"] = email
+        if display_name:
+            row["display_name"] = display_name
+        result = self.supabase.table("users").upsert(row, on_conflict="user_id").execute()
+        return cast(list[dict[str, Any]], result.data)[0]
+
     def get_user_by_id(self, user_id: UUID) -> dict[str, Any] | None:
         """
         Get user by UUID.
