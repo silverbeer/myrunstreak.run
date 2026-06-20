@@ -32,6 +32,20 @@ jobs:
         run: uv run ruff format --check src/ tests/
       - name: Run tests (coverage floor 60%)
         run: uv run pytest tests/ -q --cov-fail-under=60
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo "### Root coverage (floor 60%)"
+            uv run coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+          uv run coverage report --format=total > cov-root.txt
+      - name: Upload root coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cov-root
+          path: cov-root.txt
 
   backend:
     name: Backend suite
@@ -54,6 +68,20 @@ jobs:
         run: >-
           uv run --project backend python -m pytest backend/tests/ -q
           --cov=backend --cov-report=term-missing --cov-fail-under=80
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo "### Backend coverage (floor 80%)"
+            uv run --project backend coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+          uv run --project backend coverage report --format=total > cov-backend.txt
+      - name: Upload backend coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cov-backend
+          path: cov-backend.txt
       - name: Build Docker image
         run: docker build -f backend/Dockerfile -t myrunstreak-backend:test .
 
@@ -78,3 +106,42 @@ jobs:
         run: |
           uv tool install ./stk
           stk --version
+
+  coverage-comment:
+    name: Coverage PR comment
+    needs: [root, backend]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: cov
+      - name: Post sticky coverage comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          root=$(cat cov/cov-root/cov-root.txt 2>/dev/null || echo "n/a")
+          backend=$(cat cov/cov-backend/cov-backend.txt 2>/dev/null || echo "n/a")
+          marker="<!-- coverage-report -->"
+          body="$marker
+          ## 📊 Test coverage — this branch
+
+          | suite | coverage | floor |
+          |---|---:|---:|
+          | root (src/shared, planning) | ${root}% | 60% |
+          | backend | ${backend}% | 80% |
+
+          <sub>Floors are enforced — a PR below them fails CI. Full per-file tables are in each job's summary.</sub>"
+          id=$(gh api "repos/$REPO/issues/$PR/comments" \
+            --jq "map(select(.body|startswith(\"$marker\")))|.[0].id // empty")
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$body" >/dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -f body="$body" >/dev/null
+          fi
+          echo "Posted coverage: root=${root}% backend=${backend}%"
