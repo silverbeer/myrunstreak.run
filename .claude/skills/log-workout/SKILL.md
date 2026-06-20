@@ -48,6 +48,9 @@ When given a screenshot or pasted workout (the coach's prescription):
              {"exercise_key":"bicep_hold","position":2,"target_duration_seconds":60,"target_load_kg":9.07}]}
    ```
    `type` ∈ circuit|intervals|test|session. Put per-exercise rounds in `rounds`.
+   **Always bracket the work with `warmup` (position 0) and `cooldown` (last
+   position)** — they're first/last on the card and the coach tracks that the
+   athlete actually did them. Log them in the actuals too.
 3. Create it: `echo '<json>' | stk workout add-template --file -` (or write a temp
    file). Report the name + id.
 
