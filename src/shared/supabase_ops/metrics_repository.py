@@ -49,6 +49,7 @@ class MetricEntriesRepository:
         date_from: date | None = None,
         date_to: date | None = None,
         limit: int = 1000,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         query = self.supabase.table("metric_entries").select("*").eq("user_id", str(user_id))
         if metric_key is not None:
@@ -57,7 +58,8 @@ class MetricEntriesRepository:
             query = query.gte("occurred_on", date_from.isoformat())
         if date_to is not None:
             query = query.lte("occurred_on", date_to.isoformat())
-        result = query.order("occurred_on", desc=True).limit(limit).execute()
+        # range() pages beyond a single limit window so full history is reachable (SB-184).
+        result = query.order("occurred_on", desc=True).range(offset, offset + limit - 1).execute()
         return cast(list[dict[str, Any]], result.data)
 
     def delete(self, user_id: UUID, entry_id: UUID) -> bool:

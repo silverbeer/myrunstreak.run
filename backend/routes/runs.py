@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -46,15 +47,25 @@ async def get_recent_runs(
 
 
 @cached(ttl=60, key_prefix="runs:list")
-async def _list_runs(user_id: UUID, offset: int, limit: int) -> dict[str, Any]:
+async def _list_runs(
+    user_id: UUID,
+    offset: int,
+    limit: int,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    distance_min: float | None = None,
+    distance_max: float | None = None,
+) -> dict[str, Any]:
     supabase = get_supabase_client()
     runs_repo = RunsRepository(supabase)
-    runs_data = runs_repo.get_runs_by_user(user_id, limit=limit, offset=offset)
-
-    total_result = (
-        supabase.table("runs").select("*", count="exact").eq("user_id", str(user_id)).execute()
-    )
-    total = total_result.count or 0
+    filters = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "distance_min": distance_min,
+        "distance_max": distance_max,
+    }
+    runs_data = runs_repo.get_runs_by_user(user_id, limit=limit, offset=offset, **filters)
+    total = runs_repo.count_runs_by_user(user_id, **filters)
 
     runs = [
         {
@@ -81,6 +92,11 @@ async def _list_runs(user_id: UUID, offset: int, limit: int) -> dict[str, Any]:
 async def list_runs(
     user_id: UUID = Depends(authenticate_request),
     offset: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    # 366 = a full streak-year (one run/day) in a single page (SB-184).
+    limit: int = Query(50, ge=1, le=366),
+    date_from: date | None = Query(None, description="Runs on/after this date (inclusive)"),
+    date_to: date | None = Query(None, description="Runs on/before this date (inclusive)"),
+    distance_min: float | None = Query(None, ge=0, description="Min distance in km"),
+    distance_max: float | None = Query(None, ge=0, description="Max distance in km"),
 ) -> dict[str, Any]:
-    return await _list_runs(user_id, offset, limit)
+    return await _list_runs(user_id, offset, limit, date_from, date_to, distance_min, distance_max)

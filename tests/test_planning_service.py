@@ -58,6 +58,9 @@ class _FakeQuery:
     def limit(self, *a: Any, **k: Any) -> _FakeQuery:
         return self
 
+    def range(self, *a: Any, **k: Any) -> _FakeQuery:
+        return self
+
     def insert(self, payload: Any) -> _FakeQuery:
         self._mode, self._payload = "insert", payload
         return self

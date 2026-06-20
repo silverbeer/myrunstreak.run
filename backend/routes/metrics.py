@@ -78,9 +78,15 @@ def list_entries(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0, description="Page beyond the limit window (SB-184)"),
 ) -> list[MetricEntry]:
     rows = MetricEntriesRepository(get_supabase_client()).list(
-        user_id, metric_key=metric_key, date_from=date_from, date_to=date_to, limit=limit
+        user_id,
+        metric_key=metric_key,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=offset,
     )
     return [MetricEntry(**r) for r in rows]
 

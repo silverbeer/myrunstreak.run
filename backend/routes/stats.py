@@ -111,7 +111,8 @@ async def _monthly(user_id: UUID, limit: int) -> dict[str, Any]:
 @router.get("/monthly")
 async def get_monthly_stats(
     user_id: UUID = Depends(authenticate_request),
-    limit: int = Query(12, ge=1, le=60),
+    # 180 months = 15 yrs, covers the full streak's pace history (SB-184).
+    limit: int = Query(12, ge=1, le=180),
 ) -> dict[str, Any]:
     return await _monthly(user_id, limit)
 
