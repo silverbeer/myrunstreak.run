@@ -58,6 +58,49 @@ def templates(
         )
 
 
+def _fmt_target(item: dict[str, Any]) -> str:
+    parts = []
+    if item.get("target_reps") is not None:
+        parts.append(f"{item['target_reps']} reps")
+    if item.get("target_duration_seconds") is not None:
+        parts.append(f"{item['target_duration_seconds']}s")
+    if item.get("target_load_kg") is not None:
+        parts.append(f"{item['target_load_kg'] * 2.20462:.0f}lb")
+    if item.get("target_distance_m") is not None:
+        parts.append(f"{item['target_distance_m'] / 0.9144:.0f}yd")
+    return " · ".join(parts) if parts else "—"
+
+
+def show(
+    template_id: str = typer.Argument(
+        ..., help="Template id (full or 8-char prefix from `templates`)"
+    ),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+) -> None:
+    """Show a template's exercises (the workout card, pre-workout)."""
+    tid = template_id
+    if len(template_id) < 36:  # prefix → resolve against the list
+        match = [t for t in api.request("workouts/templates") if t["id"].startswith(template_id)]
+        if not match:
+            display.console.print(f"[red]No template id starting {template_id}[/red]")
+            raise typer.Exit(1)
+        tid = match[0]["id"]
+    t = api.request(f"workouts/templates/{tid}")
+    if json_output:
+        _dump(t)
+        return
+    display.console.print(
+        f"\n[bold]{t['name']}[/bold]  ({t['type']}, x{t['rounds']} rounds)  — {t['source']}"
+    )
+    for item in sorted(t.get("items", []), key=lambda i: i["position"]):
+        display.console.print(
+            f"  {item['position'] + 1}. {item['exercise_key']:<16} {_fmt_target(item)}"
+        )
+    if t.get("notes"):
+        display.console.print(f"  [dim]{t['notes']}[/dim]")
+    display.console.print("")
+
+
 def sessions(
     since: str = typer.Option(None, "--since", "-s", help="Only sessions on/after YYYY-MM-DD"),
     limit: int = typer.Option(30, "--limit", "-l"),
@@ -109,6 +152,7 @@ def log(
 
 workout_app.command(name="exercises")(exercises)
 workout_app.command(name="templates")(templates)
+workout_app.command(name="show")(show)
 workout_app.command(name="sessions")(sessions)
 workout_app.command(name="add-template")(add_template)
 workout_app.command(name="log")(log)
