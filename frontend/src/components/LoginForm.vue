@@ -4,7 +4,7 @@
       <span class="text-5xl">🏃</span>
       <h1 class="mt-3 text-2xl font-bold text-gray-900">MyRunStreak</h1>
       <p class="mt-1 text-sm text-gray-500">
-        {{ mode === 'signup' ? 'Create your account' : mode === 'forgot' ? 'Reset your password' : 'Sign in to your account' }}
+        {{ mode === 'forgot' ? 'Reset your password' : 'Sign in to your account' }}
       </p>
     </div>
 
@@ -46,31 +46,6 @@
       </button>
     </form>
 
-    <!-- Sign up -->
-    <form v-else-if="mode === 'signup'" @submit.prevent="handleSignUp" class="space-y-4">
-      <div>
-        <label for="signup-email" class="form-label">Email</label>
-        <input id="signup-email" v-model="email" type="email" required autocomplete="email"
-          class="form-input" placeholder="you@example.com" :disabled="auth.loading" />
-      </div>
-      <div>
-        <label for="signup-password" class="form-label">Password</label>
-        <input id="signup-password" v-model="password" type="password" required autocomplete="new-password"
-          class="form-input" placeholder="••••••••" minlength="6" :disabled="auth.loading" />
-      </div>
-
-      <div v-if="auth.error" class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
-        {{ auth.error }}
-      </div>
-      <div v-if="signupSuccess" class="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-3 py-2">
-        Check your email to confirm your account.
-      </div>
-
-      <button type="submit" class="btn-primary w-full py-2.5" :disabled="auth.loading || signupSuccess">
-        {{ auth.loading ? 'Creating account…' : 'Create account' }}
-      </button>
-    </form>
-
     <!-- Forgot password -->
     <form v-else-if="mode === 'forgot'" @submit.prevent="handleForgotPassword" class="space-y-4">
       <div>
@@ -97,9 +72,8 @@
         <p>
           <button @click="switchMode('forgot')" class="text-brand-600 hover:underline font-medium">Forgot password?</button>
         </p>
-        <p>
-          No account?
-          <button @click="switchMode('signup')" class="text-brand-600 hover:underline font-medium">Sign up</button>
+        <p class="text-xs text-gray-400">
+          MyRunStreak is invite-only. Got an invite link? It'll bring you straight to sign-up.
         </p>
       </template>
       <template v-else>
@@ -120,17 +94,15 @@ const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
-type Mode = 'login' | 'signup' | 'forgot'
+type Mode = 'login' | 'forgot'
 const mode = ref<Mode>('login')
 const email = ref('')
 const password = ref('')
-const signupSuccess = ref(false)
 const resetSent = ref(false)
 
 const switchMode = (next: Mode) => {
   mode.value = next
   auth.clearError()
-  signupSuccess.value = false
   resetSent.value = false
 }
 
@@ -144,13 +116,6 @@ const handleSignIn = async () => {
 
 const handleGoogleSignIn = async () => {
   await auth.signInWithGoogle()
-}
-
-const handleSignUp = async () => {
-  const result = await auth.signUp(email.value, password.value)
-  if (result.success) {
-    signupSuccess.value = true
-  }
 }
 
 const handleForgotPassword = async () => {
