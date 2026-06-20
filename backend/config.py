@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     goal_yearly_staleness_days: int = 14
     goal_monthly_staleness_days: int = 3
 
+    # Comma-separated user UUIDs allowed to issue invites (SB-188). Empty = no
+    # admins (invite issuance disabled). Set in the deployed env, not committed.
+    admin_user_ids: str = ""
+
+    def admin_ids(self) -> set[str]:
+        """Parsed set of admin user UUIDs (lowercased, whitespace-trimmed)."""
+        return {p.strip().lower() for p in self.admin_user_ids.split(",") if p.strip()}
+
 
 _settings: Settings | None = None
 

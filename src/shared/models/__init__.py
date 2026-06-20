@@ -10,6 +10,7 @@ from .enums import (
     WeatherType,
 )
 from .goal import Goal
+from .invite import Invite, InviteCreate
 from .metric import (
     GoalComparator,
     GoalKind,
@@ -65,6 +66,9 @@ __all__ = [
     "Activity",
     "Goal",
     "Split",
+    # Invites
+    "Invite",
+    "InviteCreate",
     # Metric tracking
     "MetricType",
     "MetricEntry",

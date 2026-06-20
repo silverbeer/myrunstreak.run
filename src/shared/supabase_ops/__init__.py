@@ -1,6 +1,7 @@
 """Supabase database operations for MyRunStreak.com."""
 
 from .goals_repository import GoalsRepository
+from .invites_repository import InvitesRepository
 from .mappers import activity_to_run_dict, split_to_dict
 from .metrics_repository import (
     MetricEntriesRepository,
@@ -23,6 +24,7 @@ from .workout_repository import (
 
 __all__ = [
     "GoalsRepository",
+    "InvitesRepository",
     "MetricEntriesRepository",
     "MetricGoalsRepository",
     "MetricTypesRepository",

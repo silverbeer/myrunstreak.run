@@ -39,6 +39,8 @@ spec:
               value: {{ .Values.backend.env.cacheEnabled | default "true" | quote }}
             - name: CACHE_DEFAULT_TTL_SECONDS
               value: {{ .Values.backend.env.cacheDefaultTtlSeconds | default 60 | quote }}
+            - name: ADMIN_USER_IDS
+              value: {{ .Values.backend.env.adminUserIds | default "" | quote }}
             - name: SUPABASE_URL
               valueFrom:
                 secretKeyRef:

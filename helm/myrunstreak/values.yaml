@@ -78,6 +78,9 @@ backend:
     corsAllowOrigins: "*"
     cacheEnabled: "true"
     cacheDefaultTtlSeconds: 60
+    # Comma-separated user UUIDs allowed to issue invites (SB-188). Set the
+    # owner's UUID here to enable invite issuance; empty = disabled.
+    adminUserIds: ""
 
   resources:
     requests:
