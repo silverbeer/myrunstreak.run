@@ -44,28 +44,17 @@ dev = [
     "mypy>=1.11.0",  # Type checking
     "boto3-stubs[essential]>=1.35.0",
 ]
-cli = [
-    "typer>=0.12.0",  # Modern CLI framework
-    "rich>=13.7.0",  # Pretty terminal output
-]
 chat = [
     "pydantic-ai[openai]>=0.0.14",  # AI-powered chat interface
     "httpx>=0.27.0",  # Already in main deps, but needed for chat
 ]
 
-[project.scripts]
-stk = "cli.main:cli"
-
-[build-system]
-requires = ["uv_build>=0.9.5,<0.10.0"]
-build-backend = "uv_build"
-
 [tool.uv]
-# The root project is a virtual workspace: code is imported via the `src.*` path
-# (see tests + tooling), not installed as a `myrunstreak` wheel. Building it as a
-# package fails on newer uv (no `src/myrunstreak/` module) and is unnecessary for
-# tests. Matches backend/pyproject.toml. Packaging the `stk` script is a separate
-# concern handled at build/deploy time.
+# Virtual workspace: code is imported via the `src.*` path (see tests + tooling),
+# not installed as a `myrunstreak` wheel — so no [build-system]. The `stk` CLI is
+# now its own installable project under stk/ (SB-169); it has zero shared-code
+# dependency, so splitting it out keeps this root non-package for tests while the
+# CLI installs cleanly via `uv tool install ./stk`.
 package = false
 
 [tool.ruff]
@@ -95,13 +84,6 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
 addopts = "-v --cov=src --cov-report=term-missing"
-
-[tool.coverage.run]
-# The CLI is a thin client exercised end-to-end against the live API, not by
-# the root unit suite — measuring it here would only depress the floor with
-# untestable glue. The coverage gate (SB-174) tracks the pure logic in
-# src/shared.
-omit = ["src/cli/*"]
 
 [tool.mypy]
 python_version = "3.12"

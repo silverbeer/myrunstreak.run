@@ -56,3 +56,25 @@ jobs:
           --cov=backend --cov-report=term-missing --cov-fail-under=80
       - name: Build Docker image
         run: docker build -f backend/Dockerfile -t myrunstreak-backend:test .
+
+  cli:
+    name: stk CLI (lint + install)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --project stk --all-extras
+      - name: Ruff lint
+        run: uv run --project stk ruff check stk/
+      - name: Ruff format check
+        run: uv run --project stk ruff format --check stk/
+      - name: Install + smoke test the console script
+        run: |
+          uv tool install ./stk
+          stk --version

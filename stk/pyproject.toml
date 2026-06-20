@@ -1,0 +1,35 @@
+[project]
+name = "stk"
+version = "0.1.0"
+description = "stk — terminal client for myrunstreak.run (streak, plan, splits, workouts)"
+readme = "README.md"
+authors = [{ name = "silverbeer", email = "silverbeer.io@gmail.com" }]
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.12.0",   # CLI framework
+    "rich>=13.7.0",    # Terminal rendering
+    "httpx>=0.27.0",   # Talks to api.myrunstreak.run
+]
+
+[project.scripts]
+stk = "cli.main:cli"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.7.0",
+    "mypy>=1.11.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.12.0"]
+build-backend = "uv_build"
+
+# The package is `cli` (top-level, matching `from cli import ...`), not derived
+# from the project name `stk`. module-root defaults to `src`, so the package
+# lives at stk/src/cli.
+[tool.uv.build-backend]
+module-name = "cli"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
