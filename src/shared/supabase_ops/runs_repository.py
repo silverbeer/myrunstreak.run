@@ -81,30 +81,75 @@ class RunsRepository:
 
         return data_list[0] if data_list else None
 
+    def _apply_run_filters(
+        self,
+        query: Any,
+        date_from: date | None,
+        date_to: date | None,
+        distance_min: float | None,
+        distance_max: float | None,
+    ) -> Any:
+        """Apply optional date/distance filters to a runs query (SB-184)."""
+        if date_from is not None:
+            query = query.gte("start_date", date_from.isoformat())
+        if date_to is not None:
+            query = query.lte("start_date", date_to.isoformat())
+        if distance_min is not None:
+            query = query.gte("distance_km", distance_min)
+        if distance_max is not None:
+            query = query.lte("distance_km", distance_max)
+        return query
+
     def get_runs_by_user(
-        self, user_id: UUID, limit: int = 50, offset: int = 0
+        self,
+        user_id: UUID,
+        limit: int = 50,
+        offset: int = 0,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        distance_min: float | None = None,
+        distance_max: float | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Get runs for a specific user with pagination.
+        Get runs for a specific user with pagination + optional filters.
 
         Args:
             user_id: User UUID
             limit: Maximum number of runs to return
             offset: Number of runs to skip
+            date_from: Only runs on/after this date (inclusive)
+            date_to: Only runs on/before this date (inclusive)
+            distance_min: Only runs >= this distance in km
+            distance_max: Only runs <= this distance in km
 
         Returns:
             List of run records
         """
+        query = self.supabase.table("runs").select("*").eq("user_id", str(user_id))
+        query = self._apply_run_filters(query, date_from, date_to, distance_min, distance_max)
         result = (
-            self.supabase.table("runs")
-            .select("*")
-            .eq("user_id", str(user_id))
-            .order("start_date_time_local", desc=True)
+            query.order("start_date_time_local", desc=True)
             .range(offset, offset + limit - 1)
             .execute()
         )
 
         return cast(list[dict[str, Any]], result.data)
+
+    def count_runs_by_user(
+        self,
+        user_id: UUID,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        distance_min: float | None = None,
+        distance_max: float | None = None,
+    ) -> int:
+        """Count runs for a user, honoring the same filters as get_runs_by_user."""
+        query = self.supabase.table("runs").select("id", count="exact").eq("user_id", str(user_id))
+        query = self._apply_run_filters(query, date_from, date_to, distance_min, distance_max)
+        result = query.execute()
+        return cast(int, result.count or 0)
 
     def get_runs_by_date_range(
         self, user_id: UUID, start_date: date, end_date: date
