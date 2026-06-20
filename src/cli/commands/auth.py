@@ -14,7 +14,8 @@ from rich.console import Console
 from rich.panel import Panel
 
 from cli import display
-from cli.api import get_api_url
+from cli import session as session_mod
+from cli.api import get_api_url, post_unauth
 
 app = typer.Typer(help="Authentication commands")
 console = Console()
@@ -128,9 +129,37 @@ def is_port_available(port: int) -> bool:
 
 @app.command()
 def login(
+    email: str = typer.Option(None, "--email", "-e", help="Account email"),
+) -> None:
+    """Log in to MyRunStreak (email + password).
+
+    Creates the app session the CLI needs for plan, metrics, stats, and sync.
+    To connect your SmashRun source for run-sync, use 'stk auth connect'.
+    """
+    if not email:
+        email = typer.prompt("Email")
+    password = typer.prompt("Password", hide_input=True)
+
+    display.display_sync_progress("Logging in...")
+    # post_unauth prints a useful error and exits on failure (e.g. bad password).
+    data = post_unauth("auth/login", {"email": email, "password": password})
+
+    resolved_email = (data.get("user") or {}).get("email") or email
+    session_mod.save(
+        access_token=data["access_token"],
+        refresh_token=data["refresh_token"],
+        expires_in=data.get("expires_in"),
+        email=resolved_email,
+    )
+    display.display_sync_progress(f"Logged in as {resolved_email}", done=True)
+    console.print("\n[green]Session saved — 'stk plan', 'stk splits', 'stk sync' now work.[/green]")
+
+
+@app.command(name="connect")
+def connect_smashrun(
     no_browser: bool = typer.Option(False, "--no-browser", help="Don't open browser automatically"),
 ) -> None:
-    """Login to SmashRun via OAuth."""
+    """Connect your SmashRun account (OAuth) so the backend can sync your runs."""
     port = 9876
     redirect_uri = f"http://localhost:{port}/callback"
 
@@ -233,7 +262,10 @@ def login(
         else:
             display.display_sync_progress(f"Welcome back, {username}!", done=True)
 
-        console.print("\n[green]You can now run 'stk sync' to fetch your runs![/green]")
+        console.print(
+            "\n[green]SmashRun connected.[/green] "
+            "Make sure you've run [bold]stk auth login[/bold], then [bold]stk sync[/bold]."
+        )
 
     except httpx.HTTPStatusError as e:
         try:
@@ -250,29 +282,32 @@ def login(
 
 @app.command()
 def logout() -> None:
-    """Remove saved credentials."""
-    if CONFIG_FILE.exists():
+    """Log out — remove the app session and the SmashRun config."""
+    had_session = session_mod.clear()
+    had_config = CONFIG_FILE.exists()
+    if had_config:
         CONFIG_FILE.unlink()
+    if had_session or had_config:
         display.display_sync_progress("Logged out", done=True)
-        display.display_info(f"Removed config from {CONFIG_DIR}")
+        display.display_info(f"Cleared credentials from {CONFIG_DIR}")
     else:
         display.display_info("Not logged in")
 
 
 @app.command()
 def status() -> None:
-    """Show authentication status."""
+    """Show authentication status (app session + SmashRun connection)."""
+    s = session_mod.load()
     config = get_config()
 
-    if not config.get("user_id"):
-        display.display_warning("Not logged in")
+    if s is None:
+        display.display_warning("Not logged in (no app session)")
         display.display_info("Run 'stk auth login' to authenticate")
-        return
+    else:
+        state = "expired — auto-refreshes" if s.is_expired() else "active"
+        console.print(f"[bold]Logged in:[/bold] {s.email}  [dim]({state})[/dim]")
 
-    username = config.get("username", "Unknown")
-    user_id = config.get("user_id", "")
-
-    console.print(f"[bold]User:[/bold] {username}")
-    display.display_sync_progress("Logged in", done=True)
-    display.display_info(f"User ID: {user_id[:8]}...")
-    display.display_info(f"Config: {CONFIG_DIR}")
+    if config.get("username"):
+        display.display_info(f"SmashRun connected: {config.get('username')}")
+    elif s is not None:
+        display.display_info("SmashRun not connected — run 'stk auth connect'")
