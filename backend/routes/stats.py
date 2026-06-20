@@ -80,6 +80,7 @@ def _today_local() -> date:
     """Match get_current_streak's America/New_York anchor so /streaks
     agrees with the legacy single-streak endpoint about what "today" is."""
     from datetime import datetime
+
     return datetime.now(ZoneInfo("America/New_York")).date()
 
 

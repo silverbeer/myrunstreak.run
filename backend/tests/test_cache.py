@@ -19,8 +19,10 @@ def cache_module(monkeypatch):
 
     # Clear cached settings + redis client
     import backend.config
+
     importlib.reload(backend.config)
     import backend.cache
+
     importlib.reload(backend.cache)
 
     fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
@@ -35,10 +37,12 @@ def cache_module(monkeypatch):
 class TestUserKey:
     def test_basic(self) -> None:
         from backend.cache import user_key
+
         assert user_key(USER_A, "stats") == f"mrs:stats:{USER_A}"
 
     def test_with_parts(self) -> None:
         from backend.cache import user_key
+
         assert (
             user_key(USER_A, "runs", "limit=10", "offset=0")
             == f"mrs:runs:{USER_A}:limit=10:offset=0"
@@ -50,8 +54,10 @@ class TestCachedDecorator:
     async def test_returns_value_when_disabled(self, monkeypatch) -> None:
         monkeypatch.setenv("CACHE_ENABLED", "false")
         import backend.config
+
         importlib.reload(backend.config)
         import backend.cache
+
         importlib.reload(backend.cache)
 
         calls = 0

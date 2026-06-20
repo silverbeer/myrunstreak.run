@@ -13,13 +13,13 @@ from .planning_repository import (
     ReadinessRepository,
 )
 from .runs_repository import RunsRepository
+from .token_repository import TokenRepository
+from .users_repository import UsersRepository
 from .workout_repository import (
     ExercisesRepository,
     WorkoutSessionsRepository,
     WorkoutTemplatesRepository,
 )
-from .token_repository import TokenRepository
-from .users_repository import UsersRepository
 
 __all__ = [
     "GoalsRepository",

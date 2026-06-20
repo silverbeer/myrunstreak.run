@@ -22,12 +22,7 @@ def main() -> int:
     logger = logging.getLogger("sync-cron")
 
     supabase = get_supabase_client()
-    rows = (
-        supabase.table("user_sources")
-        .select("user_id")
-        .eq("source_type", "smashrun")
-        .execute()
-    )
+    rows = supabase.table("user_sources").select("user_id").eq("source_type", "smashrun").execute()
     user_ids: list[UUID] = [UUID(r["user_id"]) for r in (rows.data or [])]
 
     if not user_ids:

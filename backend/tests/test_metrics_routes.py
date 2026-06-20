@@ -22,7 +22,9 @@ def _patch(types=None, entries=None, goals=None):
     if types is not None:
         patches.append(patch("backend.routes.metrics.MetricTypesRepository", return_value=types))
     if entries is not None:
-        patches.append(patch("backend.routes.metrics.MetricEntriesRepository", return_value=entries))
+        patches.append(
+            patch("backend.routes.metrics.MetricEntriesRepository", return_value=entries)
+        )
     if goals is not None:
         patches.append(patch("backend.routes.metrics.MetricGoalsRepository", return_value=goals))
     return patches
@@ -60,7 +62,12 @@ async def test_create_entry_defaults_occurred_on_and_inserts():
 
     uid = uuid4()
     types = MagicMock()
-    types.get.return_value = {"key": "pushups", "display_name": "Push-ups", "unit": "reps", "aggregation": "sum"}
+    types.get.return_value = {
+        "key": "pushups",
+        "display_name": "Push-ups",
+        "unit": "reps",
+        "aggregation": "sum",
+    }
     entries = MagicMock()
 
     def _insert(user_id, payload):
@@ -119,13 +126,23 @@ def test_list_goals_computes_progress():
     goals.list.return_value = [goal_row]
 
     types = MagicMock()
-    types.get.return_value = {"key": "pushups", "display_name": "Push-ups", "unit": "reps", "aggregation": "sum"}
+    types.get.return_value = {
+        "key": "pushups",
+        "display_name": "Push-ups",
+        "unit": "reps",
+        "aggregation": "sum",
+    }
 
     entries = MagicMock()
     today = date.today()
     entries.list.return_value = [
-        {"id": str(uuid4()), "user_id": str(uid), "metric_key": "pushups",
-         "occurred_on": today.replace(day=1).isoformat(), "value": 40.0},
+        {
+            "id": str(uuid4()),
+            "user_id": str(uid),
+            "metric_key": "pushups",
+            "occurred_on": today.replace(day=1).isoformat(),
+            "value": 40.0,
+        },
     ]
 
     patches = _patch(types=types, entries=entries, goals=goals)
@@ -144,4 +161,6 @@ def test_list_goals_computes_progress():
 def test_create_goal_custom_period_requires_bounds():
     # Model-level validation: custom without bounds is rejected before any I/O.
     with pytest.raises(ValueError):
-        MetricGoalCreate(metric_key="pushups", kind=GoalKind.volume, period=GoalPeriod.custom, target=100)
+        MetricGoalCreate(
+            metric_key="pushups", kind=GoalKind.volume, period=GoalPeriod.custom, target=100
+        )

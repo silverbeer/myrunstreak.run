@@ -72,9 +72,7 @@ def cached(ttl: int | None = None, key_prefix: str = ""):
             if client is None:
                 return await fn(user_id, *args, **kwargs)
 
-            extra_parts = [str(a) for a in args] + [
-                f"{k}={v}" for k, v in sorted(kwargs.items())
-            ]
+            extra_parts = [str(a) for a in args] + [f"{k}={v}" for k, v in sorted(kwargs.items())]
             key = user_key(user_id, key_prefix or fn.__name__, *extra_parts)
 
             try:

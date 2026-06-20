@@ -106,7 +106,11 @@ def test_get_activities_with_date_filter(mock_client_class, api_client, sample_a
     }
 
     mock_response = MagicMock()
-    mock_response.json.return_value = [in_range_activity, before_range_activity, after_range_activity]
+    mock_response.json.return_value = [
+        in_range_activity,
+        before_range_activity,
+        after_range_activity,
+    ]
     mock_response.raise_for_status = MagicMock()
 
     mock_client = MagicMock()

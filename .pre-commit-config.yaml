@@ -1,0 +1,43 @@
+# Layer 0 of the test safety net (SB-175): catch lint/format/test breakage
+# locally before it ever reaches CI.
+#
+#   uv run pre-commit install --install-hooks            # ruff on commit
+#   uv run pre-commit install --hook-type pre-push       # tests on push
+#
+# Fast hooks run on every commit; the slower full test suites run on push.
+repos:
+  # Ruff — lint + format on commit (the same checks CI runs).
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.2
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        args: [--fix]
+      - id: ruff-format
+        name: ruff (format)
+
+  # Basic hygiene.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  # Full test suites — pre-push only (too slow for every commit). Mirrors CI.
+  - repo: local
+    hooks:
+      - id: pytest-root
+        name: pytest (root — src/shared, cli, planning)
+        entry: uv run pytest tests/ -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+      - id: pytest-backend
+        name: pytest (backend)
+        entry: uv run --project backend python -m pytest backend/tests/ -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

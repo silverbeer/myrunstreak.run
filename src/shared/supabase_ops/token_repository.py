@@ -87,9 +87,7 @@ class TokenRepository:
         """
         token_expires_at = None
         if expires_in:
-            token_expires_at = (
-                datetime.now(UTC) + timedelta(seconds=expires_in)
-            ).isoformat()
+            token_expires_at = (datetime.now(UTC) + timedelta(seconds=expires_in)).isoformat()
 
         result = (
             self.supabase.table("user_sources")
@@ -146,9 +144,7 @@ class TokenRepository:
 
         return now + buffer >= expires_at
 
-    def get_valid_access_token(
-        self, user_id: UUID, source_type: str = "smashrun"
-    ) -> str | None:
+    def get_valid_access_token(self, user_id: UUID, source_type: str = "smashrun") -> str | None:
         """
         Get a valid access token, refreshing if necessary.
 
@@ -175,9 +171,7 @@ class TokenRepository:
         access_token: str = tokens["access_token"]
         return access_token
 
-    def get_source_id_for_user(
-        self, user_id: UUID, source_type: str = "smashrun"
-    ) -> UUID | None:
+    def get_source_id_for_user(self, user_id: UUID, source_type: str = "smashrun") -> UUID | None:
         """
         Get the source ID for a user's source.
 

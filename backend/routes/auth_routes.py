@@ -111,7 +111,9 @@ def _proxy_supabase_auth(
         try:
             body = response.json()
             if isinstance(body, dict):
-                detail = body.get("msg") or body.get("error_description") or body.get("error") or detail
+                detail = (
+                    body.get("msg") or body.get("error_description") or body.get("error") or detail
+                )
         except ValueError:
             pass
         raise HTTPException(status_code=response.status_code, detail=detail)

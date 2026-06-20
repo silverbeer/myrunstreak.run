@@ -28,7 +28,9 @@ def test_format_streak_duration_returns_none_when_no_start() -> None:
 
 
 def test_format_streak_duration_full_form() -> None:
-    assert format_streak_duration("2014-08-23", date(2026, 5, 9)) == "11 years, 8 months and 16 days"
+    assert (
+        format_streak_duration("2014-08-23", date(2026, 5, 9)) == "11 years, 8 months and 16 days"
+    )
 
 
 def test_format_streak_duration_singular_units() -> None:
@@ -142,9 +144,7 @@ def test_build_status_data_full_payload_shape() -> None:
     goals_repo = MagicMock()
     goals_repo.get_by_period.return_value = None  # no goals stored
 
-    with patch(
-        "backend.jobs.publish_status.datetime"
-    ) as mock_dt:
+    with patch("backend.jobs.publish_status.datetime") as mock_dt:
         mock_dt.now.return_value.date.return_value = date(2026, 5, 9)
         # Let datetime.now(UTC).isoformat() produce something deterministic
         mock_dt.now.return_value.isoformat.return_value = "2026-05-09T14:00:00+00:00"
@@ -223,9 +223,7 @@ def test_build_status_data_falls_back_to_recalculate_when_stats_missing() -> Non
         mock_dt.now.return_value.isoformat.return_value = "2026-05-09T14:00:00+00:00"
         result = build_status_data(user_id, runs_repo, goals_repo, source_id)
 
-    runs_repo.recalculate_user_stats.assert_called_once_with(
-        user_id, timezone="America/New_York"
-    )
+    runs_repo.recalculate_user_stats.assert_called_once_with(user_id, timezone="America/New_York")
     assert result["streak"]["current_days"] == 1
 
 
