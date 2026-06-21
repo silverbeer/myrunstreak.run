@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -91,6 +92,19 @@ def test_invite_create_list_get_redeem_roundtrip() -> None:
     assert repo.get_by_token("tok-abc")["redeemed_at"] is not None  # type: ignore[index]
 
 
+@contextmanager
+def _admin_via_config(settings: Any) -> Any:
+    """Admin resolves via the config allowlist; DB-role check is a no-op."""
+    roles_repo = MagicMock()
+    roles_repo.has_role.return_value = False
+    with (
+        patch("backend.admin.get_settings", return_value=settings),
+        patch("backend.admin.get_supabase_client", return_value=MagicMock()),
+        patch("backend.admin.UserRolesRepository", return_value=roles_repo),
+    ):
+        yield
+
+
 def test_require_admin_allows_listed_denies_others() -> None:
     from backend.admin import require_admin
 
@@ -98,7 +112,7 @@ def test_require_admin_allows_listed_denies_others() -> None:
     other = uuid4()
     settings = SimpleNamespace(admin_ids=lambda: {str(admin).lower()})
 
-    with patch("backend.admin.get_settings", return_value=settings):
+    with _admin_via_config(settings):
         require_admin(admin)  # no raise
         with pytest.raises(HTTPException) as exc:
             require_admin(other)
@@ -123,7 +137,7 @@ def test_issue_invite_route_denies_non_admin() -> None:
     from src.shared.models import InviteCreate
 
     empty = SimpleNamespace(admin_ids=lambda: set())
-    with patch("backend.admin.get_settings", return_value=empty):
+    with _admin_via_config(empty):
         with pytest.raises(HTTPException) as exc:
             issue_invite(InviteCreate(email="x@example.com"), user_id=uuid4())
     assert exc.value.status_code == 403

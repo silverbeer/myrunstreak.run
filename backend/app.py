@@ -3,7 +3,17 @@
 import logging
 
 from backend.config import get_settings
-from backend.routes import auth_routes, invites, metrics, plan, runs, stats, sync, workouts
+from backend.routes import (
+    athletes,
+    auth_routes,
+    invites,
+    metrics,
+    plan,
+    runs,
+    stats,
+    sync,
+    workouts,
+)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -47,6 +57,8 @@ def create_app() -> FastAPI:
     app.include_router(plan.router)
     app.include_router(workouts.router)
     app.include_router(invites.router)
+    app.include_router(athletes.router)
+    app.include_router(athletes.me_router)
 
     return app
 
