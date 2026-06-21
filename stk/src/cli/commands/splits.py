@@ -97,5 +97,22 @@ def backfill(
     )
 
 
+def status(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+) -> None:
+    """Show splits-backfill progress (how many runs still lack splits)."""
+    data = api.request("sync-splits/status")
+    if json_output:
+        print(json.dumps(data, indent=2))
+        return
+    done = data.get("done")
+    icon = "✓" if done else "…"
+    display.console.print(
+        f"  {icon} splits: {data['runs_with_splits']}/{data['runs_total']} runs "
+        f"({data['pct_complete']}%) — {data['runs_missing_splits']} remaining"
+    )
+
+
 splits_app.command(name="backfill")(backfill)
 splits_app.command(name="show")(show)
+splits_app.command(name="status")(status)

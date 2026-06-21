@@ -289,3 +289,23 @@ async def sync_splits(
     until = date.fromisoformat(body["until"]) if body.get("until") else None
     limit = int(body.get("limit", 50))
     return backfill_user_splits(user_id, since=since, until=until, limit=limit)
+
+
+@router.get("/sync-splits/status")
+async def sync_splits_status(
+    user_id: UUID = Depends(authenticate_request),
+) -> dict[str, Any]:
+    """Read-only backfill progress: how many runs still lack splits.
+
+    Cheap (two counts, no SmashRun calls) so a status/monitor can poll it.
+    """
+    repo = RunsRepository(get_supabase_client())
+    total = repo.count_runs_by_user(user_id)
+    missing = repo.count_runs_missing_splits(user_id)
+    return {
+        "runs_total": total,
+        "runs_with_splits": total - missing,
+        "runs_missing_splits": missing,
+        "pct_complete": round((total - missing) / total * 100, 1) if total else 100.0,
+        "done": missing == 0,
+    }

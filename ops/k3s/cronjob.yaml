@@ -1,0 +1,52 @@
+# Gentle splits backfill: one tiny batch every 5 minutes (≈60 runs/hr), driven
+# off the always-on k3s mini. No-ops once nothing remains. SB-184.
+#
+# Tune: BATCH (runs per tick) and schedule. Pause without deleting:
+#   kubectl patch cronjob splits-backfill -n myrunstreak \
+#     -p '{"spec":{"suspend":true}}'
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: splits-backfill
+  namespace: myrunstreak
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid # never overlap ticks
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0 # a failed tick just waits for the next one
+      activeDeadlineSeconds: 240 # well under the 5-min cadence
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backfill
+              image: ghcr.io/silverbeer/myrunstreak-stk:latest
+              imagePullPolicy: Always
+              env:
+                - name: HOME
+                  value: /root
+                - name: BATCH
+                  value: "5"
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  REMAINING=$(stk splits status --json \
+                    | python -c 'import sys,json; print(json.load(sys.stdin)["runs_missing_splits"])')
+                  echo "remaining=$REMAINING"
+                  if [ "$REMAINING" = "0" ]; then
+                    echo "done — nothing to do"
+                    exit 0
+                  fi
+                  stk splits backfill --limit "${BATCH}" --max-batches 1
+              volumeMounts:
+                - name: session
+                  mountPath: /root/.config/stk
+          volumes:
+            - name: session
+              persistentVolumeClaim:
+                claimName: stk-session
