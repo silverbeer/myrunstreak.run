@@ -85,6 +85,8 @@ class WorkoutTemplate(BaseModel):
 
     id: UUID
     user_id: UUID
+    athlete_id: UUID | None = None
+    created_by: UUID | None = None
     name: str
     type: WorkoutType
     rounds: int
@@ -139,6 +141,8 @@ class WorkoutSession(BaseModel):
 
     id: UUID
     user_id: UUID
+    athlete_id: UUID | None = None
+    created_by: UUID | None = None
     session_date: date
     template_id: UUID | None = None
     type: WorkoutType

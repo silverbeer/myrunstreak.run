@@ -18,6 +18,24 @@ from uuid import UUID
 from supabase import Client
 
 
+def _owner_fields(user_id: UUID, athlete_id: UUID | None) -> dict[str, str]:
+    """Owner columns for a row. Self → user_id only. Athlete (act-as) → also
+    athlete_id (the subject) + created_by (the acting coach, for audit)."""
+    fields = {"user_id": str(user_id)}
+    if athlete_id is not None:
+        fields["athlete_id"] = str(athlete_id)
+        fields["created_by"] = str(user_id)
+    return fields
+
+
+def _scope(query: Any, user_id: UUID, athlete_id: UUID | None) -> Any:
+    """Limit a query to the owner. Athlete rows by athlete_id; self rows by
+    user_id AND athlete_id IS NULL (so a coach's own rows never leak athletes')."""
+    if athlete_id is not None:
+        return query.eq("athlete_id", str(athlete_id))
+    return query.eq("user_id", str(user_id)).is_("athlete_id", "null")
+
+
 class ExercisesRepository:
     """Read-only global movement catalog."""
 
@@ -41,42 +59,34 @@ class WorkoutTemplatesRepository:
     def __init__(self, supabase: Client):
         self.supabase = supabase
 
-    def create(self, user_id: UUID, payload: dict[str, Any]) -> dict[str, Any]:
+    def create(
+        self, user_id: UUID, payload: dict[str, Any], athlete_id: UUID | None = None
+    ) -> dict[str, Any]:
         items: Sequence[dict[str, Any]] = payload.pop("items", []) or []
-        row = (
-            self.supabase.table("workout_templates")
-            .insert({**payload, "user_id": str(user_id)})
-            .execute()
-        )
+        owner = _owner_fields(user_id, athlete_id)
+        row = self.supabase.table("workout_templates").insert({**payload, **owner}).execute()
         template = cast(list[dict[str, Any]], row.data)[0]
         if items:
-            item_rows = [
-                {**it, "user_id": str(user_id), "template_id": template["id"]} for it in items
-            ]
+            item_rows = [{**it, **owner, "template_id": template["id"]} for it in items]
             self.supabase.table("template_items").insert(item_rows).execute()
-        got = self.get(user_id, UUID(template["id"]))
+        got = self.get(user_id, UUID(template["id"]), athlete_id)
         assert got is not None
         return got
 
-    def list(self, user_id: UUID) -> list[dict[str, Any]]:
-        result = (
-            self.supabase.table("workout_templates")
-            .select("*")
-            .eq("user_id", str(user_id))
-            .order("created_at", desc=True)
-            .execute()
-        )
+    def list(self, user_id: UUID, athlete_id: UUID | None = None) -> list[dict[str, Any]]:
+        query = _scope(self.supabase.table("workout_templates").select("*"), user_id, athlete_id)
+        result = query.order("created_at", desc=True).execute()
         return cast(list[dict[str, Any]], result.data)
 
-    def get(self, user_id: UUID, template_id: UUID) -> dict[str, Any] | None:
-        result = (
-            self.supabase.table("workout_templates")
-            .select("*")
-            .eq("id", str(template_id))
-            .eq("user_id", str(user_id))
-            .execute()
+    def get(
+        self, user_id: UUID, template_id: UUID, athlete_id: UUID | None = None
+    ) -> dict[str, Any] | None:
+        query = _scope(
+            self.supabase.table("workout_templates").select("*").eq("id", str(template_id)),
+            user_id,
+            athlete_id,
         )
-        rows = cast(list[dict[str, Any]], result.data)
+        rows = cast(list[dict[str, Any]], query.execute().data)
         if not rows:
             return None
         template = rows[0]
@@ -90,15 +100,13 @@ class WorkoutTemplatesRepository:
         template["items"] = cast(list[dict[str, Any]], items.data)
         return template
 
-    def delete(self, user_id: UUID, template_id: UUID) -> bool:
-        result = (
-            self.supabase.table("workout_templates")
-            .delete()
-            .eq("id", str(template_id))
-            .eq("user_id", str(user_id))
-            .execute()
+    def delete(self, user_id: UUID, template_id: UUID, athlete_id: UUID | None = None) -> bool:
+        query = _scope(
+            self.supabase.table("workout_templates").delete().eq("id", str(template_id)),
+            user_id,
+            athlete_id,
         )
-        return bool(cast(list[dict[str, Any]], result.data))
+        return bool(cast(list[dict[str, Any]], query.execute().data))
 
 
 class WorkoutSessionsRepository:
@@ -107,18 +115,17 @@ class WorkoutSessionsRepository:
     def __init__(self, supabase: Client):
         self.supabase = supabase
 
-    def create(self, user_id: UUID, payload: dict[str, Any]) -> dict[str, Any]:
+    def create(
+        self, user_id: UUID, payload: dict[str, Any], athlete_id: UUID | None = None
+    ) -> dict[str, Any]:
         sets: Sequence[dict[str, Any]] = payload.pop("sets", []) or []
-        row = (
-            self.supabase.table("workout_sessions")
-            .insert({**payload, "user_id": str(user_id)})
-            .execute()
-        )
+        owner = _owner_fields(user_id, athlete_id)
+        row = self.supabase.table("workout_sessions").insert({**payload, **owner}).execute()
         session = cast(list[dict[str, Any]], row.data)[0]
         if sets:
-            set_rows = [{**s, "user_id": str(user_id), "session_id": session["id"]} for s in sets]
+            set_rows = [{**s, **owner, "session_id": session["id"]} for s in sets]
             self.supabase.table("exercise_sets").insert(set_rows).execute()
-        got = self.get(user_id, UUID(session["id"]))
+        got = self.get(user_id, UUID(session["id"]), athlete_id)
         assert got is not None
         return got
 
@@ -128,8 +135,9 @@ class WorkoutSessionsRepository:
         date_from: date | None = None,
         date_to: date | None = None,
         limit: int = 100,
+        athlete_id: UUID | None = None,
     ) -> list[dict[str, Any]]:
-        query = self.supabase.table("workout_sessions").select("*").eq("user_id", str(user_id))
+        query = _scope(self.supabase.table("workout_sessions").select("*"), user_id, athlete_id)
         if date_from is not None:
             query = query.gte("session_date", date_from.isoformat())
         if date_to is not None:
@@ -137,15 +145,15 @@ class WorkoutSessionsRepository:
         result = query.order("session_date", desc=True).limit(limit).execute()
         return cast(list[dict[str, Any]], result.data)
 
-    def get(self, user_id: UUID, session_id: UUID) -> dict[str, Any] | None:
-        result = (
-            self.supabase.table("workout_sessions")
-            .select("*")
-            .eq("id", str(session_id))
-            .eq("user_id", str(user_id))
-            .execute()
+    def get(
+        self, user_id: UUID, session_id: UUID, athlete_id: UUID | None = None
+    ) -> dict[str, Any] | None:
+        query = _scope(
+            self.supabase.table("workout_sessions").select("*").eq("id", str(session_id)),
+            user_id,
+            athlete_id,
         )
-        rows = cast(list[dict[str, Any]], result.data)
+        rows = cast(list[dict[str, Any]], query.execute().data)
         if not rows:
             return None
         session = rows[0]
@@ -160,12 +168,10 @@ class WorkoutSessionsRepository:
         session["sets"] = cast(list[dict[str, Any]], sets.data)
         return session
 
-    def delete(self, user_id: UUID, session_id: UUID) -> bool:
-        result = (
-            self.supabase.table("workout_sessions")
-            .delete()
-            .eq("id", str(session_id))
-            .eq("user_id", str(user_id))
-            .execute()
+    def delete(self, user_id: UUID, session_id: UUID, athlete_id: UUID | None = None) -> bool:
+        query = _scope(
+            self.supabase.table("workout_sessions").delete().eq("id", str(session_id)),
+            user_id,
+            athlete_id,
         )
-        return bool(cast(list[dict[str, Any]], result.data))
+        return bool(cast(list[dict[str, Any]], query.execute().data))

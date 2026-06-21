@@ -25,6 +25,9 @@ class _FakeQuery:
     def eq(self, *a: Any, **k: Any) -> _FakeQuery:
         return self
 
+    def is_(self, *a: Any, **k: Any) -> _FakeQuery:
+        return self
+
     def gte(self, *a: Any, **k: Any) -> _FakeQuery:
         return self
 
