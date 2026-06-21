@@ -415,6 +415,17 @@ class RunsRepository:
         result = query.order("start_date", desc=True).limit(limit).execute()
         return cast(list[dict[str, Any]], result.data)
 
+    def count_runs_missing_splits(self, user_id: UUID) -> int:
+        """How many of a user's runs still have no stored splits (SB-184)."""
+        result = (
+            self.supabase.table("runs")
+            .select("id", count="exact")
+            .eq("user_id", str(user_id))
+            .eq("has_splits", False)
+            .execute()
+        )
+        return cast(int, result.count or 0)
+
     def delete_run(self, run_id: UUID) -> None:
         """
         Delete a run and all related data (cascades to splits, laps, etc.).
