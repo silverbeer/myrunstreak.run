@@ -37,10 +37,8 @@ def list_athletes() -> None:
         display.console.print(f"{mark}{r['display_name']}{yr}  id={r['id'][:8]}")
 
 
-def use(
-    who: str = typer.Argument(..., help="Athlete name or 8-char id prefix"),
-) -> None:
-    """Set the active athlete (subsequent workout commands target them)."""
+def _resolve(who: str) -> dict[str, str]:
+    """Resolve a name/id-prefix to one athlete you coach, or exit."""
     rows = api.request("athletes")
     matches = [
         r for r in rows if r["id"].startswith(who) or who.lower() in r["display_name"].lower()
@@ -51,9 +49,39 @@ def use(
     if len(matches) > 1:
         display.console.print(f"[red]'{who}' is ambiguous — use the id prefix[/red]")
         raise typer.Exit(1)
-    a = matches[0]
+    return matches[0]
+
+
+def use(
+    who: str = typer.Argument(..., help="Athlete name or 8-char id prefix"),
+) -> None:
+    """Set the active athlete (subsequent workout commands target them)."""
+    a = _resolve(who)
     config.set_active_athlete(a["id"], a["display_name"])
     display.console.print(f"[green]Active athlete:[/green] {a['display_name']}")
+
+
+def add_coach(
+    who: str = typer.Argument(..., help="Athlete name or 8-char id prefix"),
+    email: str = typer.Option(..., "--email", "-e", help="Coach's account email"),
+) -> None:
+    """Add a coach (by email) to an athlete. They must have an account already."""
+    a = _resolve(who)
+    api.post_request(f"athletes/{a['id']}/coaches", {"coach_email": email})
+    display.console.print(f"[green]Coach added[/green] {email} → {a['display_name']}")
+
+
+def coaches(
+    who: str = typer.Argument(..., help="Athlete name or 8-char id prefix"),
+) -> None:
+    """List an athlete's active coaches."""
+    a = _resolve(who)
+    rows = api.request(f"athletes/{a['id']}/coaches")
+    if not rows:
+        display.console.print(f"{a['display_name']} has no coaches.")
+        return
+    for r in rows:
+        display.console.print(f"  coach_id={r['coach_id'][:8]}  since {r['started_at'][:10]}")
 
 
 def whoami() -> None:
@@ -70,4 +98,6 @@ def whoami() -> None:
 athlete_app.command(name="add")(add)
 athlete_app.command(name="list")(list_athletes)
 athlete_app.command(name="use")(use)
+athlete_app.command(name="add-coach")(add_coach)
+athlete_app.command(name="coaches")(coaches)
 athlete_app.command(name="whoami")(whoami)

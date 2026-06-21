@@ -23,7 +23,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from src.shared.models import Invite, InviteCreate
 from src.shared.supabase_client import get_supabase_client
-from src.shared.supabase_ops import InvitesRepository, UsersRepository
+from src.shared.supabase_ops import (
+    InvitesRepository,
+    UserRolesRepository,
+    UsersRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +80,11 @@ def issue_invite(
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(UTC) + timedelta(days=body.expires_in_days)
     row = InvitesRepository(get_supabase_client()).create(
-        created_by=user_id, email=body.email, token=token, expires_at=expires_at
+        created_by=user_id,
+        email=body.email,
+        token=token,
+        expires_at=expires_at,
+        grant_role=body.grant_role.value if body.grant_role else None,
     )
     return Invite(**row)
 
@@ -116,6 +124,9 @@ def redeem_invite(body: RedeemRequest) -> dict[str, Any]:
 
     # users.user_id must equal the auth uid (RLS + invites FK invariant).
     UsersRepository(supabase).upsert_user_with_id(auth_uid, email=email)
+    # Grant the invite's role (e.g. coach) so they can act immediately (SB-204).
+    if invite.get("grant_role"):
+        UserRolesRepository(supabase).grant(auth_uid, str(invite["grant_role"]))
     invites.mark_redeemed(body.token, auth_uid, datetime.now(UTC))
 
     # Hand back a live session so the invitee is logged straight in.

@@ -130,3 +130,14 @@ class CoachAthletesRepository:
             .execute()
         )
         return cast(list[dict[str, Any]], result.data)
+
+    def list_active_for_athlete(self, athlete_id: UUID) -> list[dict[str, Any]]:
+        """Active coach links for an athlete (caller resolves coach emails)."""
+        result = (
+            self.supabase.table("coach_athletes")
+            .select("*")
+            .eq("athlete_id", str(athlete_id))
+            .eq("status", "active")
+            .execute()
+        )
+        return cast(list[dict[str, Any]], result.data)
