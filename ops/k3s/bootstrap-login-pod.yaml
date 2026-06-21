@@ -1,0 +1,30 @@
+# One-time login pod. It just sleeps with the session PVC mounted so you can
+# exec in and run `stk auth login` once — that writes session.json onto the
+# PVC, which the CronJob then reuses. Delete this pod afterwards. SB-184.
+#
+#   kubectl apply -f ops/k3s/bootstrap-login-pod.yaml
+#   kubectl exec -it -n myrunstreak stk-login -- stk auth login
+#   kubectl exec -n myrunstreak stk-login -- stk splits status   # verify
+#   kubectl delete pod -n myrunstreak stk-login
+apiVersion: v1
+kind: Pod
+metadata:
+  name: stk-login
+  namespace: myrunstreak
+spec:
+  restartPolicy: Never
+  containers:
+    - name: stk
+      image: ghcr.io/silverbeer/myrunstreak-stk:latest
+      imagePullPolicy: Always
+      command: ["sleep", "3600"]
+      env:
+        - name: HOME
+          value: /root
+      volumeMounts:
+        - name: session
+          mountPath: /root/.config/stk
+  volumes:
+    - name: session
+      persistentVolumeClaim:
+        claimName: stk-session
