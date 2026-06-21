@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from cli import config as config_mod
 from cli import session as session_mod
 from cli.display import display_error, display_info
 
@@ -91,7 +92,13 @@ def _ensure_fresh(s: session_mod.Session) -> session_mod.Session:
 
 
 def _auth_headers(s: session_mod.Session) -> dict[str, str]:
-    return {"Authorization": f"Bearer {s.access_token}"}
+    headers = {"Authorization": f"Bearer {s.access_token}"}
+    # Act-as: when an active athlete is set, workout calls target them (SB-198).
+    # Other endpoints ignore the header.
+    active = config_mod.get_active_athlete()
+    if active:
+        headers["X-Act-As-Athlete"] = active["id"]
+    return headers
 
 
 def _exit_with_error(response: httpx.Response) -> None:
