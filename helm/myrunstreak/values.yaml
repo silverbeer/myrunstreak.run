@@ -80,7 +80,7 @@ backend:
     cacheDefaultTtlSeconds: 60
     # Comma-separated user UUIDs allowed to issue invites (SB-188). Set the
     # owner's UUID here to enable invite issuance; empty = disabled.
-    adminUserIds: ""
+    adminUserIds: "16eb502d-7fc0-4fce-9107-9931df747e28"
 
   resources:
     requests:
