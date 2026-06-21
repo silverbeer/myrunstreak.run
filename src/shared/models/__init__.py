@@ -1,6 +1,7 @@
 """Data models for MyRunStreak.com."""
 
 from .activity import Activity
+from .athlete import Athlete, AthleteCreate, CoachAthlete, CoachAthleteStatus, Role
 from .enums import (
     ActivityType,
     DeviceType,
@@ -66,6 +67,12 @@ __all__ = [
     "Activity",
     "Goal",
     "Split",
+    # Coach platform (SB-195)
+    "Athlete",
+    "AthleteCreate",
+    "CoachAthlete",
+    "CoachAthleteStatus",
+    "Role",
     # Invites
     "Invite",
     "InviteCreate",
