@@ -36,13 +36,22 @@ kill_port() {
 }
 
 supabase_up() { curl -s "$SUPABASE_API/rest/v1/" > /dev/null 2>&1; }
+docker_up()   { docker info > /dev/null 2>&1; }
+
+require_docker() {
+    if ! docker_up; then
+        echo -e "${RED}Docker isn't running.${NC} The local Supabase stack needs it."
+        echo -e "${BLUE}Fix:${NC} start Docker Desktop, then retry."
+        return 1
+    fi
+}
 
 # ---- db ----
 db() {
     case "${1:-status}" in
-        up)     supabase start ;;
+        up)     require_docker && supabase start ;;
         down)   supabase stop ;;
-        reset)  supabase db reset ;;
+        reset)  require_docker && supabase db reset ;;
         status) supabase status ;;
         studio) supabase status 2>/dev/null | grep -i studio ;;
         *) echo "Usage: $0 db {up|down|reset|status|studio}"; exit 1 ;;
@@ -80,9 +89,9 @@ start() {
     local env; env="$(current_env)"
     echo -e "${GREEN}Starting MyRunStreak (env: $env${watch:+, watch})…${NC}\n"
     if [ "$env" = "local" ]; then
+        require_docker || return 1
         if supabase_up; then echo -e "${GREEN}Local Supabase up${NC}"; else
-            echo -e "${YELLOW}Local Supabase down — starting…${NC}"; supabase start || \
-                echo -e "${RED}supabase start failed (is Docker running?)${NC}"
+            echo -e "${YELLOW}Local Supabase down — starting…${NC}"; supabase start || return 1
         fi
     fi
     start_backend "$watch" && start_frontend

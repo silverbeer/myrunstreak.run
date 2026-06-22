@@ -37,6 +37,11 @@ request to them. Always run from the repo root.
 | "show logs" | `./myrunstreak.sh logs` (don't run `tail` — it blocks) |
 
 ## Always
+- **Before any local-stack op (`start` when env=local, `db up`, `db reset`),
+  verify Docker is running:** `docker info` (or the script's own
+  `require_docker` gate handles it). If Docker is down, tell the user to start
+  Docker Desktop and stop — don't retry. The local Supabase stack can't run
+  without it.
 - **Check `status` first** when the user's intent depends on what's already up.
 - `start --watch` from chat runs servers in the background (the script nohups
   them); report the URLs (`:8000`, `:5174`) and that logs are in `.run-logs/`.
