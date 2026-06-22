@@ -20,7 +20,12 @@ class InvitesRepository:
         self.supabase = supabase
 
     def create(
-        self, created_by: UUID, email: str, token: str, expires_at: datetime
+        self,
+        created_by: UUID,
+        email: str,
+        token: str,
+        expires_at: datetime,
+        grant_role: str | None = None,
     ) -> dict[str, Any]:
         row = {
             "created_by": str(created_by),
@@ -28,6 +33,8 @@ class InvitesRepository:
             "token": token,
             "expires_at": expires_at.isoformat(),
         }
+        if grant_role is not None:
+            row["grant_role"] = grant_role
         result = self.supabase.table("invites").insert(row).execute()
         return cast(list[dict[str, Any]], result.data)[0]
 

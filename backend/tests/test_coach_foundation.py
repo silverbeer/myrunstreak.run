@@ -183,3 +183,62 @@ def test_assign_coach_grants_role_and_links() -> None:
 
     roles_repo.grant.assert_called_once_with(new_coach, "coach")
     assert str(out.coach_id) == str(new_coach)
+
+
+def test_assign_coach_by_email_resolves_user() -> None:
+    from backend.routes.athletes import AssignCoachRequest, assign_coach
+
+    aid = uuid4()
+    coach_uid = uuid4()
+    users_repo = MagicMock()
+    users_repo.get_user_by_email.return_value = {"user_id": str(coach_uid)}
+    roles_repo = MagicMock()
+    links_repo = MagicMock()
+    links_repo.assign.return_value = {
+        "id": str(uuid4()),
+        "coach_id": str(coach_uid),
+        "athlete_id": str(aid),
+        "status": "active",
+        "started_at": "2026-06-21T00:00:00+00:00",
+        "ended_at": None,
+        "created_at": "2026-06-21T00:00:00+00:00",
+    }
+
+    with (
+        _admin_env(roles={"admin"}, athlete={"id": str(aid), "linked_user_id": None}),
+        patch("backend.routes.athletes.get_supabase_client", return_value=MagicMock()),
+        patch("backend.routes.athletes.UsersRepository", return_value=users_repo),
+        patch("backend.routes.athletes.UserRolesRepository", return_value=roles_repo),
+        patch("backend.routes.athletes.CoachAthletesRepository", return_value=links_repo),
+    ):
+        out = assign_coach(
+            aid, AssignCoachRequest(coach_email="matthew@example.com"), user_id=uuid4()
+        )
+
+    users_repo.get_user_by_email.assert_called_once_with("matthew@example.com")
+    roles_repo.grant.assert_called_once_with(coach_uid, "coach")
+    assert str(out.coach_id) == str(coach_uid)
+
+
+def test_assign_coach_by_email_unknown_404() -> None:
+    from backend.routes.athletes import AssignCoachRequest, assign_coach
+
+    aid = uuid4()
+    users_repo = MagicMock()
+    users_repo.get_user_by_email.return_value = None
+
+    with (
+        _admin_env(roles={"admin"}, athlete={"id": str(aid), "linked_user_id": None}),
+        patch("backend.routes.athletes.get_supabase_client", return_value=MagicMock()),
+        patch("backend.routes.athletes.UsersRepository", return_value=users_repo),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            assign_coach(aid, AssignCoachRequest(coach_email="nobody@example.com"), user_id=uuid4())
+    assert exc.value.status_code == 404
+
+
+def test_assign_coach_request_requires_id_or_email() -> None:
+    from backend.routes.athletes import AssignCoachRequest
+
+    with pytest.raises(ValueError):
+        AssignCoachRequest()

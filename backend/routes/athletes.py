@@ -12,14 +12,15 @@ from uuid import UUID
 
 from backend.admin import is_admin, require_athlete_access, require_coach
 from backend.auth import authenticate_request
-from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, model_validator
 from src.shared.models import Athlete, AthleteCreate, CoachAthlete
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import (
     AthletesRepository,
     CoachAthletesRepository,
     UserRolesRepository,
+    UsersRepository,
 )
 
 router = APIRouter(prefix="/athletes", tags=["athletes"])
@@ -27,7 +28,16 @@ me_router = APIRouter(prefix="/me", tags=["me"])
 
 
 class AssignCoachRequest(BaseModel):
-    coach_id: UUID
+    """Assign a coach by user id or by email (one is required)."""
+
+    coach_id: UUID | None = None
+    coach_email: str | None = None
+
+    @model_validator(mode="after")
+    def _one_of(self) -> AssignCoachRequest:
+        if not self.coach_id and not self.coach_email:
+            raise ValueError("coach_id or coach_email is required")
+        return self
 
 
 @me_router.get("/roles")
@@ -83,13 +93,36 @@ def assign_coach(
     body: AssignCoachRequest,
     user_id: UUID = Depends(authenticate_request),
 ) -> CoachAthlete:
-    """Add a coach to an athlete. Caller must already have access; the new coach
-    is granted the coach role so they can act on the athlete."""
+    """Add a coach (by id or email) to an athlete. Caller must already have
+    access; the new coach is granted the coach role so they can act."""
     require_athlete_access(user_id, athlete_id)
     supabase = get_supabase_client()
-    UserRolesRepository(supabase).grant(body.coach_id, "coach")
-    link = CoachAthletesRepository(supabase).assign(body.coach_id, athlete_id)
+
+    coach_id = body.coach_id
+    if coach_id is None:
+        assert body.coach_email is not None
+        found = UsersRepository(supabase).get_user_by_email(body.coach_email)
+        if found is None:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "No user with that email — invite them first (stk invite create --role coach)",
+            )
+        coach_id = UUID(found["user_id"])
+
+    UserRolesRepository(supabase).grant(coach_id, "coach")
+    link = CoachAthletesRepository(supabase).assign(coach_id, athlete_id)
     return CoachAthlete(**link)
+
+
+@router.get("/{athlete_id}/coaches", response_model=list[CoachAthlete])
+def list_coaches(
+    athlete_id: UUID,
+    user_id: UUID = Depends(authenticate_request),
+) -> list[CoachAthlete]:
+    """Active coaches of an athlete."""
+    require_athlete_access(user_id, athlete_id)
+    rows = CoachAthletesRepository(get_supabase_client()).list_active_for_athlete(athlete_id)
+    return [CoachAthlete(**r) for r in rows]
 
 
 @router.delete("/{athlete_id}/coaches/{coach_id}", status_code=status.HTTP_204_NO_CONTENT)

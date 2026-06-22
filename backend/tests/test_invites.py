@@ -149,12 +149,13 @@ def test_issue_invite_route_admin_issues_token() -> None:
 
     admin = uuid4()
     repo = MagicMock()
-    repo.create.side_effect = lambda created_by, email, token, expires_at: {
+    repo.create.side_effect = lambda created_by, email, token, expires_at, grant_role=None: {
         "id": str(uuid4()),
         "token": token,
         "email": email,
         "created_by": str(created_by),
         "expires_at": expires_at.isoformat(),
+        "grant_role": grant_role,
         "redeemed_at": None,
         "redeemed_by": None,
         "created_at": "2026-06-20T00:00:00+00:00",
@@ -185,15 +186,17 @@ def _past() -> str:
 
 
 def _redeem(invite_row: dict[str, Any] | None) -> Any:
-    """Call redeem_invite with the repo + supabase stubbed; return (result, repo)."""
+    """Call redeem_invite with the deps stubbed; return (result, repo, roles_repo)."""
     from backend.routes.invites import RedeemRequest, redeem_invite
 
     repo = MagicMock()
     repo.get_by_token.return_value = invite_row
+    roles_repo = MagicMock()
     with (
         patch("backend.routes.invites.get_supabase_client", return_value=MagicMock()),
         patch("backend.routes.invites.InvitesRepository", return_value=repo),
         patch("backend.routes.invites.UsersRepository", return_value=MagicMock()),
+        patch("backend.routes.invites.UserRolesRepository", return_value=roles_repo),
         patch(
             "backend.routes.invites._admin_create_user",
             return_value={"id": str(uuid4())},
@@ -203,7 +206,11 @@ def _redeem(invite_row: dict[str, Any] | None) -> Any:
             return_value={"access_token": "at", "refresh_token": "rt", "expires_in": 3600},
         ),
     ):
-        return redeem_invite(RedeemRequest(token="tok-abcdef", password="secret1")), repo
+        return (
+            redeem_invite(RedeemRequest(token="tok-abcdef", password="secret1")),
+            repo,
+            roles_repo,
+        )
 
 
 def test_redeem_unknown_token_404() -> None:
@@ -228,9 +235,22 @@ def test_redeem_expired_410() -> None:
 
 def test_redeem_happy_path_creates_user_and_returns_session() -> None:
     row = {"email": "friend@example.com", "expires_at": _future(), "redeemed_at": None}
-    result, repo = _redeem(row)
+    result, repo, roles_repo = _redeem(row)
     assert result["access_token"] == "at"
     assert result["user"]["email"] == "friend@example.com"
     # invite consumed; account email comes from the invite, not the request
     repo.mark_redeemed.assert_called_once()
     assert repo.mark_redeemed.call_args[0][0] == "tok-abcdef"
+    roles_repo.grant.assert_not_called()  # no grant_role on this invite
+
+
+def test_redeem_grants_role_when_set() -> None:
+    row = {
+        "email": "matthew@example.com",
+        "expires_at": _future(),
+        "redeemed_at": None,
+        "grant_role": "coach",
+    }
+    _result, _repo, roles_repo = _redeem(row)
+    roles_repo.grant.assert_called_once()
+    assert roles_repo.grant.call_args[0][1] == "coach"
