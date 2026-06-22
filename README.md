@@ -63,13 +63,33 @@ myrunstreak.run/
 
 ## Quick start (local)
 
+Two helper scripts manage local dev:
+
 ```bash
-# Backend
+./switch-env.sh local       # point .env at local Supabase (symlinks .env -> .env.local)
+./myrunstreak.sh start --watch   # local Supabase + backend (uvicorn) + frontend (vite)
+./myrunstreak.sh status     # what's up + active env
+./myrunstreak.sh db reset   # re-apply all migrations to local
+./myrunstreak.sh stop       # stop backend + frontend
+./switch-env.sh prod        # flip env back to cloud (.env.prod)
+```
+
+`switch-env.sh local|prod` repoints `.env` (and `frontend/.env`). The env files
+are gitignored; create them once:
+
+- **`.env.local`** — local Supabase. Uses the standard local-dev keys
+  (`SUPABASE_URL=http://127.0.0.1:54321`, the well-known demo anon/service keys,
+  `SUPABASE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long`,
+  `CACHE_ENABLED=false`). After signing up a local user, set `ADMIN_USER_IDS` to
+  its UID (Studio → Authentication) so coach/invite endpoints work locally.
+- **`.env.prod`** — copy from `.env.example` and fill with the real cloud keys.
+
+Or do it by hand:
+
+```bash
 uv sync --all-extras
 supabase start                                   # local Postgres
 uv run uvicorn backend.app:app --reload --port 8000
-
-# Frontend
 cd frontend && npm install && npm run dev
 ```
 
