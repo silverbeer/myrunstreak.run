@@ -100,7 +100,13 @@ CREATE POLICY "coach_athletes update" ON coach_athletes FOR UPDATE
     USING (coach_id = auth.uid());
 
 -- ---- seed: owner is admin + coach (usable immediately; keeps invites working) ----
-INSERT INTO user_roles (user_id, role) VALUES
-    ('16eb502d-7fc0-4fce-9107-9931df747e28', 'admin'),
-    ('16eb502d-7fc0-4fce-9107-9931df747e28', 'coach')
+-- Guarded: only grants when that user actually exists (prod), so fresh/local/CI
+-- databases without the owner row apply this migration cleanly instead of
+-- tripping the user_roles -> users foreign key.
+INSERT INTO user_roles (user_id, role)
+SELECT '16eb502d-7fc0-4fce-9107-9931df747e28'::uuid, role
+FROM (VALUES ('admin'::user_role), ('coach'::user_role)) AS v(role)
+WHERE EXISTS (
+    SELECT 1 FROM users WHERE user_id = '16eb502d-7fc0-4fce-9107-9931df747e28'
+)
 ON CONFLICT DO NOTHING;

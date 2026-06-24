@@ -49,12 +49,13 @@ require_docker() {
 # ---- db ----
 db() {
     case "${1:-status}" in
-        up)     require_docker && supabase start ;;
-        down)   supabase stop ;;
-        reset)  require_docker && supabase db reset ;;
-        status) supabase status ;;
-        studio) supabase status 2>/dev/null | grep -i studio ;;
-        *) echo "Usage: $0 db {up|down|reset|status|studio}"; exit 1 ;;
+        up)      require_docker && supabase start ;;
+        down)    supabase stop ;;
+        migrate) require_docker && supabase migration up ;;
+        reset)   require_docker && supabase db reset ;;
+        status)  supabase status ;;
+        studio)  supabase status 2>/dev/null | grep -i studio ;;
+        *) echo "Usage: $0 db {up|down|migrate|reset|status|studio}"; exit 1 ;;
     esac
 }
 
@@ -66,7 +67,9 @@ start_backend() {
     fi
     local reload=""; [ "$watch" = "true" ] && reload="--reload"
     echo -e "${YELLOW}Starting backend (uvicorn :$BACKEND_PORT${reload:+ --reload})…${NC}"
-    nohup uv run uvicorn backend.app:app --host 0.0.0.0 --port "$BACKEND_PORT" $reload \
+    # Backend deps live in backend/pyproject.toml (its own uv project); run from
+    # the root CWD so `backend.app` + `src.shared` both import as top-level pkgs.
+    nohup uv run --project backend uvicorn backend.app:app --host 0.0.0.0 --port "$BACKEND_PORT" $reload \
         > "$LOG_DIR/backend.log" 2>&1 &
     echo $! > "$BACKEND_PID_FILE"
     local n=0; while [ $n -lt 12 ]; do port_up "$BACKEND_PORT" && { echo -e "${GREEN}Backend up${NC} → http://localhost:$BACKEND_PORT"; return 0; }; sleep 1; n=$((n+1)); done
@@ -93,6 +96,9 @@ start() {
         if supabase_up; then echo -e "${GREEN}Local Supabase up${NC}"; else
             echo -e "${YELLOW}Local Supabase down — starting…${NC}"; supabase start || return 1
         fi
+        # Apply any migrations added since the volume was created (non-destructive,
+        # idempotent — only pending ones run). Keeps schema current without a reset.
+        echo -e "${YELLOW}Applying pending migrations…${NC}"; supabase migration up || return 1
     fi
     start_backend "$watch" && start_frontend
     echo ""
@@ -128,7 +134,7 @@ usage() {
     echo "  status            what's up (backend/frontend/supabase) + active env"
     echo "  logs              recent backend + frontend logs"
     echo "  tail              follow logs live"
-    echo "  db {up|down|reset|status|studio}   wrap 'supabase start|stop|db reset|status'"
+    echo "  db {up|down|migrate|reset|status|studio}   wrap supabase: start|stop|migration up|db reset|status"
     echo ""
     echo "Env: switch with ./switch-env.sh {local|prod}"
 }
