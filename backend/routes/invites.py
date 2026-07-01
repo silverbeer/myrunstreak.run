@@ -15,7 +15,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
-from backend.admin import require_admin
+from backend.admin import require_admin, require_athlete_access
 from backend.auth import authenticate_request
 from backend.config import get_settings
 from backend.routes.auth_routes import _proxy_supabase_auth
@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from src.shared.models import Invite, InviteCreate
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import (
+    AthletesRepository,
     InvitesRepository,
     UserRolesRepository,
     UsersRepository,
@@ -75,8 +76,12 @@ def issue_invite(
     body: InviteCreate,
     user_id: UUID = Depends(authenticate_request),
 ) -> Invite:
-    """Issue an invite (admin only). Returns the invite incl. its token."""
-    require_admin(user_id)
+    """Issue an invite. Admin-only, except an athlete invite (athlete_id set),
+    which a coach of that athlete may issue to onboard them (SB-212 P4-2)."""
+    if body.athlete_id is not None:
+        require_athlete_access(user_id, body.athlete_id)
+    else:
+        require_admin(user_id)
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(UTC) + timedelta(days=body.expires_in_days)
     row = InvitesRepository(get_supabase_client()).create(
@@ -85,6 +90,7 @@ def issue_invite(
         token=token,
         expires_at=expires_at,
         grant_role=body.grant_role.value if body.grant_role else None,
+        athlete_id=body.athlete_id,
     )
     return Invite(**row)
 
@@ -127,6 +133,19 @@ def redeem_invite(body: RedeemRequest) -> dict[str, Any]:
     # Grant the invite's role (e.g. coach) so they can act immediately (SB-204).
     if invite.get("grant_role"):
         UserRolesRepository(supabase).grant(auth_uid, str(invite["grant_role"]))
+    # Link the new user to the invited athlete, onboarding them as user #2 so
+    # they see their own data via the linked_user_id RLS (SB-212 P4-2).
+    if invite.get("athlete_id"):
+        athlete_id = UUID(str(invite["athlete_id"]))
+        athletes = AthletesRepository(supabase)
+        existing = athletes.get(athlete_id)
+        linked = existing.get("linked_user_id") if existing else None
+        if linked and str(linked) != str(auth_uid):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Athlete is already linked to another user",
+            )
+        athletes.link_user(athlete_id, auth_uid)
     invites.mark_redeemed(body.token, auth_uid, datetime.now(UTC))
 
     # Hand back a live session so the invitee is logged straight in.

@@ -61,6 +61,20 @@ class AthletesRepository:
         data = cast(list[dict[str, Any]], result.data)
         return data[0] if data else None
 
+    def link_user(self, athlete_id: UUID, user_id: UUID) -> dict[str, Any]:
+        """Link a logged-in user to this athlete (athletes.linked_user_id).
+
+        Onboards the athlete as user #2 (SB-212 P4-2): once set, the linked user
+        reaches their own athlete-scoped rows via the linked_user_id RLS.
+        """
+        result = (
+            self.supabase.table("athletes")
+            .update({"linked_user_id": str(user_id)})
+            .eq("id", str(athlete_id))
+            .execute()
+        )
+        return cast(list[dict[str, Any]], result.data)[0]
+
     def list_for_coach(self, coach_id: UUID) -> list[dict[str, Any]]:
         """Athletes the coach actively coaches (joined via coach_athletes)."""
         links = (

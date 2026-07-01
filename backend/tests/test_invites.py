@@ -149,17 +149,20 @@ def test_issue_invite_route_admin_issues_token() -> None:
 
     admin = uuid4()
     repo = MagicMock()
-    repo.create.side_effect = lambda created_by, email, token, expires_at, grant_role=None: {
-        "id": str(uuid4()),
-        "token": token,
-        "email": email,
-        "created_by": str(created_by),
-        "expires_at": expires_at.isoformat(),
-        "grant_role": grant_role,
-        "redeemed_at": None,
-        "redeemed_by": None,
-        "created_at": "2026-06-20T00:00:00+00:00",
-    }
+    repo.create.side_effect = (
+        lambda created_by, email, token, expires_at, grant_role=None, athlete_id=None: {
+            "id": str(uuid4()),
+            "token": token,
+            "email": email,
+            "created_by": str(created_by),
+            "expires_at": expires_at.isoformat(),
+            "grant_role": grant_role,
+            "athlete_id": str(athlete_id) if athlete_id else None,
+            "redeemed_at": None,
+            "redeemed_by": None,
+            "created_at": "2026-06-20T00:00:00+00:00",
+        }
+    )
 
     with (
         patch("backend.routes.invites.require_admin", return_value=None),
@@ -192,11 +195,14 @@ def _redeem(invite_row: dict[str, Any] | None) -> Any:
     repo = MagicMock()
     repo.get_by_token.return_value = invite_row
     roles_repo = MagicMock()
+    athletes_repo = MagicMock()
+    athletes_repo.get.return_value = None  # athlete not yet linked, by default
     with (
         patch("backend.routes.invites.get_supabase_client", return_value=MagicMock()),
         patch("backend.routes.invites.InvitesRepository", return_value=repo),
         patch("backend.routes.invites.UsersRepository", return_value=MagicMock()),
         patch("backend.routes.invites.UserRolesRepository", return_value=roles_repo),
+        patch("backend.routes.invites.AthletesRepository", return_value=athletes_repo),
         patch(
             "backend.routes.invites._admin_create_user",
             return_value={"id": str(uuid4())},
@@ -210,6 +216,7 @@ def _redeem(invite_row: dict[str, Any] | None) -> Any:
             redeem_invite(RedeemRequest(token="tok-abcdef", password="secret1")),
             repo,
             roles_repo,
+            athletes_repo,
         )
 
 
@@ -235,13 +242,14 @@ def test_redeem_expired_410() -> None:
 
 def test_redeem_happy_path_creates_user_and_returns_session() -> None:
     row = {"email": "friend@example.com", "expires_at": _future(), "redeemed_at": None}
-    result, repo, roles_repo = _redeem(row)
+    result, repo, roles_repo, athletes_repo = _redeem(row)
     assert result["access_token"] == "at"
     assert result["user"]["email"] == "friend@example.com"
     # invite consumed; account email comes from the invite, not the request
     repo.mark_redeemed.assert_called_once()
     assert repo.mark_redeemed.call_args[0][0] == "tok-abcdef"
     roles_repo.grant.assert_not_called()  # no grant_role on this invite
+    athletes_repo.link_user.assert_not_called()  # no athlete_id on this invite
 
 
 def test_redeem_grants_role_when_set() -> None:
@@ -251,6 +259,103 @@ def test_redeem_grants_role_when_set() -> None:
         "redeemed_at": None,
         "grant_role": "coach",
     }
-    _result, _repo, roles_repo = _redeem(row)
+    _result, _repo, roles_repo, _athletes = _redeem(row)
     roles_repo.grant.assert_called_once()
     assert roles_repo.grant.call_args[0][1] == "coach"
+
+
+def test_redeem_links_athlete_when_athlete_id_set() -> None:
+    """SB-212: an athlete invite links the new user to the athlete profile."""
+    athlete_id = uuid4()
+    row = {
+        "email": "kid@example.com",
+        "expires_at": _future(),
+        "redeemed_at": None,
+        "athlete_id": str(athlete_id),
+    }
+    result, _repo, _roles, athletes_repo = _redeem(row)
+    athletes_repo.link_user.assert_called_once()
+    called_athlete, called_user = athletes_repo.link_user.call_args[0]
+    assert called_athlete == athlete_id
+    assert str(called_user) == result["user"]["id"]
+
+
+def test_redeem_conflicts_when_athlete_already_linked() -> None:
+    """SB-212: refuse to steal an athlete already linked to a different user."""
+    from backend.routes.invites import RedeemRequest, redeem_invite
+
+    athlete_id = uuid4()
+    row = {
+        "email": "kid@example.com",
+        "expires_at": _future(),
+        "redeemed_at": None,
+        "athlete_id": str(athlete_id),
+    }
+    repo = MagicMock()
+    repo.get_by_token.return_value = row
+    athletes_repo = MagicMock()
+    athletes_repo.get.return_value = {"id": str(athlete_id), "linked_user_id": str(uuid4())}
+    with (
+        patch("backend.routes.invites.get_supabase_client", return_value=MagicMock()),
+        patch("backend.routes.invites.InvitesRepository", return_value=repo),
+        patch("backend.routes.invites.UsersRepository", return_value=MagicMock()),
+        patch("backend.routes.invites.UserRolesRepository", return_value=MagicMock()),
+        patch("backend.routes.invites.AthletesRepository", return_value=athletes_repo),
+        patch("backend.routes.invites._admin_create_user", return_value={"id": str(uuid4())}),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            redeem_invite(RedeemRequest(token="tok-abcdef", password="secret1"))
+    assert exc.value.status_code == 409
+    athletes_repo.link_user.assert_not_called()
+
+
+def test_issue_athlete_invite_uses_athlete_access_not_admin() -> None:
+    """SB-212: a coach may issue an athlete invite via athlete access (not admin)."""
+    from backend.routes.invites import issue_invite
+    from src.shared.models import InviteCreate
+
+    coach = uuid4()
+    athlete_id = uuid4()
+    repo = MagicMock()
+    repo.create.side_effect = (
+        lambda created_by, email, token, expires_at, grant_role=None, athlete_id=None: {
+            "id": str(uuid4()),
+            "token": token,
+            "email": email,
+            "created_by": str(created_by),
+            "expires_at": expires_at.isoformat(),
+            "grant_role": grant_role,
+            "athlete_id": str(athlete_id) if athlete_id else None,
+            "redeemed_at": None,
+            "redeemed_by": None,
+            "created_at": "2026-06-20T00:00:00+00:00",
+        }
+    )
+    access = MagicMock()
+    with (
+        # admin gate would raise — proving the athlete path doesn't require admin
+        patch("backend.routes.invites.require_admin", side_effect=AssertionError("used admin")),
+        patch("backend.routes.invites.require_athlete_access", access),
+        patch("backend.routes.invites.get_supabase_client", return_value=MagicMock()),
+        patch("backend.routes.invites.InvitesRepository", return_value=repo),
+    ):
+        out = issue_invite(
+            InviteCreate(email="kid@example.com", athlete_id=athlete_id), user_id=coach
+        )
+
+    access.assert_called_once_with(coach, athlete_id)
+    assert out.athlete_id == athlete_id
+    assert repo.create.call_args.kwargs["athlete_id"] == athlete_id
+
+
+def test_link_user_sets_linked_user_id() -> None:
+    """SB-212: AthletesRepository.link_user writes linked_user_id."""
+    from src.shared.supabase_ops.athletes_repository import AthletesRepository
+
+    athlete_id = uuid4()
+    user_id = uuid4()
+    store = [{"id": str(athlete_id), "display_name": "Kid", "linked_user_id": None}]
+    repo = AthletesRepository(_FakeClient())  # type: ignore[arg-type]
+    repo.supabase.store = store  # type: ignore[attr-defined]
+    updated = repo.link_user(athlete_id, user_id)
+    assert updated["linked_user_id"] == str(user_id)
