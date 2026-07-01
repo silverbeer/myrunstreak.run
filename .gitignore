@@ -33,6 +33,7 @@ terraform.tfplan
 .env
 .env.*
 !.env.example
+!.env.schema
 secrets.json
 credentials.json
 
