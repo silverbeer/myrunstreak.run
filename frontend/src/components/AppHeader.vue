@@ -62,20 +62,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useRoles } from '@/composables/useCoach'
 import SyncButton from '@/components/SyncButton.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
 const mobileMenuOpen = ref(false)
 
-const navLinks = [
+const { isCoach, loadRoles } = useRoles()
+
+// Coach link only appears for coaches/admins (SB-189 P4-1).
+const navLinks = computed(() => [
   { name: 'Dashboard', path: '/dashboard' },
   { name: 'Runs', path: '/runs' },
+  ...(isCoach.value ? [{ name: 'Coach', path: '/coach' }] : []),
   { name: 'Settings', path: '/settings' },
-]
+])
+
+onMounted(() => {
+  if (auth.isAuthenticated) loadRoles()
+})
 
 const handleSignOut = async () => {
   mobileMenuOpen.value = false
