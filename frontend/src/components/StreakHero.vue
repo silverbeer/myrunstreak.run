@@ -19,6 +19,9 @@
       <p class="text-white/80 text-sm mt-1">
         {{ current === 1 ? 'day' : 'days' }} of running
       </p>
+      <p v-if="currentDistance" class="text-white font-semibold text-sm mt-2">
+        {{ currentDistance }} this streak
+      </p>
 
       <div class="mt-auto pt-4 border-t border-white/15">
         <p class="text-white/70 text-[11px] font-semibold uppercase tracking-wide">
@@ -42,6 +45,7 @@ import { useCountUp } from '@/composables/useCountUp'
 const props = defineProps<{
   current: number
   longest: number
+  currentDistance?: string
 }>()
 
 const currentRef = toRef(props, 'current')

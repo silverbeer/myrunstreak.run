@@ -14,7 +14,7 @@ from backend.auth import authenticate_request
 from backend.cache import cached
 from backend.goals import build_goals_block
 from backend.splits_analysis import analyze_run, summarize
-from backend.streaks import compute_streaks
+from backend.streaks import Streak, compute_streaks
 from fastapi import APIRouter, Depends, Query
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import GoalsRepository, RunsRepository, TokenRepository
@@ -39,25 +39,47 @@ async def get_overall_stats(
 async def _streaks(user_id: UUID) -> dict[str, Any]:
     supabase = get_supabase_client()
 
-    # Pull every distinct run-date for this user. With 4-5k rows the
-    # round-trip is fine; if a user ever exceeds 10k we'd push this into
-    # a Supabase RPC.
-    rows = (
-        supabase.table("runs")
-        .select("start_date")
-        .eq("user_id", str(user_id))
-        .order("start_date", desc=False)
-        .limit(10000)
-        .execute()
-    )
-    data = cast(list[dict[str, Any]], rows.data)
+    # Pull every run-date for this user. PostgREST caps a single response at
+    # its server-side `db-max-rows` (~1000) regardless of the client `.limit`,
+    # so a lone query silently truncates to the oldest ~1000 runs — which drops
+    # every recent run and makes the current streak read as 0 (SB-209). Page
+    # with .range() until exhausted so compute_streaks sees the full history.
+    data: list[dict[str, Any]] = []
+    page = 1000
+    offset = 0
+    while True:
+        batch = cast(
+            list[dict[str, Any]],
+            (
+                supabase.table("runs")
+                .select("start_date,distance_km")
+                .eq("user_id", str(user_id))
+                .order("start_date", desc=False)
+                .range(offset, offset + page - 1)
+                .execute()
+            ).data,
+        )
+        data.extend(batch)
+        if len(batch) < page:
+            break
+        offset += page
     run_dates = [date.fromisoformat(r["start_date"]) for r in data]
+
+    # Sum distance per day so we can total the mileage inside any streak window.
+    km_by_day: dict[date, float] = {}
+    for r in data:
+        d = date.fromisoformat(r["start_date"])
+        km_by_day[d] = km_by_day.get(d, 0.0) + (r["distance_km"] or 0.0)
+
+    def streak_km(s: Streak) -> float:
+        return round(sum(km for d, km in km_by_day.items() if s.start_date <= d <= s.end_date), 3)
 
     today = _today_local()
     streaks = compute_streaks(run_dates, today)
 
     current = next((s for s in streaks if s.is_current), None)
-    longest_length = streaks[0].length_days if streaks else 0
+    longest = streaks[0] if streaks else None
+    longest_length = longest.length_days if longest else 0
 
     top = [
         {
@@ -71,7 +93,9 @@ async def _streaks(user_id: UUID) -> dict[str, Any]:
 
     return {
         "current_streak": current.length_days if current else 0,
+        "current_streak_km": streak_km(current) if current else 0.0,
         "longest_streak": longest_length,
+        "longest_streak_km": streak_km(longest) if longest else 0.0,
         "top_streaks": top,
     }
 
