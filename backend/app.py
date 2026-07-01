@@ -41,7 +41,9 @@ def create_app() -> FastAPI:
         allow_origins=origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Api-Key"],
+        # X-Act-As-Athlete: coach acting on an athlete's behalf (browser sends it
+        # on workout reads, so it must survive CORS preflight).
+        allow_headers=["Authorization", "Content-Type", "X-Api-Key", "X-Act-As-Athlete"],
         max_age=300,
     )
 
