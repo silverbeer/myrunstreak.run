@@ -10,7 +10,9 @@ export interface OverallStats {
 
 export interface StreakInfo {
   current_streak: number
+  current_streak_km: number
   longest_streak: number
+  longest_streak_km: number
   top_streaks: TopStreak[]
 }
 

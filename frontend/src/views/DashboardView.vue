@@ -28,6 +28,7 @@
         <StreakHero
           :current="streak?.current_streak ?? 0"
           :longest="streak?.longest_streak ?? 0"
+          :current-distance="formatDistanceWithUnit(streak?.current_streak_km ?? 0, unit, 0)"
         />
         <GoalsCard
           :yearly="goals?.yearly ?? null"
