@@ -48,6 +48,18 @@ const router = createRouter({
       component: () => import('@/views/SettingsView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/coach',
+      name: 'coach',
+      component: () => import('@/views/CoachView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/coach/:athleteId',
+      name: 'athlete-detail',
+      component: () => import('@/views/AthleteDetailView.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
   scrollBehavior(_to, _from, savedPosition) {
     return savedPosition ?? { top: 0 }
