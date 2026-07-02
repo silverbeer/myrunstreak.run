@@ -8,6 +8,17 @@ export interface OverallStats {
   avg_pace_min_per_km: number
 }
 
+export interface RecordsInfo {
+  longest_run?: { date: string; distance_km: number; activity_id: string }
+  fastest_pace?: {
+    date: string
+    pace_min_per_km: number
+    distance_km: number
+    activity_id: string
+  }
+  most_km_month?: { month: string; run_count: number; total_km: number }
+}
+
 export interface StreakInfo {
   current_streak: number
   current_streak_km: number

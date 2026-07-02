@@ -74,6 +74,10 @@
       </div>
 
       <div class="mb-6">
+        <PersonalBestsCard :records="records" :unit="unit" />
+      </div>
+
+      <div class="mb-6">
         <StreakHeatmap :grid="heatmapGrid" :unit="unit" />
       </div>
 
@@ -117,6 +121,7 @@ import SyncButton from '@/components/SyncButton.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import StreakHero from '@/components/StreakHero.vue'
 import StreakHeatmap from '@/components/StreakHeatmap.vue'
+import PersonalBestsCard from '@/components/PersonalBestsCard.vue'
 import MonthlyDistanceChart from '@/components/MonthlyDistanceChart.vue'
 import GoalsCard from '@/components/GoalsCard.vue'
 import TodayCard from '@/components/TodayCard.vue'
@@ -140,7 +145,14 @@ import { buildHeatmapGrid } from '@/utils/heatmap'
 const auth = useAuthStore()
 const userEmail = computed(() => auth.user?.email ?? 'runner')
 
-const { stats, streak, loading: statsLoading, error: statsError, load: loadStats } = useStats()
+const {
+  stats,
+  streak,
+  records,
+  loading: statsLoading,
+  error: statsError,
+  load: loadStats,
+} = useStats()
 const {
   runs: recentRuns,
   loading: recentLoading,
