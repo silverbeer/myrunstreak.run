@@ -61,6 +61,56 @@ class AthletesRepository:
         data = cast(list[dict[str, Any]], result.data)
         return data[0] if data else None
 
+    def get_by_linked_user(self, user_id: UUID) -> dict[str, Any] | None:
+        """The athlete this user IS (via linked_user_id), or None."""
+        result = (
+            self.supabase.table("athletes")
+            .select("*")
+            .eq("linked_user_id", str(user_id))
+            .limit(1)
+            .execute()
+        )
+        data = cast(list[dict[str, Any]], result.data)
+        return data[0] if data else None
+
+    def get_profile(self, athlete_id: UUID) -> dict[str, Any] | None:
+        """The 1:1 athlete_profiles row, or None if not created yet."""
+        result = (
+            self.supabase.table("athlete_profiles")
+            .select("*")
+            .eq("athlete_id", str(athlete_id))
+            .execute()
+        )
+        data = cast(list[dict[str, Any]], result.data)
+        return data[0] if data else None
+
+    def upsert_profile(
+        self, athlete_id: UUID, fields: dict[str, Any], updated_by: UUID
+    ) -> dict[str, Any]:
+        """Create/patch the profile with the given fields (already permission-
+        filtered by the caller). Keeps athletes.birth_year in sync with DOB."""
+        row = {
+            "athlete_id": str(athlete_id),
+            "updated_by": str(updated_by),
+            "updated_at": datetime.now(UTC).isoformat(),
+            **fields,
+        }
+        result = (
+            self.supabase.table("athlete_profiles").upsert(row, on_conflict="athlete_id").execute()
+        )
+        # Derive birth_year from DOB so the lean athletes row stays consistent.
+        dob = fields.get("date_of_birth")
+        if dob:
+            year = int(str(dob)[:4])
+            self.supabase.table("athletes").update({"birth_year": year}).eq(
+                "id", str(athlete_id)
+            ).execute()
+        return cast(list[dict[str, Any]], result.data)[0]
+
+    def update_core(self, athlete_id: UUID, fields: dict[str, Any]) -> None:
+        """Update core columns on the athletes row (display_name, birth_year)."""
+        self.supabase.table("athletes").update(fields).eq("id", str(athlete_id)).execute()
+
     def link_user(self, athlete_id: UUID, user_id: UUID) -> dict[str, Any]:
         """Link a logged-in user to this athlete (athletes.linked_user_id).
 

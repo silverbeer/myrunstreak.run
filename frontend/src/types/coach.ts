@@ -3,6 +3,41 @@ export interface MyRoles {
   is_admin: boolean
 }
 
+export interface AthleteProfile {
+  sport: string | null
+  position: string | null
+  team: string | null
+  dominant_side: string | null
+  jersey_number: string | null
+  height_cm: number | null
+  weight_kg: number | null
+  date_of_birth: string | null
+  sex: string | null
+  bio: string | null
+  personal_goals: string | null
+  athlete_email: string | null
+  athlete_phone: string | null
+  guardian_name: string | null
+  guardian_email: string | null
+  guardian_phone: string | null
+  coaching_notes: string | null
+  updated_at: string | null
+}
+
+// Partial patch. Server enforces which keys the caller (coach vs athlete) may set.
+export type AthleteProfileUpdate = Partial<Omit<AthleteProfile, 'updated_at'>>
+
+// Fields the linked athlete may edit (mirrors backend ATHLETE_EDITABLE_FIELDS).
+export const ATHLETE_EDITABLE_FIELDS = [
+  'bio',
+  'personal_goals',
+  'athlete_email',
+  'athlete_phone',
+  'guardian_name',
+  'guardian_email',
+  'guardian_phone',
+] as const
+
 export interface Athlete {
   id: string
   display_name: string
@@ -11,6 +46,7 @@ export interface Athlete {
   created_by: string | null
   notes: string | null
   created_at: string
+  profile?: AthleteProfile | null
 }
 
 export interface AthleteCreate {

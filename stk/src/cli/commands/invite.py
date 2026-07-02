@@ -17,11 +17,19 @@ def create(
     email: str = typer.Option(..., "--email", "-e", help="Who the invite is for"),
     days: int = typer.Option(14, "--days", "-d", help="Days until the token expires"),
     role: str = typer.Option(None, "--role", "-r", help="Role to grant on redeem (e.g. coach)"),
+    athlete: str = typer.Option(
+        None, "--athlete", "-a", help="Athlete id to link the invitee to (onboard an athlete)"
+    ),
 ) -> None:
-    """Issue an invite. Prints a redeem link to text the invitee."""
+    """Issue an invite. Prints a redeem link to text the invitee.
+
+    Use --role coach to onboard a coach, or --athlete <id> to onboard an athlete
+    (the invitee is linked to that athlete profile on redeem)."""
     body: dict[str, object] = {"email": email, "expires_in_days": days}
     if role is not None:
         body["grant_role"] = role
+    if athlete is not None:
+        body["athlete_id"] = athlete
     result = api.post_request("invites", body)
     link = f"https://myrunstreak.run/signup?invite={result['token']}"
     role_note = f" as [bold]{result['grant_role']}[/bold]" if result.get("grant_role") else ""
