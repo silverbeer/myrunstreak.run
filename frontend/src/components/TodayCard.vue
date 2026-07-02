@@ -23,7 +23,8 @@
     <div v-for="row in rows" :key="row.id" class="mb-4 last:mb-0">
       <div class="flex items-start justify-between gap-2 mb-1">
         <span class="text-xs font-medium text-gray-700">
-          {{ row.label }}
+          {{ row.label }}<span v-if="row.qualifier" class="font-normal text-gray-400">
+            · {{ row.qualifier }}</span>
           <PartyPopper v-if="row.met" class="inline w-3.5 h-3.5 ml-1 text-brand-600" />
         </span>
         <span class="text-xs font-semibold text-gray-900 whitespace-nowrap">
@@ -61,6 +62,7 @@ defineEmits<{ create: [] }>()
 interface Row {
   id: string
   label: string
+  qualifier: string
   progressText: string
   percent: number
   met: boolean
@@ -75,6 +77,31 @@ function metricFor(key: string): MetricType | undefined {
 
 function fmt(unit: string, value: number): string {
   return toDisplay(unit, value).toFixed(displayDecimals(unit))
+}
+
+// A short, muted qualifier so goals on the same metric (e.g. several
+// running-distance goals) are distinguishable at a glance.
+const PERIOD_ADJ: Record<string, string> = {
+  year: 'yearly',
+  month: 'monthly',
+  week: 'weekly',
+  custom: '',
+}
+const PERIOD_SHORT: Record<string, string> = {
+  year: 'yr',
+  month: 'mo',
+  week: 'wk',
+  custom: '',
+}
+
+function qualifierFor(g: GoalProgress): string {
+  const period = g.goal.period
+  if (g.goal.kind === 'streak') return 'streak'
+  if (g.goal.kind === 'frequency') {
+    const per = PERIOD_SHORT[period]
+    return per ? `${g.target}×/${per}` : 'frequency'
+  }
+  return PERIOD_ADJ[period] || 'volume' // volume
 }
 
 const rows = computed<Row[]>(() =>
@@ -101,6 +128,7 @@ const rows = computed<Row[]>(() =>
     return {
       id: g.goal.id,
       label,
+      qualifier: qualifierFor(g),
       progressText,
       percent,
       met: g.met,
