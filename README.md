@@ -80,8 +80,9 @@ are gitignored; create them once:
 - **`.env.local`** — local Supabase. Uses the standard local-dev keys
   (`SUPABASE_URL=http://127.0.0.1:54321`, the well-known demo anon/service keys,
   `SUPABASE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long`,
-  `CACHE_ENABLED=false`). After signing up a local user, set `ADMIN_USER_IDS` to
-  its UID (Studio → Authentication) so coach/invite endpoints work locally.
+  `CACHE_ENABLED=false`). **Also set `SUPABASE_KEY` to the service-role key** —
+  the backend requires it or every DB route 500s. Seed dev users with
+  `scripts/seed_local_users.py` (see below) instead of hand-setting admin IDs.
 - **`.env.prod`** — copy from `.env.example` and fill with the real cloud keys.
 
 Or do it by hand:
@@ -92,6 +93,18 @@ supabase start                                   # local Postgres
 uv run uvicorn backend.app:app --reload --port 8000
 cd frontend && npm install && npm run dev
 ```
+
+Seed a clean set of local users (idempotent, local-only; rerun after `db reset`):
+
+```bash
+eval "$(supabase status -o env | sed 's/^/export SB_/')"
+SUPABASE_URL="$SB_API_URL" SERVICE_KEY="$SB_SERVICE_ROLE_KEY" \
+  uv run python scripts/seed_local_users.py
+```
+
+Creates `admin@test.local` / `coach@test.local` / `a1@test.local` /
+`a2@test.local` (coach + two linked athletes) — log in at
+http://localhost:5174. Full guide: **[docs/LOCAL_DEV.md](docs/LOCAL_DEV.md)**.
 
 See [QUICKSTART.md](QUICKSTART.md) and [docs/TESTING.md](docs/TESTING.md).
 
