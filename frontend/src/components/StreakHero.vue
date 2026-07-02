@@ -10,7 +10,7 @@
 
     <div class="relative flex flex-col h-full">
       <div class="flex items-center gap-2 text-white/80 text-xs font-semibold uppercase tracking-wide mb-1">
-        <span class="text-lg">🔥</span>
+        <Flame class="w-4 h-4" />
         <span>Current streak</span>
       </div>
       <p class="text-5xl sm:text-6xl font-extrabold leading-none tabular-nums">
@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import { computed, toRef } from 'vue'
+import { Flame } from 'lucide-vue-next'
 import { useCountUp } from '@/composables/useCountUp'
 
 const props = defineProps<{
