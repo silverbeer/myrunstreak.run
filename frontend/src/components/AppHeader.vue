@@ -2,9 +2,8 @@
   <header class="bg-white shadow-sm sticky top-0 z-50">
     <nav class="container-app py-4">
       <div class="flex items-center justify-between">
-        <RouterLink to="/" class="flex items-center gap-2 text-xl font-bold text-brand-600 hover:text-brand-700">
-          <span>🏃</span>
-          <span>MyRunStreak</span>
+        <RouterLink to="/" class="flex items-center hover:opacity-80 transition">
+          <BrandLogo :size="52" />
         </RouterLink>
 
         <div class="hidden md:flex items-center space-x-6">
@@ -66,6 +65,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useRoles } from '@/composables/useCoach'
+import BrandLogo from '@/components/BrandLogo.vue'
 import SyncButton from '@/components/SyncButton.vue'
 
 const auth = useAuthStore()

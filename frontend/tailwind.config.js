@@ -7,17 +7,19 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Dark-blue / navy brand ramp, matching the STK logo (replaces the
+        // former orange). Every `brand-*` class recolors from here.
         brand: {
-          50: '#fff7ed',
-          100: '#ffedd5',
-          200: '#fed7aa',
-          300: '#fdba74',
-          400: '#fb923c',
-          500: '#f97316',
-          600: '#ea580c',
-          700: '#c2410c',
-          800: '#9a3412',
-          900: '#7c2d12',
+          50: '#eef4fb',
+          100: '#d8e6f5',
+          200: '#b3cbe9',
+          300: '#7fa6d6',
+          400: '#4f7db8',
+          500: '#2f5c94',
+          600: '#1e4373',
+          700: '#163356',
+          800: '#112843',
+          900: '#0c1c30',
         }
       }
     },

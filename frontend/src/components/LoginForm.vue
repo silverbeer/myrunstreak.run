@@ -1,9 +1,8 @@
 <template>
   <div class="w-full max-w-sm mx-auto">
     <div class="text-center mb-8">
-      <span class="text-5xl">🏃</span>
-      <h1 class="mt-3 text-2xl font-bold text-gray-900">MyRunStreak</h1>
-      <p class="mt-1 text-sm text-gray-500">
+      <BrandLogo :size="72" class="mx-auto" />
+      <p class="mt-2 text-sm text-gray-500">
         {{ mode === 'forgot' ? 'Reset your password' : 'Sign in to your account' }}
       </p>
     </div>
@@ -89,6 +88,7 @@
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import BrandLogo from '@/components/BrandLogo.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
