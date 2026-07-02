@@ -1,7 +1,7 @@
 <template>
   <div class="bg-white rounded-2xl shadow-md p-6 h-full border border-gray-100">
     <div class="flex items-center gap-2 mb-4">
-      <span class="text-lg">🎯</span>
+      <Target class="w-4 h-4 text-gray-700" />
       <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-700">
         Goals
       </h3>
@@ -18,9 +18,9 @@
     <!-- Monthly goal -->
     <div v-if="monthly" class="mb-4">
       <div class="flex items-start justify-between gap-2 mb-1">
-        <span class="text-xs font-medium text-gray-700">
-          📅 {{ currentMonthName }}
-          <span v-if="monthlyPercent >= 100" class="ml-1">🎉</span>
+        <span class="inline-flex items-center gap-1 text-xs font-medium text-gray-700">
+          <Calendar class="w-3.5 h-3.5" /> {{ currentMonthName }}
+          <PartyPopper v-if="monthlyPercent >= 100" class="w-3.5 h-3.5 text-brand-600" />
         </span>
         <span class="text-xs font-semibold text-gray-900 whitespace-nowrap">
           {{ monthly.progress_mi.toFixed(1) }} / {{ monthly.goal_mi.toFixed(0) }} mi
@@ -44,8 +44,8 @@
         <span class="text-gray-500">
           {{ monthlyPercent.toFixed(1) }}%
         </span>
-        <span v-if="monthlyPercent >= 100" class="text-green-600 font-medium">
-          🎉 Goal achieved!
+        <span v-if="monthlyPercent >= 100" class="inline-flex items-center gap-1 text-green-600 font-medium">
+          <PartyPopper class="w-3.5 h-3.5" /> Goal achieved!
         </span>
         <span v-else :class="paceColor(monthlyPaceDelta)">
           {{ formatMilesDelta(monthlyMilesDelta) }}
@@ -56,9 +56,9 @@
     <!-- Yearly goal -->
     <div v-if="yearly">
       <div class="flex items-start justify-between gap-2 mb-1">
-        <span class="text-xs font-medium text-gray-700">
-          🎯 {{ currentYear }}
-          <span v-if="yearlyPercent >= 100" class="ml-1">🎉</span>
+        <span class="inline-flex items-center gap-1 text-xs font-medium text-gray-700">
+          <Target class="w-3.5 h-3.5" /> {{ currentYear }}
+          <PartyPopper v-if="yearlyPercent >= 100" class="w-3.5 h-3.5 text-brand-600" />
         </span>
         <span class="text-xs font-semibold text-gray-900 whitespace-nowrap">
           {{ yearly.progress_mi.toFixed(1) }} / {{ yearly.goal_mi.toFixed(0) }} mi
@@ -82,8 +82,8 @@
         <span class="text-gray-500">
           {{ yearlyPercent.toFixed(1) }}%
         </span>
-        <span v-if="yearlyPercent >= 100" class="text-green-600 font-medium">
-          🎉 Goal achieved!
+        <span v-if="yearlyPercent >= 100" class="inline-flex items-center gap-1 text-green-600 font-medium">
+          <PartyPopper class="w-3.5 h-3.5" /> Goal achieved!
         </span>
         <span v-else :class="paceColor(yearlyPaceDelta)">
           {{ formatMilesDelta(yearlyMilesDelta) }}
@@ -95,6 +95,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Calendar, PartyPopper, Target } from 'lucide-vue-next'
 import type { GoalProgress } from '@/types/runs'
 
 const props = defineProps<{

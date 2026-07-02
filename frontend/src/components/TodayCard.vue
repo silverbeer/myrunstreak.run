@@ -2,7 +2,7 @@
   <div class="bg-white rounded-2xl shadow-md p-6 h-full border border-gray-100">
     <div class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-2">
-        <span class="text-lg">📈</span>
+        <TrendingUp class="w-4 h-4 text-gray-700" />
         <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-700">
           Today
         </h3>
@@ -24,7 +24,7 @@
       <div class="flex items-start justify-between gap-2 mb-1">
         <span class="text-xs font-medium text-gray-700">
           {{ row.label }}
-          <span v-if="row.met" class="ml-1">🎉</span>
+          <PartyPopper v-if="row.met" class="inline w-3.5 h-3.5 ml-1 text-brand-600" />
         </span>
         <span class="text-xs font-semibold text-gray-900 whitespace-nowrap">
           {{ row.progressText }}
@@ -47,6 +47,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { PartyPopper, TrendingUp } from 'lucide-vue-next'
 import type { GoalProgress, MetricType } from '@/types/metrics'
 import { displayDecimals, displayUnit, toDisplay } from '@/utils/metrics'
 
@@ -104,14 +105,14 @@ const rows = computed<Row[]>(() =>
       percent,
       met: g.met,
       barClass: barClass(g, percent),
-      paceText: g.met ? 'Achieved 🎉' : paceText,
+      paceText: g.met ? 'Achieved' : paceText,
       paceClass: paceClass(g),
     }
   }),
 )
 
 function paceForVolume(g: GoalProgress, unit: string): string {
-  if (g.met) return 'Achieved 🎉'
+  if (g.met) return 'Achieved'
   if (g.projected !== null) {
     const u = displayUnit(unit)
     const proj = `on pace for ${fmt(unit, g.projected)} ${u}`

@@ -1,7 +1,7 @@
 <template>
   <div class="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
     <div class="flex items-center gap-2 mb-4">
-      <span class="text-lg">⚡</span>
+      <Zap class="w-4 h-4 text-gray-700" />
       <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-700">
         Quick log
       </h3>
@@ -10,7 +10,9 @@
     <!-- Push-ups: one-tap presets + custom -->
     <div class="mb-5">
       <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-medium text-gray-700">💪 Push-ups</span>
+        <span class="inline-flex items-center gap-1 text-xs font-medium text-gray-700">
+          <Dumbbell class="w-3.5 h-3.5" /> Push-ups
+        </span>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <button
@@ -78,6 +80,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Dumbbell, Zap } from 'lucide-vue-next'
 import { useMetrics } from '@/composables/useMetrics'
 import type { MetricType } from '@/types/metrics'
 import { displayUnit, toStored } from '@/utils/metrics'

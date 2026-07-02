@@ -16,6 +16,7 @@
     "@supabase/supabase-js": "^2.45.0",
     "apexcharts": "^5.10.6",
     "date-fns": "^4.1.0",
+    "lucide-vue-next": "^1.0.0",
     "pinia": "^2.1.7",
     "vue": "^3.4.15",
     "vue-router": "^4.2.5",
