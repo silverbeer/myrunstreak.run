@@ -14,7 +14,14 @@ from backend.admin import is_admin, require_athlete_access, require_coach
 from backend.auth import authenticate_request
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, model_validator
-from src.shared.models import Athlete, AthleteCreate, CoachAthlete
+from src.shared.models import (
+    ATHLETE_EDITABLE_FIELDS,
+    Athlete,
+    AthleteCreate,
+    AthleteProfile,
+    AthleteProfileUpdate,
+    CoachAthlete,
+)
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import (
     AthletesRepository,
@@ -22,6 +29,29 @@ from src.shared.supabase_ops import (
     UserRolesRepository,
     UsersRepository,
 )
+
+
+def _is_coach_view(user_id: UUID, athlete_id: UUID) -> bool:
+    """True if the caller edits/sees the athlete as a coach or admin (full
+    access), vs. as the linked athlete themselves (subset + redaction)."""
+    return is_admin(user_id) or CoachAthletesRepository(get_supabase_client()).active_link_exists(
+        user_id, athlete_id
+    )
+
+
+def _athlete_with_profile(
+    repo: AthletesRepository, row: dict[str, Any], *, coach_view: bool
+) -> Athlete:
+    """Attach the profile to an athlete row, redacting coach-private fields
+    (coaching_notes) when the caller is the linked athlete, not a coach."""
+    profile_row = repo.get_profile(UUID(row["id"]))
+    profile = None
+    if profile_row is not None:
+        if not coach_view:
+            profile_row = {**profile_row, "coaching_notes": None}
+        profile = AthleteProfile(**profile_row)
+    return Athlete(**row, profile=profile)
+
 
 router = APIRouter(prefix="/athletes", tags=["athletes"])
 me_router = APIRouter(prefix="/me", tags=["me"])
@@ -45,6 +75,18 @@ def my_roles(user_id: UUID = Depends(authenticate_request)) -> dict[str, Any]:
     """The caller's platform roles."""
     roles = UserRolesRepository(get_supabase_client()).list_roles(user_id)
     return {"roles": sorted(roles), "is_admin": "admin" in roles}
+
+
+@me_router.get("/athlete", response_model=Athlete | None)
+def my_athlete(user_id: UUID = Depends(authenticate_request)) -> Athlete | None:
+    """The athlete this user IS (via linked_user_id), with profile — or null.
+    Lets the athlete UI load 'my profile' without knowing its athlete id."""
+    repo = AthletesRepository(get_supabase_client())
+    row = repo.get_by_linked_user(user_id)
+    if row is None:
+        return None
+    # Linked-athlete view: coaching_notes redacted.
+    return _athlete_with_profile(repo, row, coach_view=False)
 
 
 @router.post("", response_model=Athlete, status_code=status.HTTP_201_CREATED)
@@ -80,9 +122,40 @@ def get_athlete(
     user_id: UUID = Depends(authenticate_request),
 ) -> Athlete:
     require_athlete_access(user_id, athlete_id)
-    row = AthletesRepository(get_supabase_client()).get(athlete_id)
+    repo = AthletesRepository(get_supabase_client())
+    row = repo.get(athlete_id)
     assert row is not None  # require_athlete_access already proved existence + access
-    return Athlete(**row)
+    return _athlete_with_profile(repo, row, coach_view=_is_coach_view(user_id, athlete_id))
+
+
+@router.patch("/{athlete_id}", response_model=Athlete)
+def update_athlete_profile(
+    athlete_id: UUID,
+    body: AthleteProfileUpdate,
+    user_id: UUID = Depends(authenticate_request),
+) -> Athlete:
+    """Patch an athlete's profile. Coach/admin may set any field; the linked
+    athlete may set only ATHLETE_EDITABLE_FIELDS. Fails closed (403) on any
+    disallowed key rather than silently dropping it."""
+    require_athlete_access(user_id, athlete_id)
+    coach_view = _is_coach_view(user_id, athlete_id)
+
+    fields = body.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No fields to update")
+    if not coach_view:
+        disallowed = set(fields) - ATHLETE_EDITABLE_FIELDS
+        if disallowed:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"Not allowed to edit: {', '.join(sorted(disallowed))}",
+            )
+
+    repo = AthletesRepository(get_supabase_client())
+    repo.upsert_profile(athlete_id, fields, updated_by=user_id)
+    row = repo.get(athlete_id)
+    assert row is not None
+    return _athlete_with_profile(repo, row, coach_view=coach_view)
 
 
 @router.post(

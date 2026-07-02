@@ -66,7 +66,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useRoles } from '@/composables/useCoach'
+import { useMyAthlete, useRoles } from '@/composables/useCoach'
 import BrandLogo from '@/components/BrandLogo.vue'
 import SyncButton from '@/components/SyncButton.vue'
 
@@ -75,17 +75,22 @@ const router = useRouter()
 const mobileMenuOpen = ref(false)
 
 const { isCoach, loadRoles } = useRoles()
+const { myAthlete, loadMyAthlete } = useMyAthlete()
 
-// Coach link only appears for coaches/admins (SB-189 P4-1).
+// Coach link → coaches/admins (SB-189 P4-1). My Profile → linked athletes (SB-219).
 const navLinks = computed(() => [
   { name: 'Dashboard', path: '/dashboard' },
   { name: 'Runs', path: '/runs' },
   ...(isCoach.value ? [{ name: 'Coach', path: '/coach' }] : []),
+  ...(myAthlete.value ? [{ name: 'My Profile', path: '/profile' }] : []),
   { name: 'Settings', path: '/settings' },
 ])
 
 onMounted(() => {
-  if (auth.isAuthenticated) loadRoles()
+  if (auth.isAuthenticated) {
+    loadRoles()
+    loadMyAthlete()
+  }
 })
 
 const handleSignOut = async () => {

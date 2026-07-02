@@ -19,6 +19,13 @@
           <span v-if="athlete.linked_user_id" class="text-brand-600"> · has own login</span>
         </p>
         <p v-if="athlete.notes" class="text-sm text-gray-600 mt-2">{{ athlete.notes }}</p>
+        <button class="btn-secondary text-sm mt-3" @click="editing = !editing">
+          {{ editing ? 'Cancel' : 'Edit profile' }}
+        </button>
+      </div>
+
+      <div v-if="editing" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+        <AthleteProfileForm :athlete="athlete" mode="coach" @saved="onSaved" />
       </div>
 
       <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">
@@ -51,12 +58,20 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useAthleteDetail } from '@/composables/useCoach'
+import AthleteProfileForm from '@/components/AthleteProfileForm.vue'
+import type { Athlete } from '@/types/coach'
 
 const route = useRoute()
 const { athlete, sessions, loading, error, load } = useAthleteDetail(route.params.athleteId as string)
+
+const editing = ref(false)
+const onSaved = (updated: Athlete) => {
+  athlete.value = updated
+  editing.value = false
+}
 
 onMounted(load)
 </script>

@@ -1,6 +1,12 @@
 import { computed, ref } from 'vue'
 import { apiCall } from '@/config/api'
-import type { Athlete, AthleteCreate, MyRoles, WorkoutSession } from '@/types/coach'
+import type {
+  Athlete,
+  AthleteCreate,
+  AthleteProfileUpdate,
+  MyRoles,
+  WorkoutSession,
+} from '@/types/coach'
 
 // Roles are shared app-wide (the nav gates the Coach link on them), so cache
 // them in module scope — one fetch feeds AppHeader and every coach view.
@@ -24,6 +30,37 @@ async function loadRoles(force = false): Promise<void> {
 
 /** Header that makes an authenticated call act on an athlete's behalf. */
 const actAs = (athleteId: string) => ({ 'X-Act-As-Athlete': athleteId })
+
+// The athlete the logged-in user IS (via linked_user_id), or null. Shared
+// app-wide so the nav can gate a "My Profile" link on it.
+const myAthlete = ref<Athlete | null>(null)
+const myAthleteLoaded = ref(false)
+
+async function loadMyAthlete(force = false): Promise<void> {
+  if (myAthleteLoaded.value && !force) return
+  try {
+    myAthlete.value = await apiCall<Athlete | null>('/me/athlete')
+  } catch {
+    myAthlete.value = null
+  } finally {
+    myAthleteLoaded.value = true
+  }
+}
+
+/** PATCH an athlete's profile. Server enforces field-level permissions. */
+export async function updateAthleteProfile(
+  athleteId: string,
+  patch: AthleteProfileUpdate,
+): Promise<Athlete> {
+  return apiCall<Athlete>(`/athletes/${athleteId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+}
+
+export function useMyAthlete() {
+  return { myAthlete, loadMyAthlete }
+}
 
 export function useCoach() {
   const athletes = ref<Athlete[]>([])
