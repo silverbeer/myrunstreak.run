@@ -62,6 +62,24 @@ export function useMyAthlete() {
   return { myAthlete, loadMyAthlete }
 }
 
+/** Invite a person to onboard as this athlete (linked on redeem). Returns the
+ *  invite incl. token; the caller builds the /signup?invite=<token> link. */
+export async function inviteAthlete(email: string, athleteId: string): Promise<{ token: string }> {
+  return apiCall<{ token: string }>('/invites', {
+    method: 'POST',
+    body: JSON.stringify({ email, athlete_id: athleteId }),
+  })
+}
+
+/** Add an existing user (by email) as a coach of the athlete. 404 if the email
+ *  isn't a user yet (invite them as a coach first). */
+export async function addCoachByEmail(athleteId: string, email: string): Promise<void> {
+  await apiCall(`/athletes/${athleteId}/coaches`, {
+    method: 'POST',
+    body: JSON.stringify({ coach_email: email }),
+  })
+}
+
 export function useCoach() {
   const athletes = ref<Athlete[]>([])
   const loading = ref(false)

@@ -28,6 +28,8 @@
         <AthleteProfileForm :athlete="athlete" mode="coach" @saved="onSaved" />
       </div>
 
+      <AthleteAccessPanel :athlete="athlete" class="mb-6" />
+
       <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">
         Recent sessions ({{ sessions.length }})
       </h2>
@@ -62,6 +64,7 @@ import { onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useAthleteDetail } from '@/composables/useCoach'
 import AthleteProfileForm from '@/components/AthleteProfileForm.vue'
+import AthleteAccessPanel from '@/components/AthleteAccessPanel.vue'
 import type { Athlete } from '@/types/coach'
 
 const route = useRoute()
