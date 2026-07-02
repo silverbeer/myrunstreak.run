@@ -2,6 +2,7 @@
 
 from .activity import Activity
 from .athlete import (
+    ATHLETE_CORE_FIELDS,
     ATHLETE_EDITABLE_FIELDS,
     Athlete,
     AthleteCreate,
@@ -77,6 +78,7 @@ __all__ = [
     "Goal",
     "Split",
     # Coach platform (SB-195)
+    "ATHLETE_CORE_FIELDS",
     "ATHLETE_EDITABLE_FIELDS",
     "Athlete",
     "AthleteCreate",

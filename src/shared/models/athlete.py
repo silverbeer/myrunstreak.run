@@ -55,6 +55,9 @@ ATHLETE_EDITABLE_FIELDS: frozenset[str] = frozenset(
 # coaching_notes is coach-private: redacted from the linked-athlete read path.
 COACH_PRIVATE_FIELDS: frozenset[str] = frozenset({"coaching_notes"})
 
+# Fields that live on the core `athletes` row (not athlete_profiles). Coach-only.
+ATHLETE_CORE_FIELDS: frozenset[str] = frozenset({"display_name", "birth_year"})
+
 
 class AthleteProfile(BaseModel):
     """The 1:1 rich profile for an athlete (read model)."""
@@ -81,10 +84,15 @@ class AthleteProfile(BaseModel):
 
 class AthleteProfileUpdate(BaseModel):
     """Partial profile update. All optional; only set keys are applied, and the
-    caller's role decides which keys are allowed (see ATHLETE_EDITABLE_FIELDS)."""
+    caller's role decides which keys are allowed (see ATHLETE_EDITABLE_FIELDS).
+
+    display_name / birth_year live on the core `athletes` row (coach-only); the
+    rest live on athlete_profiles. The route splits them on write."""
 
     model_config = {"extra": "forbid"}
 
+    display_name: str | None = Field(default=None, min_length=1)
+    birth_year: int | None = Field(default=None, ge=1900, le=2100)
     sport: str | None = None
     position: str | None = None
     team: str | None = None

@@ -1,5 +1,14 @@
 <template>
   <form class="space-y-6" @submit.prevent="submit">
+    <!-- Identity (coach only) -->
+    <fieldset v-if="mode === 'coach'" class="space-y-3">
+      <legend class="text-sm font-semibold text-gray-700 mb-1">Name</legend>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label class="form-label">Display name</label><input v-model="f.display_name" required class="form-input" /></div>
+        <div><label class="form-label">Birth year</label><input v-model.number="f.birth_year" type="number" class="form-input" /></div>
+      </div>
+    </fieldset>
+
     <!-- Sport (coach only) -->
     <fieldset v-if="mode === 'coach'" class="space-y-3">
       <legend class="text-sm font-semibold text-gray-700 mb-1">Sport</legend>
@@ -93,27 +102,33 @@ const ATHLETE_FIELDS = [
   'guardian_name', 'guardian_email', 'guardian_phone',
 ] as const
 const COACH_FIELDS = [
+  'display_name', 'birth_year',
   'sport', 'position', 'team', 'dominant_side', 'jersey_number',
   'height_cm', 'weight_kg', 'date_of_birth', 'sex',
   ...ATHLETE_FIELDS, 'coaching_notes',
 ] as const
 
 type FormValue = string | number | null
-type FormKey = keyof AthleteProfile
-const blank = (): Record<FormKey, FormValue> =>
-  ({
-    sport: null, position: null, team: null, dominant_side: null, jersey_number: null,
-    height_cm: null, weight_kg: null, date_of_birth: null, sex: null,
-    bio: null, personal_goals: null, athlete_email: null, athlete_phone: null,
-    guardian_name: null, guardian_email: null, guardian_phone: null,
-    coaching_notes: null, updated_at: null,
-  }) as Record<FormKey, FormValue>
+const blank = (): Record<string, FormValue> => ({
+  // core athletes-row fields
+  display_name: null, birth_year: null,
+  // profile fields
+  sport: null, position: null, team: null, dominant_side: null, jersey_number: null,
+  height_cm: null, weight_kg: null, date_of_birth: null, sex: null,
+  bio: null, personal_goals: null, athlete_email: null, athlete_phone: null,
+  guardian_name: null, guardian_email: null, guardian_phone: null,
+  coaching_notes: null, updated_at: null,
+})
 
 const f = reactive<Record<string, FormValue>>(blank())
 
 watch(
   () => props.athlete,
-  (a) => Object.assign(f, blank(), a.profile ?? {}),
+  (a) => {
+    Object.assign(f, blank(), a.profile ?? {})
+    f.display_name = a.display_name // core fields live on the athlete, not profile
+    f.birth_year = a.birth_year
+  },
   { immediate: true },
 )
 

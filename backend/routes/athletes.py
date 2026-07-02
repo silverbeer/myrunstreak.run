@@ -15,6 +15,7 @@ from backend.auth import authenticate_request
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, model_validator
 from src.shared.models import (
+    ATHLETE_CORE_FIELDS,
     ATHLETE_EDITABLE_FIELDS,
     Athlete,
     AthleteCreate,
@@ -152,7 +153,13 @@ def update_athlete_profile(
             )
 
     repo = AthletesRepository(get_supabase_client())
-    repo.upsert_profile(athlete_id, fields, updated_by=user_id)
+    # display_name / birth_year live on the core athletes row; the rest on the
+    # profile. Split so each lands in the right table.
+    core = {k: fields.pop(k) for k in list(fields) if k in ATHLETE_CORE_FIELDS}
+    if core:
+        repo.update_core(athlete_id, core)
+    if fields:
+        repo.upsert_profile(athlete_id, fields, updated_by=user_id)
     row = repo.get(athlete_id)
     assert row is not None
     return _athlete_with_profile(repo, row, coach_view=coach_view)

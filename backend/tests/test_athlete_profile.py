@@ -82,6 +82,33 @@ def test_athlete_may_patch_own_fields() -> None:
     assert out.profile is not None and out.profile.coaching_notes is None
 
 
+def test_coach_may_rename_athlete_core_field() -> None:
+    from backend.routes.athletes import update_athlete_profile
+    from src.shared.models import AthleteProfileUpdate
+
+    repo = _repo()
+    with _mock_athletes(coach=True, repo=repo):
+        update_athlete_profile(uuid4(), AthleteProfileUpdate(display_name="Gabe"), user_id=uuid4())
+    # display_name is a core athletes-row field → update_core, not upsert_profile
+    repo.update_core.assert_called_once()
+    assert repo.update_core.call_args.args[1] == {"display_name": "Gabe"}
+    repo.upsert_profile.assert_not_called()
+
+
+def test_athlete_cannot_rename_is_403() -> None:
+    from backend.routes.athletes import update_athlete_profile
+    from src.shared.models import AthleteProfileUpdate
+
+    repo = _repo()
+    with _mock_athletes(coach=False, repo=repo):
+        with pytest.raises(HTTPException) as exc:
+            update_athlete_profile(
+                uuid4(), AthleteProfileUpdate(display_name="Hacker"), user_id=uuid4()
+            )
+    assert exc.value.status_code == 403
+    repo.update_core.assert_not_called()
+
+
 def test_athlete_patching_disallowed_field_is_403() -> None:
     from backend.routes.athletes import update_athlete_profile
     from src.shared.models import AthleteProfileUpdate

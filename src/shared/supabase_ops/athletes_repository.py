@@ -107,6 +107,10 @@ class AthletesRepository:
             ).execute()
         return cast(list[dict[str, Any]], result.data)[0]
 
+    def update_core(self, athlete_id: UUID, fields: dict[str, Any]) -> None:
+        """Update core columns on the athletes row (display_name, birth_year)."""
+        self.supabase.table("athletes").update(fields).eq("id", str(athlete_id)).execute()
+
     def link_user(self, athlete_id: UUID, user_id: UUID) -> dict[str, Any]:
         """Link a logged-in user to this athlete (athletes.linked_user_id).
 
