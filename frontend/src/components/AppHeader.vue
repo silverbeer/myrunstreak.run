@@ -25,6 +25,8 @@
         <button
           @click="mobileMenuOpen = !mobileMenuOpen"
           class="md:hidden text-gray-700 hover:text-brand-600"
+          :aria-label="mobileMenuOpen ? 'Close menu' : 'Open menu'"
+          :aria-expanded="mobileMenuOpen"
         >
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path

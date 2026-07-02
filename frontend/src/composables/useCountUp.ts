@@ -4,8 +4,17 @@ export function useCountUp(target: () => number, durationMs = 900) {
   const value = ref(0)
   let raf: number | null = null
 
+  const prefersReducedMotion = () =>
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
   const animate = (to: number) => {
     if (raf !== null) cancelAnimationFrame(raf)
+    // Reduced-motion: skip the count-up, show the final value immediately.
+    if (prefersReducedMotion()) {
+      value.value = to
+      return
+    }
     const from = value.value
     const start = performance.now()
     const step = (now: number) => {
