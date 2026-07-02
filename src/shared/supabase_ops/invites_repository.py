@@ -26,6 +26,7 @@ class InvitesRepository:
         token: str,
         expires_at: datetime,
         grant_role: str | None = None,
+        athlete_id: UUID | None = None,
     ) -> dict[str, Any]:
         row = {
             "created_by": str(created_by),
@@ -35,6 +36,8 @@ class InvitesRepository:
         }
         if grant_role is not None:
             row["grant_role"] = grant_role
+        if athlete_id is not None:
+            row["athlete_id"] = str(athlete_id)
         result = self.supabase.table("invites").insert(row).execute()
         return cast(list[dict[str, Any]], result.data)[0]
 

@@ -20,6 +20,10 @@ class InviteCreate(BaseModel):
     grant_role: Role | None = Field(
         default=None, description="Role granted on redemption (e.g. coach)"
     )
+    athlete_id: UUID | None = Field(
+        default=None,
+        description="If set, redeeming links the new user to this athlete (SB-212 P4-2)",
+    )
 
 
 class Invite(BaseModel):
@@ -31,6 +35,7 @@ class Invite(BaseModel):
     created_by: UUID
     expires_at: datetime
     grant_role: Role | None = None
+    athlete_id: UUID | None = None
     redeemed_at: datetime | None = None
     redeemed_by: UUID | None = None
     created_at: datetime
