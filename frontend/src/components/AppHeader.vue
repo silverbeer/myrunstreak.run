@@ -63,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useMyAthlete, useRoles } from '@/composables/useCoach'
@@ -86,12 +86,19 @@ const navLinks = computed(() => [
   { name: 'Settings', path: '/settings' },
 ])
 
-onMounted(() => {
-  if (auth.isAuthenticated) {
-    loadRoles()
-    loadMyAthlete()
-  }
-})
+// Refetch role/athlete gating whenever the logged-in user changes — not just
+// on mount — so an SPA login (no full page reload) reveals the Coach / My
+// Profile links immediately (force past the module-scoped cache).
+watch(
+  () => auth.user?.id,
+  (id) => {
+    if (id) {
+      loadRoles(true)
+      loadMyAthlete(true)
+    }
+  },
+  { immediate: true },
+)
 
 const handleSignOut = async () => {
   mobileMenuOpen.value = false
