@@ -3,6 +3,19 @@ export interface MyRoles {
   is_admin: boolean
 }
 
+export interface Invite {
+  id: string
+  token: string
+  email: string
+  created_by: string | null
+  expires_at: string
+  grant_role: string | null
+  athlete_id: string | null
+  redeemed_at: string | null
+  redeemed_by: string | null
+  created_at: string
+}
+
 export interface AthleteProfile {
   sport: string | null
   position: string | null

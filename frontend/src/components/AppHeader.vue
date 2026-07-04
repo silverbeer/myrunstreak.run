@@ -74,14 +74,16 @@ const auth = useAuthStore()
 const router = useRouter()
 const mobileMenuOpen = ref(false)
 
-const { isCoach, loadRoles } = useRoles()
+const { isCoach, isAdmin, loadRoles } = useRoles()
 const { myAthlete, loadMyAthlete } = useMyAthlete()
 
 // Coach link → coaches/admins (SB-189 P4-1). My Profile → linked athletes (SB-219).
+// Admin link → admins only (SB-223).
 const navLinks = computed(() => [
   { name: 'Dashboard', path: '/dashboard' },
   { name: 'Runs', path: '/runs' },
   ...(isCoach.value ? [{ name: 'Coach', path: '/coach' }] : []),
+  ...(isAdmin.value ? [{ name: 'Admin', path: '/admin' }] : []),
   ...(myAthlete.value ? [{ name: 'My Profile', path: '/profile' }] : []),
   { name: 'Settings', path: '/settings' },
 ])
