@@ -74,3 +74,6 @@ docs/PLANNING.md
 # local dev scripts
 .mrs-config
 .run-logs/
+
+# Playwright CLI
+.playwright-cli/
