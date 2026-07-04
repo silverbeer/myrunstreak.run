@@ -89,9 +89,13 @@ def run_user_sync(
     since: date | None = None,
     until: date | None = None,
     full: bool = False,
+    force_goals: bool = False,
 ) -> dict[str, Any]:
     """Synchronous core sync routine — invoked by both the HTTP endpoint and
     the K8s CronJob entry point in ``backend/jobs/sync_runs.py``.
+
+    ``force_goals=True`` re-fetches current goals ignoring their staleness TTL;
+    the HTTP "Sync now" sets it, the cron path leaves it False.
     """
     if full:
         since_date = date(2010, 1, 1)
@@ -150,6 +154,7 @@ def run_user_sync(
                 api=api,
                 goals_repo=goals_repo,
                 settings=settings,
+                force=force_goals,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"Goal sync failed for source {source_id}: {exc}")
@@ -222,6 +227,7 @@ def sync_current_goals(
     api: SmashRunAPIClient,
     goals_repo: GoalsRepository,
     settings: Settings,
+    force: bool = False,
 ) -> None:
     """Refresh current-year and current-month goals from SmashRun if stale.
 
@@ -230,6 +236,10 @@ def sync_current_goals(
     so we don't re-fetch the same goal every sync. Periods with no goal set on
     SmashRun are recorded as "absent" via :meth:`GoalsRepository.mark_absent`
     so we don't keep hammering the API.
+
+    ``force=True`` (a user-triggered "Sync now") ignores the TTL and always
+    re-fetches, so a goal set *after* an "absent" mark shows up immediately
+    instead of waiting out the staleness window. The cron path leaves it False.
     """
     today = date.today()
     yearly_ttl = timedelta(days=settings.goal_yearly_staleness_days)
@@ -244,7 +254,7 @@ def sync_current_goals(
         label = f"{year}" if month is None else f"{year}/{month}"
         existing = goals_repo.get_by_period(user_id, source_id, year, month)
 
-        if not goals_repo.is_stale(existing, ttl):
+        if not force and not goals_repo.is_stale(existing, ttl):
             logger.debug(f"Goal {label} is fresh, skipping fetch")
             continue
 
@@ -270,7 +280,10 @@ async def sync_user(
     until = date.fromisoformat(body["until"]) if body.get("until") else None
     full = bool(body.get("full"))
 
-    result = run_user_sync(user_id, since=since, until=until, full=full)
+    # This endpoint is always a user-initiated "Sync now", so force a goal
+    # re-fetch — a goal set after an "absent" mark should appear immediately,
+    # not wait out the staleness TTL (that TTL only guards the cron path).
+    result = run_user_sync(user_id, since=since, until=until, full=full, force_goals=True)
     await invalidate_user(user_id)
     return result
 
