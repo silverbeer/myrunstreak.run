@@ -45,13 +45,13 @@
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        <TodayCard :goals="metricGoals" :types="metricTypes" @create="showNewGoal = true" />
+        <TodayCard :goals="trainingGoals" :types="trainingTypes" @create="showNewGoal = true" />
         <QuickLog :types="metricTypes" @logged="loadMetricGoals" />
       </div>
 
       <NewGoalForm
         :show="showNewGoal"
-        :types="metricTypes"
+        :types="trainingTypes"
         @created="onGoalCreated"
         @cancel="showNewGoal = false"
       />
@@ -183,6 +183,18 @@ const {
   loadGoals: loadMetricGoals,
 } = useMetrics()
 const { unit } = useUserPreferences()
+
+// Split goals by domain (SB-226): running is owned by the SmashRun GOALS card
+// (+ the streak hero), so the native TODAY tile shows only non-running metrics
+// (push-ups, body-weight, cross-training). We also drop running_distance from
+// the "+ New goal" picker so the overlap can't be recreated.
+const NON_RUNNING_METRIC = 'running_distance'
+const trainingGoals = computed(() =>
+  metricGoals.value.filter((g) => g.goal.metric_key !== NON_RUNNING_METRIC),
+)
+const trainingTypes = computed(() =>
+  metricTypes.value.filter((t) => t.key !== NON_RUNNING_METRIC),
+)
 
 const showNewGoal = ref(false)
 const onGoalCreated = async () => {
