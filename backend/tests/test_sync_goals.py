@@ -60,6 +60,26 @@ def test_fresh_row_skips_api_call() -> None:
     repo.mark_absent.assert_not_called()
 
 
+def test_force_refetches_even_when_fresh() -> None:
+    """force=True (a user 'Sync now') ignores the TTL and re-fetches anyway,
+    so a goal set after an 'absent' mark shows up immediately (SB-222)."""
+    user_id, source_id = uuid4(), uuid4()
+    now = datetime.now(UTC)
+    api = MagicMock()
+    api.get_goal.side_effect = [
+        Goal(year=now.year, goal_km=1000.0, progress_km=500.0),
+        Goal(year=now.year, month=now.month, goal_km=80.0, progress_km=20.0),
+    ]
+    repo = MagicMock()
+    repo.get_by_period.return_value = {"fetched_at": now.isoformat()}
+    repo.is_stale.return_value = False  # fresh — would normally skip
+
+    sync_current_goals(user_id, source_id, api, repo, _settings(), force=True)
+
+    assert api.get_goal.call_count == 2  # both periods fetched despite freshness
+    assert repo.upsert.call_count == 2
+
+
 def test_smashrun_returns_none_marks_absent() -> None:
     """SmashRun reports no goal set → mark_absent so we don't re-fetch."""
     user_id, source_id = uuid4(), uuid4()
@@ -110,6 +130,36 @@ def test_run_user_sync_swallows_goal_failure() -> None:
 
     assert result["runs_synced"] == 0
     assert result["message"] == "Sync completed"
+
+
+def test_run_user_sync_threads_force_goals() -> None:
+    """run_user_sync(force_goals=True) passes force=True to sync_current_goals;
+    the default leaves it False (cron path keeps the TTL)."""
+    user_id, source_id = uuid4(), uuid4()
+
+    token_repo = MagicMock()
+    token_repo.get_source_id_for_user.return_value = source_id
+    token_repo.get_user_tokens.return_value = {"access_token": "tok", "refresh_token": "ref"}
+    token_repo.is_token_expired.return_value = False
+
+    api = MagicMock()
+    api.get_all_activities_since.return_value = []
+    api_ctx = MagicMock()
+    api_ctx.__enter__ = MagicMock(return_value=api)
+    api_ctx.__exit__ = MagicMock(return_value=False)
+
+    for force_goals, expected in [(True, True), (False, False)]:
+        goal_sync = MagicMock()
+        with (
+            patch("backend.routes.sync.get_supabase_client", return_value=MagicMock()),
+            patch("backend.routes.sync.RunsRepository"),
+            patch("backend.routes.sync.TokenRepository", return_value=token_repo),
+            patch("backend.routes.sync.GoalsRepository"),
+            patch("backend.routes.sync.SmashRunAPIClient", return_value=api_ctx),
+            patch("backend.routes.sync.sync_current_goals", goal_sync),
+        ):
+            run_user_sync(user_id, force_goals=force_goals)
+        assert goal_sync.call_args.kwargs["force"] is expected
 
 
 def test_settings_drive_per_period_ttl() -> None:
