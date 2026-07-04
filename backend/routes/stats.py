@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from backend.auth import authenticate_request
 from backend.cache import cached
-from backend.goals import build_goals_block
+from backend.goals import build_goal_history, build_goals_block
 from backend.splits_analysis import analyze_run, summarize
 from backend.streaks import Streak, compute_streaks
 from fastapi import APIRouter, Depends, Query
@@ -233,6 +233,32 @@ async def get_goals(
     GoalProgress structure.
     """
     return await _goals(user_id)
+
+
+@cached(ttl=60, key_prefix="stats:goals:history")
+async def _goals_history(user_id: UUID) -> list[dict[str, Any]]:
+    supabase = get_supabase_client()
+    token_repo = TokenRepository(supabase)
+    goals_repo = GoalsRepository(supabase)
+    runs_repo = RunsRepository(supabase)
+
+    source_id = token_repo.get_source_id_for_user(user_id, "smashrun")
+    return build_goal_history(user_id, source_id, goals_repo, runs_repo)
+
+
+@router.get("/goals/history")
+async def get_goals_history(
+    user_id: UUID = Depends(authenticate_request),
+) -> list[dict[str, Any]]:
+    """Full goal history — every past/current period with target vs achieved.
+
+    One item per goal that has a target, newest period first. "Achieved" is
+    recomputed from the user's runs (the ``monthly_summary`` view), so closed
+    months are exact rather than frozen at the goals table's cached progress.
+    Each item carries ``year``/``month``/``period``/``hit`` for grouping and
+    hit/miss badging in the UI.
+    """
+    return await _goals_history(user_id)
 
 
 @router.get("/splits")

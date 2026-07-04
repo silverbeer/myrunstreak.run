@@ -61,6 +61,38 @@ class GoalsRepository:
         data_list = cast(list[dict[str, Any]], result.data)
         return data_list[0] if data_list else None
 
+    def list_goals(
+        self,
+        user_id: UUID,
+        source_id: UUID,
+    ) -> list[dict[str, Any]]:
+        """
+        List every stored goal row for a user+source, newest period first.
+
+        Ordered year desc, then month desc. A yearly goal (month IS NULL) sorts
+        before that year's monthly goals (Postgres puts NULLs first on DESC), so
+        each year's summary row leads its months — handy for a grouped history
+        view. Rows with a null goal_km (the "no goal set" placeholder written by
+        mark_absent) are included; callers decide whether to show them.
+
+        Args:
+            user_id: User UUID
+            source_id: Source UUID
+
+        Returns:
+            All goal rows for the user+source, ordered by period descending.
+        """
+        result = (
+            self.supabase.table("goals")
+            .select("*")
+            .eq("user_id", str(user_id))
+            .eq("source_id", str(source_id))
+            .order("year", desc=True)
+            .order("month", desc=True)
+            .execute()
+        )
+        return cast(list[dict[str, Any]], result.data)
+
     def is_stale(
         self,
         row: dict[str, Any] | None,

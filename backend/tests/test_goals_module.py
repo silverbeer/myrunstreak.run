@@ -7,7 +7,12 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from backend.goals import build_goals_block, km_to_miles, render_goal
+from backend.goals import (
+    build_goal_history,
+    build_goals_block,
+    km_to_miles,
+    render_goal,
+)
 
 
 def test_km_to_miles() -> None:
@@ -118,3 +123,123 @@ def test_build_goals_block_progress_from_run_stats() -> None:
 
     assert result["yearly"]["progress_mi"] == pytest.approx(km_to_miles(1026.5), abs=0.1)
     assert result["monthly"]["progress_mi"] == pytest.approx(km_to_miles(125.2), abs=0.1)
+
+
+# --- build_goal_history (SB-220) ---------------------------------------------
+
+
+def _monthly_stats() -> list[dict]:
+    """monthly_summary rows: exact per-month km from runs."""
+    return [
+        {"start_year": 2026, "start_month": 6, "total_km": 209.5},  # hit (goal 202)
+        {"start_year": 2026, "start_month": 5, "total_km": 190.0},  # missed (goal 201.2)
+        {"start_year": 2025, "start_month": 12, "total_km": 100.0},
+    ]
+
+
+def test_build_goal_history_no_source_returns_empty() -> None:
+    repo, runs_repo = MagicMock(), MagicMock()
+    assert build_goal_history(uuid4(), None, repo, runs_repo) == []
+    repo.list_goals.assert_not_called()
+
+
+def test_build_goal_history_achieved_from_runs_not_cached_progress() -> None:
+    """Achieved is the monthly_summary total, not the goals row's stale progress_km."""
+    user_id, source_id = uuid4(), uuid4()
+    repo = MagicMock()
+    repo.list_goals.return_value = [
+        {"year": 2026, "month": 6, "goal_km": 200.0, "progress_km": 5.0, "fetched_at": "Z"},
+    ]
+    runs_repo = MagicMock()
+    runs_repo.get_monthly_stats.return_value = _monthly_stats()
+
+    history = build_goal_history(user_id, source_id, repo, runs_repo)
+
+    assert len(history) == 1
+    item = history[0]
+    # progress reflects the 209.5 km run total, NOT the cached 5.0 km.
+    assert item["progress_mi"] == pytest.approx(km_to_miles(209.5), abs=0.1)
+    assert item["year"] == 2026
+    assert item["month"] == 6
+    assert item["period"] == "month"
+    assert item["hit"] is True  # 209.5 km >= 200 km target
+
+
+def test_build_goal_history_hit_and_miss_badges() -> None:
+    user_id, source_id = uuid4(), uuid4()
+    repo = MagicMock()
+    # goal_km chosen so achieved (km) lands just above / below target.
+    repo.list_goals.return_value = [
+        {
+            "year": 2026,
+            "month": 6,
+            "goal_km": 200.0,
+            "progress_km": 0,
+            "fetched_at": "Z",
+        },  # 209.5 -> hit
+        {
+            "year": 2026,
+            "month": 5,
+            "goal_km": 200.0,
+            "progress_km": 0,
+            "fetched_at": "Z",
+        },  # 190.0 -> miss
+    ]
+    runs_repo = MagicMock()
+    runs_repo.get_monthly_stats.return_value = _monthly_stats()
+
+    history = build_goal_history(user_id, source_id, repo, runs_repo)
+
+    by_month = {h["month"]: h for h in history}
+    assert by_month[6]["hit"] is True
+    assert by_month[5]["hit"] is False
+
+
+def test_build_goal_history_yearly_sums_months() -> None:
+    """A yearly goal's achieved = sum of that year's monthly run totals."""
+    user_id, source_id = uuid4(), uuid4()
+    repo = MagicMock()
+    repo.list_goals.return_value = [
+        {"year": 2026, "month": None, "goal_km": 1000.0, "progress_km": 0, "fetched_at": "Z"},
+    ]
+    runs_repo = MagicMock()
+    runs_repo.get_monthly_stats.return_value = _monthly_stats()
+
+    history = build_goal_history(user_id, source_id, repo, runs_repo)
+
+    assert history[0]["period"] == "year"
+    assert history[0]["month"] is None
+    # 2026 months only: 209.5 + 190.0 = 399.5 km (2025 excluded)
+    assert history[0]["progress_mi"] == pytest.approx(km_to_miles(399.5), abs=0.1)
+
+
+def test_build_goal_history_skips_placeholder_rows() -> None:
+    """Rows with null goal_km (mark_absent placeholder) are omitted."""
+    user_id, source_id = uuid4(), uuid4()
+    repo = MagicMock()
+    repo.list_goals.return_value = [
+        {"year": 2026, "month": 6, "goal_km": None, "progress_km": None, "fetched_at": "Z"},
+        {"year": 2026, "month": 5, "goal_km": 200.0, "progress_km": 0, "fetched_at": "Z"},
+    ]
+    runs_repo = MagicMock()
+    runs_repo.get_monthly_stats.return_value = _monthly_stats()
+
+    history = build_goal_history(user_id, source_id, repo, runs_repo)
+
+    assert [h["month"] for h in history] == [5]
+
+
+def test_build_goal_history_missing_month_total_is_zero() -> None:
+    """A goal for a month with no runs shows 0 achieved, not a crash."""
+    user_id, source_id = uuid4(), uuid4()
+    repo = MagicMock()
+    repo.list_goals.return_value = [
+        {"year": 2026, "month": 3, "goal_km": 200.0, "progress_km": 0, "fetched_at": "Z"},
+    ]
+    runs_repo = MagicMock()
+    runs_repo.get_monthly_stats.return_value = _monthly_stats()  # no March row
+
+    history = build_goal_history(user_id, source_id, repo, runs_repo)
+
+    assert history[0]["progress_mi"] == 0.0
+    assert history[0]["hit"] is False

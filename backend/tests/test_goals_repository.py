@@ -1,11 +1,59 @@
 """Tests for GoalsRepository staleness logic."""
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
 from src.shared.models import Goal
 from src.shared.supabase_ops import GoalsRepository
+
+
+class _FakeQuery:
+    """Self-returning PostgREST query stub; records calls, returns preset data."""
+
+    def __init__(self, data: list[dict]) -> None:
+        self._data = data
+        self.calls: list[tuple] = []
+
+    def table(self, name: str) -> "_FakeQuery":
+        self.calls.append(("table", name))
+        return self
+
+    def select(self, *a: object) -> "_FakeQuery":
+        return self
+
+    def eq(self, col: str, val: object) -> "_FakeQuery":
+        self.calls.append(("eq", col, val))
+        return self
+
+    def order(self, col: str, desc: bool = False) -> "_FakeQuery":
+        self.calls.append(("order", col, desc))
+        return self
+
+    def execute(self) -> SimpleNamespace:
+        return SimpleNamespace(data=self._data)
+
+
+def test_list_goals_orders_by_period_desc() -> None:
+    """list_goals filters by user+source and orders year desc, month desc."""
+    rows = [
+        {"year": 2026, "month": None, "goal_km": 1000.0},
+        {"year": 2026, "month": 6, "goal_km": 200.0},
+    ]
+    fake = _FakeQuery(rows)
+    repo = GoalsRepository(fake)  # type: ignore[arg-type]
+    user_id, source_id = uuid4(), uuid4()
+
+    result = repo.list_goals(user_id, source_id)
+
+    assert result == rows
+    assert ("table", "goals") in fake.calls
+    assert ("eq", "user_id", str(user_id)) in fake.calls
+    assert ("eq", "source_id", str(source_id)) in fake.calls
+    assert ("order", "year", True) in fake.calls
+    assert ("order", "month", True) in fake.calls
 
 
 @pytest.fixture

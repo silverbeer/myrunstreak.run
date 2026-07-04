@@ -99,3 +99,10 @@ export interface GoalsData {
   yearly: GoalProgress | null
   monthly: GoalProgress | null
 }
+
+export interface GoalHistoryItem extends GoalProgress {
+  year: number
+  month: number | null
+  period: 'year' | 'month'
+  hit: boolean
+}
