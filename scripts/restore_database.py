@@ -39,38 +39,60 @@ from supabase import Client, create_client
 # Restore order = FK-parent order (parents first). Clearing runs in reverse.
 #
 # Per table:
-#   pk       primary-key column used to clear and to track surviving rows
-#   user_col column referencing users.user_id — row dropped if uid not local
-#   parents  [(fk_col, parent_table)] — row dropped if fk not among survivors
-#   upsert   merge on the pk instead of clear+insert (reference data)
+#   pk        primary-key column used to clear and to track surviving rows
+#   parents   [(fk_col, parent_table)] — row dropped if fk not among survivors
+#   upsert    merge on the pk instead of clear+insert (reference / shared data)
+#   auth_gate keep a row only if its pk exists in local auth.users — used for
+#             public.users so we mirror prod identity WITHOUT creating a
+#             public.users row that has no matching auth user
+#
+# public.users is upserted (never cleared) so the seeded local test users
+# (coach@/a1@…) survive; only prod users that `jt sync-users` recreated in local
+# auth get added. runs/goals/etc. then reference survivors["users"], which is
+# the union of the pre-existing local users and the ones just restored.
 RESTORE_ORDER: list[dict] = [
-    {"table": "user_sources", "pk": "id", "user_col": "user_id"},
+    {"table": "users", "pk": "user_id", "upsert": True, "auth_gate": True},
+    {"table": "user_sources", "pk": "id", "parents": [("user_id", "users")]},
     {"table": "metric_types", "pk": "key", "upsert": True},
     {
         "table": "runs",
         "pk": "id",
-        "user_col": "user_id",
-        "parents": [("source_id", "user_sources")],
+        "parents": [("user_id", "users"), ("source_id", "user_sources")],
     },
     {"table": "splits", "pk": "id", "parents": [("run_id", "runs")]},
     {
         "table": "goals",
         "pk": "id",
-        "user_col": "user_id",
-        "parents": [("source_id", "user_sources")],
+        "parents": [("user_id", "users"), ("source_id", "user_sources")],
     },
-    {"table": "metric_entries", "pk": "id", "user_col": "user_id"},
-    {"table": "metric_goals", "pk": "id", "user_col": "user_id"},
+    {"table": "metric_entries", "pk": "id", "parents": [("user_id", "users")]},
+    {"table": "metric_goals", "pk": "id", "parents": [("user_id", "users")]},
 ]
 
 BATCH_SIZE = 100
 PAGE_SIZE = 1000
 
 
-def local_user_ids(sb: Client) -> set[str]:
-    """All users.user_id present locally (populated by `jt sync-users`)."""
+def existing_user_ids(sb: Client) -> set[str]:
+    """user_id of every public.users row already present locally (test users)."""
     result = sb.table("users").select("user_id").execute()
     return {row["user_id"] for row in (result.data or [])}
+
+
+def local_auth_ids(sb: Client) -> set[str]:
+    """Every auth.users id present locally (populated by `jt sync-users`)."""
+    ids: set[str] = set()
+    page = 1
+    while True:
+        resp = sb.auth.admin.list_users(page=page, per_page=1000)
+        users = resp if isinstance(resp, list) else getattr(resp, "users", [])
+        if not users:
+            break
+        ids.update(str(u.id) for u in users)
+        if len(users) < 1000:
+            break
+        page += 1
+    return ids
 
 
 def clear_table(sb: Client, table: str, pk: str) -> None:
@@ -92,15 +114,16 @@ def clear_table(sb: Client, table: str, pk: str) -> None:
 
 
 def sanitize(
-    rows: list[dict], spec: dict, local_ids: set[str], survivors: dict[str, set]
+    rows: list[dict], spec: dict, auth_ids: set[str], survivors: dict[str, set]
 ) -> list[dict]:
-    """Drop rows whose user_id / parent FKs don't resolve locally."""
-    user_col = spec.get("user_col")
+    """Drop rows whose auth gate / parent FKs don't resolve locally."""
+    pk = spec["pk"]
+    auth_gate = spec.get("auth_gate")
     parents = spec.get("parents", [])
     kept: list[dict] = []
     dropped = 0
     for row in rows:
-        if user_col and row.get(user_col) not in local_ids:
+        if auth_gate and row.get(pk) not in auth_ids:
             dropped += 1
             continue
         if any(row.get(col) not in survivors[parent] for col, parent in parents):
@@ -113,16 +136,17 @@ def sanitize(
 
 
 def restore_table(
-    sb: Client, spec: dict, rows: list[dict], local_ids: set[str], survivors: dict[str, set]
+    sb: Client, spec: dict, rows: list[dict], auth_ids: set[str], survivors: dict[str, set]
 ) -> None:
     table, pk = spec["table"], spec["pk"]
     if not rows:
         print(f"Restoring {table}: no data")
-        survivors[table] = set()
+        survivors.setdefault(table, set())
         return
 
-    rows = sanitize(rows, spec, local_ids, survivors)
-    survivors[table] = {row[pk] for row in rows}
+    rows = sanitize(rows, spec, auth_ids, survivors)
+    # Union so pre-seeded survivors (e.g. existing local users) are preserved.
+    survivors[table] = survivors.get(table, set()) | {row[pk] for row in rows}
     if not rows:
         print(f"Restoring {table}: nothing left after sanitize")
         return
@@ -150,26 +174,30 @@ def restore(sb: Client, backup_file: Path) -> None:
     print(f"Restoring from {backup_file.name} (created {info.get('created_at', '?')})")
     print("=" * 50)
 
-    # Clear child → parent. metric_types is upserted, not cleared (it is
-    # reference data seeded by migration and referenced by metric_entries/goals).
+    # Clear child → parent. Upserted tables (users, metric_types) are NOT
+    # cleared: users keeps the seeded local test users, metric_types is
+    # migration-seeded reference data referenced by metric_entries/goals.
     print("🧹 Clearing existing run-data...")
     for spec in reversed(RESTORE_ORDER):
         if spec.get("upsert"):
             continue
         clear_table(sb, spec["table"], spec["pk"])
 
-    local_ids = local_user_ids(sb)
-    print(f"🔍 {len(local_ids)} local user(s) for FK sanitization")
-    if not local_ids:
+    # Gate public.users to local auth. Seed survivors["users"] with the users
+    # that already exist locally (test users) so their run-data still matches
+    # even though we only *add* prod users on top.
+    auth_ids = local_auth_ids(sb)
+    survivors: dict[str, set] = {"users": existing_user_ids(sb)}
+    print(f"🔍 {len(auth_ids)} local auth user(s); {len(survivors['users'])} existing public.users")
+    if not auth_ids:
         print(
-            "  ⚠️  no local users — run `jt supabase sync-users stk` first, "
-            "or all run-data will be dropped."
+            "  ⚠️  no local auth users — run `jt supabase sync-users stk` first, "
+            "or prod users (and their run-data) will be dropped."
         )
 
-    survivors: dict[str, set] = {}
     print("📥 Restoring parent → child...")
     for spec in RESTORE_ORDER:
-        restore_table(sb, spec, tables.get(spec["table"], []), local_ids, survivors)
+        restore_table(sb, spec, tables.get(spec["table"], []), auth_ids, survivors)
 
     print("=" * 50)
     restored = sum(len(s) for s in survivors.values())

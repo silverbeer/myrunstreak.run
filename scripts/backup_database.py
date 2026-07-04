@@ -35,17 +35,23 @@ from supabase import Client, create_client
 # Run-data tables in FK-parent order (parents first). This is the data that
 # powers the dashboard: PB / streak / records / monthly + yearly goals.
 #
-#   user_sources ─┬─ runs ── splits
-#                 └─ goals
+#   users ─┬─ user_sources ─┬─ runs ── splits
+#          │                └─ goals
+#          └─ (runs/goals also ref users)
 #   metric_types ─┬─ metric_entries
 #                 └─ metric_goals
 #
+# public.users is dumped (no secrets — just user_id/email/display_name) so the
+# restore has a FK target. On restore it is gated to local auth.users, so only
+# prod users that `jt sync-users` recreated locally get added.
+#
 # EXCLUDED (managed per-environment, contain secrets, or per-env identity):
-#   users / auth      -> handled by `jt supabase sync-users stk`
+#   auth.users        -> handled by `jt supabase sync-users stk`
 #   oauth tokens      -> stripped from user_sources below; never leave prod
 #   invites           -> per-environment
 #   coach/athlete dom -> owned by scripts/seed_local_users.py locally
 BACKUP_TABLES = [
+    "users",
     "user_sources",
     "metric_types",
     "runs",
