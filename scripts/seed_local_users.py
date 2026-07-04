@@ -21,12 +21,45 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import urllib.error
 import urllib.request
 
-URL = os.environ.get("SUPABASE_URL", "http://127.0.0.1:54321").rstrip("/")
-KEY = os.environ.get("SERVICE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+
+def _discover_local() -> tuple[str, str]:
+    """Read API URL + service-role key from `supabase status -o env`.
+
+    Lets the script run with no env set (e.g. from the restore orchestrator).
+    Returns ("", "") if the CLI isn't available or the stack isn't running.
+    """
+    try:
+        out = subprocess.run(
+            ["supabase", "status", "-o", "env"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return "", ""
+    vals: dict[str, str] = {}
+    for line in out.splitlines():
+        if "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        vals[k.strip()] = v.strip().strip('"')
+    return vals.get("API_URL", ""), vals.get("SERVICE_ROLE_KEY", "")
+
+
+_url = os.environ.get("SUPABASE_URL", "")
+_key = os.environ.get("SERVICE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+if not _url or not _key:
+    _du, _dk = _discover_local()
+    _url = _url or _du or "http://127.0.0.1:54321"
+    _key = _key or _dk
+
+URL = _url.rstrip("/")
+KEY = _key
 
 if not any(h in URL for h in ("127.0.0.1", "localhost")):
     sys.exit(f"REFUSING: SUPABASE_URL is not local ({URL}). This script is local-only.")
