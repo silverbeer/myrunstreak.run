@@ -4,6 +4,7 @@ import type {
   Athlete,
   AthleteCreate,
   AthleteProfileUpdate,
+  Invite,
   MyRoles,
   WorkoutSession,
 } from '@/types/coach'
@@ -16,6 +17,8 @@ const rolesLoaded = ref(false)
 const isCoach = computed(
   () => !!roles.value && (roles.value.roles.includes('coach') || roles.value.is_admin),
 )
+
+const isAdmin = computed(() => !!roles.value?.is_admin)
 
 async function loadRoles(force = false): Promise<void> {
   if (rolesLoaded.value && !force) return
@@ -69,6 +72,20 @@ export async function inviteAthlete(email: string, athleteId: string): Promise<{
     method: 'POST',
     body: JSON.stringify({ email, athlete_id: athleteId }),
   })
+}
+
+/** Issue a coach invite (admin-only). Redeeming grants the coach role. Returns
+ *  the invite incl. token; the caller builds the /signup?invite=<token> link. */
+export async function inviteCoach(email: string): Promise<Invite> {
+  return apiCall<Invite>('/invites', {
+    method: 'POST',
+    body: JSON.stringify({ email, grant_role: 'coach' }),
+  })
+}
+
+/** List invites the caller has issued (admin-only). */
+export async function listInvites(): Promise<Invite[]> {
+  return apiCall<Invite[]>('/invites')
 }
 
 /** Add an existing user (by email) as a coach of the athlete. 404 if the email
@@ -145,5 +162,5 @@ export function useAthleteDetail(athleteId: string) {
 }
 
 export function useRoles() {
-  return { roles, isCoach, loadRoles }
+  return { roles, isCoach, isAdmin, loadRoles }
 }

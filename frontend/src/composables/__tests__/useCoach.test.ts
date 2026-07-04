@@ -66,6 +66,45 @@ describe('useRoles / isCoach gating', () => {
     await loadRoles()
     expect(isCoach.value).toBe(false)
   })
+
+  it('isAdmin tracks is_admin only (not coach role)', async () => {
+    apiCallMock.mockResolvedValue({ roles: ['coach'], is_admin: false })
+    const { useRoles } = await freshModule()
+    const { isAdmin, loadRoles } = useRoles()
+    expect(isAdmin.value).toBe(false)
+    await loadRoles()
+    expect(isAdmin.value).toBe(false) // coach but not admin
+  })
+
+  it('isAdmin is true for an admin', async () => {
+    apiCallMock.mockResolvedValue({ roles: [], is_admin: true })
+    const { useRoles } = await freshModule()
+    const { isAdmin, loadRoles } = useRoles()
+    await loadRoles()
+    expect(isAdmin.value).toBe(true)
+  })
+})
+
+describe('coach invites (admin)', () => {
+  it('inviteCoach POSTs email + grant_role=coach and returns the invite', async () => {
+    const invite = { id: 'i1', token: 'tok123', email: 'c@x.com', grant_role: 'coach' }
+    apiCallMock.mockResolvedValue(invite)
+    const { inviteCoach } = await freshModule()
+    const result = await inviteCoach('c@x.com')
+    expect(result).toEqual(invite)
+    const [path, opts] = apiCallMock.mock.calls[0]
+    expect(path).toBe('/invites')
+    expect(opts.method).toBe('POST')
+    expect(JSON.parse(opts.body)).toEqual({ email: 'c@x.com', grant_role: 'coach' })
+  })
+
+  it('listInvites GETs /invites', async () => {
+    apiCallMock.mockResolvedValue([{ id: 'i1', token: 't', email: 'c@x.com' }])
+    const { listInvites } = await freshModule()
+    const result = await listInvites()
+    expect(apiCallMock).toHaveBeenCalledWith('/invites')
+    expect(result).toHaveLength(1)
+  })
 })
 
 describe('useCoach roster', () => {
