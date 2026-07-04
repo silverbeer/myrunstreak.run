@@ -28,7 +28,8 @@ CREATE POLICY "Users can view their own profile"
 DROP POLICY IF EXISTS "Users can update their own profile" ON users;
 CREATE POLICY "Users can update their own profile"
     ON users FOR UPDATE
-    USING (user_id = auth.uid());
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());  -- explicit: post-update row stays owned
 
 -- =====================================================
 -- sync_history — owner-only (via the user's sources)
