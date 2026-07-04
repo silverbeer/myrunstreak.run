@@ -126,3 +126,61 @@ async def test_goals_uses_current_year_month_in_ny_tz(user_id: str) -> None:
     monthly_call = goals_repo.get_by_period.call_args_list[1]
     assert yearly_call.args[2] == 2026 and yearly_call.args[3] is None
     assert monthly_call.args[2] == 2026 and monthly_call.args[3] == 5
+
+
+# --- GET /stats/goals/history (SB-220) ---------------------------------------
+
+
+async def _call_history(user_id: str) -> list[dict]:
+    from backend.routes.stats import _goals_history
+
+    return await _goals_history(UUID(user_id))
+
+
+@pytest.mark.asyncio
+async def test_goals_history_returns_periods_with_achieved(user_id: str) -> None:
+    """History lists each stored goal with achieved recomputed from runs."""
+    source_id = uuid4()
+    token_repo = MagicMock()
+    token_repo.get_source_id_for_user.return_value = source_id
+
+    goals_repo = MagicMock()
+    goals_repo.list_goals.return_value = [
+        {"year": 2026, "month": None, "goal_km": 1000.0, "progress_km": 0, "fetched_at": "Z"},
+        {"year": 2026, "month": 6, "goal_km": 200.0, "progress_km": 0, "fetched_at": "Z"},
+    ]
+    runs_repo = MagicMock()
+    runs_repo.get_monthly_stats.return_value = [
+        {"start_year": 2026, "start_month": 6, "total_km": 209.5},
+    ]
+
+    with (
+        patch("backend.routes.stats.get_supabase_client"),
+        patch("backend.routes.stats.TokenRepository", return_value=token_repo),
+        patch("backend.routes.stats.GoalsRepository", return_value=goals_repo),
+        patch("backend.routes.stats.RunsRepository", return_value=runs_repo),
+    ):
+        result = await _call_history(user_id)
+
+    assert [(r["period"], r["month"]) for r in result] == [("year", None), ("month", 6)]
+    june = next(r for r in result if r["month"] == 6)
+    assert june["hit"] is True  # 209.5 km >= 200 km
+
+
+@pytest.mark.asyncio
+async def test_goals_history_empty_when_no_source(user_id: str) -> None:
+    token_repo = MagicMock()
+    token_repo.get_source_id_for_user.return_value = None
+    goals_repo = MagicMock()
+    runs_repo = MagicMock()
+
+    with (
+        patch("backend.routes.stats.get_supabase_client"),
+        patch("backend.routes.stats.TokenRepository", return_value=token_repo),
+        patch("backend.routes.stats.GoalsRepository", return_value=goals_repo),
+        patch("backend.routes.stats.RunsRepository", return_value=runs_repo),
+    ):
+        result = await _call_history(user_id)
+
+    assert result == []
+    goals_repo.list_goals.assert_not_called()

@@ -36,6 +36,14 @@
         />
       </div>
 
+      <div class="mb-6">
+        <GoalHistory
+          :items="goalHistory"
+          :loading="goalHistoryLoading"
+          @expand="loadGoalHistory"
+        />
+      </div>
+
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         <TodayCard :goals="metricGoals" :types="metricTypes" @create="showNewGoal = true" />
         <QuickLog :types="metricTypes" @logged="loadMetricGoals" />
@@ -124,6 +132,7 @@ import StreakHeatmap from '@/components/StreakHeatmap.vue'
 import PersonalBestsCard from '@/components/PersonalBestsCard.vue'
 import MonthlyDistanceChart from '@/components/MonthlyDistanceChart.vue'
 import GoalsCard from '@/components/GoalsCard.vue'
+import GoalHistory from '@/components/GoalHistory.vue'
 import TodayCard from '@/components/TodayCard.vue'
 import QuickLog from '@/components/QuickLog.vue'
 import NewGoalForm from '@/components/NewGoalForm.vue'
@@ -132,6 +141,7 @@ import { useMetrics } from '@/composables/useMetrics'
 import { useRecentRuns } from '@/composables/useRecentRuns'
 import { useMonthlyStats } from '@/composables/useMonthlyStats'
 import { useGoals } from '@/composables/useGoals'
+import { useGoalHistory } from '@/composables/useGoalHistory'
 import { useUserPreferences } from '@/composables/useUserPreferences'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -161,6 +171,11 @@ const {
 } = useRecentRuns(100)
 const { months, loading: monthlyLoading, error: monthlyError, load: loadMonthly } = useMonthlyStats(12)
 const { goals, error: goalsError, load: loadGoals } = useGoals()
+const {
+  items: goalHistory,
+  loading: goalHistoryLoading,
+  load: loadGoalHistory,
+} = useGoalHistory()
 const {
   types: metricTypes,
   goals: metricGoals,

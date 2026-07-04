@@ -86,3 +86,60 @@ def build_goals_block(
         "yearly": render_goal(yearly_row, year_progress_km),
         "monthly": render_goal(monthly_row, month_progress_km),
     }
+
+
+def build_goal_history(
+    user_id: UUID,
+    source_id: UUID | None,
+    goals_repo: GoalsRepository,
+    runs_repo: RunsRepository,
+) -> list[dict[str, Any]]:
+    """Every past (and current) goal period with target vs *achieved*, in miles.
+
+    "Achieved" is recomputed from the user's own runs via the ``monthly_summary``
+    view, not the goals table's cached ``progress_km`` (which freezes a few days
+    into the next month and under-reports late-month runs). Monthly achieved is
+    that month's ``total_km``; yearly achieved is the sum of the year's months.
+
+    Returns one item per goal that has a target (goal_km set), newest period
+    first, each shaped as the GoalProgress payload plus ``year``/``month``/
+    ``period``/``hit`` so the frontend can group by year and badge hit/miss.
+    """
+    if source_id is None:
+        return []
+
+    # Exact per-month km from runs, plus per-year totals for yearly goals.
+    monthly_totals: dict[tuple[int, int], float] = {}
+    yearly_totals: dict[int, float] = {}
+    for row in runs_repo.get_monthly_stats(user_id, limit=1000):
+        year = int(row["start_year"])
+        month = int(row["start_month"])
+        total_km = float(row.get("total_km") or 0.0)
+        monthly_totals[(year, month)] = total_km
+        yearly_totals[year] = yearly_totals.get(year, 0.0) + total_km
+
+    history: list[dict[str, Any]] = []
+    for row in goals_repo.list_goals(user_id, source_id):
+        if row.get("goal_km") is None:
+            continue  # "no goal set" placeholder — skip
+        year = int(row["year"])
+        month = row.get("month")
+        if month is None:
+            achieved_km = yearly_totals.get(year, 0.0)
+        else:
+            achieved_km = monthly_totals.get((year, int(month)), 0.0)
+
+        rendered = render_goal(row, achieved_km)
+        if rendered is None:
+            continue
+        rendered.update(
+            {
+                "year": year,
+                "month": month,
+                "period": "year" if month is None else "month",
+                "hit": rendered["percent"] is not None and rendered["percent"] >= 100,
+            }
+        )
+        history.append(rendered)
+
+    return history
