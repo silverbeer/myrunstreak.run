@@ -103,6 +103,20 @@ describe('ExercisePicker', () => {
     expect(w.find('[data-testid="balance-nudge"]').exists()).toBe(false)
   })
 
+  it("does not render 'none' as an equipment tag", () => {
+    const ex = [make({ key: 'sprint_x', display_name: 'Sprint X', equipment: ['none'] })]
+    const w = mount(ExercisePicker, { props: { exercises: ex } })
+    expect(w.find('[data-testid="ex-sprint_x"]').text()).not.toContain('none')
+  })
+
+  it('renders real equipment tags', () => {
+    const ex = [make({ key: 'carry_x', display_name: 'Carry X', equipment: ['dumbbell', 'none'] })]
+    const w = mount(ExercisePicker, { props: { exercises: ex } })
+    const card = w.find('[data-testid="ex-carry_x"]').text()
+    expect(card).toContain('dumbbell')
+    expect(card).not.toContain('none')
+  })
+
   it('clicking a card emits toggle in select mode', async () => {
     const w = mount(ExercisePicker, { props: { exercises: catalog, mode: 'select' } })
     await w.find('[data-testid="ex-pushups"]').trigger('click')
