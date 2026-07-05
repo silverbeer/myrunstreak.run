@@ -35,6 +35,29 @@
 
       <AthleteAccessPanel :athlete="athlete" class="mb-6" />
 
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+          Workouts ({{ templates.length }})
+        </h2>
+        <RouterLink :to="`/coach/${athlete.id}/build`" class="text-xs font-medium text-brand-600">
+          + New
+        </RouterLink>
+      </div>
+      <div
+        v-if="templates.length === 0"
+        class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 text-center text-gray-500 text-sm mb-6"
+      >
+        No workouts yet. Click <span class="font-semibold">+ Build workout</span> to create one.
+      </div>
+      <div v-else class="space-y-3 mb-6">
+        <WorkoutTemplateCard
+          v-for="t in templates"
+          :key="t.id"
+          :template="t"
+          :exercises="exercises"
+        />
+      </div>
+
       <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">
         Recent sessions ({{ sessions.length }})
       </h2>
@@ -68,12 +91,17 @@
 import { onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useAthleteDetail } from '@/composables/useCoach'
+import { useExercises } from '@/composables/useExercises'
 import AthleteProfileForm from '@/components/AthleteProfileForm.vue'
 import AthleteAccessPanel from '@/components/AthleteAccessPanel.vue'
+import WorkoutTemplateCard from '@/components/WorkoutTemplateCard.vue'
 import type { Athlete } from '@/types/coach'
 
 const route = useRoute()
-const { athlete, sessions, loading, error, load } = useAthleteDetail(route.params.athleteId as string)
+const { athlete, sessions, templates, loading, error, load } = useAthleteDetail(
+  route.params.athleteId as string,
+)
+const { exercises, load: loadExercises } = useExercises()
 
 const editing = ref(false)
 const onSaved = (updated: Athlete) => {
@@ -81,5 +109,7 @@ const onSaved = (updated: Athlete) => {
   editing.value = false
 }
 
-onMounted(load)
+onMounted(async () => {
+  await Promise.all([load(), loadExercises()])
+})
 </script>

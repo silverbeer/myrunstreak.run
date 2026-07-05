@@ -151,6 +151,7 @@ describe('useAthleteDetail act-as', () => {
     apiCallMock.mockImplementation((path: string) => {
       if (path === '/athletes/a1') return Promise.resolve(athlete)
       if (path.startsWith('/workouts/sessions')) return Promise.resolve([{ id: 's1', athlete_id: 'a1', session_date: '2026-07-01', type: 'circuit', total_minutes: 30, how_felt: 'good', notes: null, sets: [] }])
+      if (path.startsWith('/workouts/templates')) return Promise.resolve([])
       return Promise.reject(new Error('unexpected ' + path))
     })
     const { useAthleteDetail } = await freshModule()

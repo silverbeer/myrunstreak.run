@@ -21,6 +21,17 @@ export function lbToKg(lb: number | null): number | null {
   return lb == null ? null : Math.round(lb * LB_TO_KG * 10) / 10
 }
 
+/** Canonical kg → lb for display (whole lb), or null. */
+export function kgToLb(kg: number | null | undefined): number | null {
+  return kg == null ? null : Math.round(kg / LB_TO_KG)
+}
+
+/** slug key → readable fallback name ("bear_crawl" → "Bear crawl"). */
+export function prettifyKey(key: string): string {
+  const s = key.replace(/_/g, ' ')
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
 /**
  * Turn the builder's local items into the API payload:
  * ordered by section (warm-up → main → cool-down) then within-section order,

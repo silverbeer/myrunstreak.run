@@ -74,6 +74,31 @@ export interface WorkoutTemplateInput {
   items: TemplateItemInput[]
 }
 
+export interface TemplateItem {
+  id: string
+  exercise_key: string
+  section: string
+  position: number
+  target_reps: number | null
+  target_duration_seconds: number | null
+  target_load_kg: number | null
+  target_distance_m: number | null
+  rest_seconds: number | null
+  variant: string | null
+  notes: string | null
+}
+
+export interface WorkoutTemplate {
+  id: string
+  name: string
+  type: WorkoutType
+  rounds: number
+  source: string | null
+  notes: string | null
+  items: TemplateItem[]
+  created_at: string | null
+}
+
 /** One row while building — loads are entered in lb (US coach), stored as kg. */
 export interface BuilderItem {
   uid: number
