@@ -50,3 +50,40 @@ export interface ExerciseCreate {
   equipment?: string[]
   cues?: string[]
 }
+
+export type WorkoutSectionKey = 'warmup' | 'main' | 'cooldown'
+export type WorkoutType = 'circuit' | 'intervals' | 'test' | 'session'
+
+export interface TemplateItemInput {
+  exercise_key: string
+  section: string
+  position: number
+  target_reps?: number | null
+  target_duration_seconds?: number | null
+  target_load_kg?: number | null
+  target_distance_m?: number | null
+  rest_seconds?: number | null
+  variant?: string | null
+  notes?: string | null
+}
+
+export interface WorkoutTemplateInput {
+  name: string
+  type: WorkoutType
+  rounds: number
+  items: TemplateItemInput[]
+}
+
+/** One row while building — loads are entered in lb (US coach), stored as kg. */
+export interface BuilderItem {
+  uid: number
+  exercise: Exercise
+  section: WorkoutSectionKey
+  reps: number | null
+  duration_s: number | null
+  load_lb: number | null
+  distance_m: number | null
+  rest_s: number | null
+  variant: string | null
+  notes: string | null
+}

@@ -19,9 +19,14 @@
           <span v-if="athlete.linked_user_id" class="text-brand-600"> · has own login</span>
         </p>
         <p v-if="athlete.notes" class="text-sm text-gray-600 mt-2">{{ athlete.notes }}</p>
-        <button class="btn-secondary text-sm mt-3" @click="editing = !editing">
-          {{ editing ? 'Cancel' : 'Edit profile' }}
-        </button>
+        <div class="flex items-center gap-2 mt-3">
+          <button class="btn-secondary text-sm" @click="editing = !editing">
+            {{ editing ? 'Cancel' : 'Edit profile' }}
+          </button>
+          <RouterLink :to="`/coach/${athlete.id}/build`" class="btn-primary text-sm">
+            + Build workout
+          </RouterLink>
+        </div>
       </div>
 
       <div v-if="editing" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">

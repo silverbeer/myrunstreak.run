@@ -143,6 +143,7 @@ class TemplateItemCreate(BaseModel):
     """One prescribed exercise within a template."""
 
     exercise_key: str
+    section: str = "main"  # warmup | main | cooldown (builder-defined grouping)
     position: int = 0
     target_reps: int | None = Field(default=None, ge=0)
     target_duration_seconds: float | None = Field(default=None, ge=0)
