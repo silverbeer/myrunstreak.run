@@ -171,8 +171,26 @@ class WorkoutTemplatesRepository:
 
     def list(self, user_id: UUID, athlete_id: UUID | None = None) -> list[dict[str, Any]]:
         query = _scope(self.supabase.table("workout_templates").select("*"), user_id, athlete_id)
-        result = query.order("created_at", desc=True).execute()
-        return cast(list[dict[str, Any]], result.data)
+        templates = cast(list[dict[str, Any]], query.order("created_at", desc=True).execute().data)
+        if not templates:
+            return templates
+
+        # Attach items in one batched query (so callers can render the full plan
+        # without an extra GET per template).
+        ids = [t["id"] for t in templates]
+        items = (
+            self.supabase.table("template_items")
+            .select("*")
+            .in_("template_id", ids)
+            .order("position")
+            .execute()
+        )
+        by_template: dict[str, list[dict[str, Any]]] = {}
+        for it in cast(list[dict[str, Any]], items.data):
+            by_template.setdefault(it["template_id"], []).append(it)
+        for t in templates:
+            t["items"] = by_template.get(t["id"], [])
+        return templates
 
     def get(
         self, user_id: UUID, template_id: UUID, athlete_id: UUID | None = None
