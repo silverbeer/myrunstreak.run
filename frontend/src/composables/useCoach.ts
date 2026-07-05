@@ -8,6 +8,7 @@ import type {
   MyRoles,
   WorkoutSession,
 } from '@/types/coach'
+import type { WorkoutTemplate } from '@/types/workout'
 
 // Roles are shared app-wide (the nav gates the Coach link on them), so cache
 // them in module scope — one fetch feeds AppHeader and every coach view.
@@ -136,6 +137,7 @@ export function useCoach() {
 export function useAthleteDetail(athleteId: string) {
   const athlete = ref<Athlete | null>(null)
   const sessions = ref<WorkoutSession[]>([])
+  const templates = ref<WorkoutTemplate[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -143,14 +145,18 @@ export function useAthleteDetail(athleteId: string) {
     loading.value = true
     error.value = null
     try {
-      const [a, s] = await Promise.all([
+      const [a, s, t] = await Promise.all([
         apiCall<Athlete>(`/athletes/${athleteId}`),
         apiCall<WorkoutSession[]>('/workouts/sessions?limit=50', {
+          headers: actAs(athleteId),
+        }),
+        apiCall<WorkoutTemplate[]>('/workouts/templates', {
           headers: actAs(athleteId),
         }),
       ])
       athlete.value = a
       sessions.value = s
+      templates.value = t
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load athlete'
     } finally {
@@ -158,7 +164,7 @@ export function useAthleteDetail(athleteId: string) {
     }
   }
 
-  return { athlete, sessions, loading, error, load }
+  return { athlete, sessions, templates, loading, error, load }
 }
 
 export function useRoles() {
