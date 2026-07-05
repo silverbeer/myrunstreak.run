@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { lbToKg, buildTemplatePayload } from '@/utils/workoutPayload'
+import { lbToKg, buildTemplatePayload, fmtDuration } from '@/utils/workoutPayload'
 import type { BuilderItem, Exercise, WorkoutSectionKey } from '@/types/workout'
 
 const ex = (key: string, measures: string[] = []): Exercise => ({
@@ -47,6 +47,19 @@ describe('lbToKg', () => {
   })
   it('passes null through', () => {
     expect(lbToKg(null)).toBeNull()
+  })
+})
+
+describe('fmtDuration', () => {
+  it('shows whole minutes as "N min"', () => {
+    expect(fmtDuration(480)).toBe('8 min')
+    expect(fmtDuration(60)).toBe('1 min')
+  })
+  it('shows mm:ss for non-round minutes', () => {
+    expect(fmtDuration(90)).toBe('1:30')
+  })
+  it('shows seconds under a minute', () => {
+    expect(fmtDuration(45)).toBe('45s')
   })
 })
 

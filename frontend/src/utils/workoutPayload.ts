@@ -32,6 +32,13 @@ export function prettifyKey(key: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
+/** Human duration: 480→"8 min", 60→"1 min", 90→"1:30", 45→"45s". */
+export function fmtDuration(seconds: number): string {
+  if (seconds % 60 === 0) return `${seconds / 60} min`
+  if (seconds > 60) return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+  return `${seconds}s`
+}
+
 /**
  * Turn the builder's local items into the API payload:
  * ordered by section (warm-up → main → cool-down) then within-section order,

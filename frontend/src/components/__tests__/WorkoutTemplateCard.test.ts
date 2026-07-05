@@ -42,7 +42,7 @@ describe('WorkoutTemplateCard', () => {
     const w = mount(WorkoutTemplateCard, { props: { template } })
     expect(w.text()).toContain('Monday - Circuit')
     expect(w.text()).toContain('circuit')
-    expect(w.text()).toContain('2× rounds')
+    expect(w.text()).toContain('2 rounds')
   })
 
   it('groups items under section headings in canonical order', () => {
@@ -68,9 +68,21 @@ describe('WorkoutTemplateCard', () => {
     expect(w.text()).not.toContain('side_plank')
   })
 
-  it('shows load in lb (kg → lb) and the variant', () => {
+  it('shows load in lb (kg → lb) and the variant chip', () => {
     const w = mount(WorkoutTemplateCard, { props: { template } })
     expect(w.text()).toContain('10 lb') // 4.54 kg → 10 lb
-    expect(w.text()).toContain('(left)')
+    expect(w.text()).toContain('left') // variant chip
+  })
+
+  it('formats durations (480s → 8 min, 60s → 1 min)', () => {
+    const w = mount(WorkoutTemplateCard, { props: { template } })
+    expect(w.text()).toContain('8 min') // easy_jog 480s
+    expect(w.text()).toContain('1 min') // side_plank / bicep 60s
+  })
+
+  it('numbers the main circuit and emits delete', async () => {
+    const w = mount(WorkoutTemplateCard, { props: { template } })
+    await w.find('button[aria-label="Delete workout"]').trigger('click')
+    expect(w.emitted('delete')).toHaveLength(1)
   })
 })

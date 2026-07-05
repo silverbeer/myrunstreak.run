@@ -55,6 +55,7 @@
           :key="t.id"
           :template="t"
           :exercises="exercises"
+          @delete="onDeleteTemplate(t.id)"
         />
       </div>
 
@@ -95,18 +96,24 @@ import { useExercises } from '@/composables/useExercises'
 import AthleteProfileForm from '@/components/AthleteProfileForm.vue'
 import AthleteAccessPanel from '@/components/AthleteAccessPanel.vue'
 import WorkoutTemplateCard from '@/components/WorkoutTemplateCard.vue'
+import { deleteTemplate } from '@/composables/useWorkoutTemplates'
 import type { Athlete } from '@/types/coach'
 
 const route = useRoute()
-const { athlete, sessions, templates, loading, error, load } = useAthleteDetail(
-  route.params.athleteId as string,
-)
+const athleteId = route.params.athleteId as string
+const { athlete, sessions, templates, loading, error, load } = useAthleteDetail(athleteId)
 const { exercises, load: loadExercises } = useExercises()
 
 const editing = ref(false)
 const onSaved = (updated: Athlete) => {
   athlete.value = updated
   editing.value = false
+}
+
+const onDeleteTemplate = async (id: string) => {
+  if (!confirm('Delete this workout?')) return
+  await deleteTemplate(id, athleteId)
+  templates.value = templates.value.filter((t) => t.id !== id)
 }
 
 onMounted(async () => {

@@ -16,3 +16,10 @@ export async function createTemplate(
     headers: { 'X-Act-As-Athlete': athleteId },
   })
 }
+
+export async function deleteTemplate(templateId: string, athleteId: string): Promise<void> {
+  await apiCall(`/workouts/templates/${templateId}`, {
+    method: 'DELETE',
+    headers: { 'X-Act-As-Athlete': athleteId },
+  })
+}
