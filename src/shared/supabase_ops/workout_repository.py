@@ -10,12 +10,18 @@ one call, and read back with the children nested.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from datetime import date
 from typing import Any, cast
 from uuid import UUID
 
 from supabase import Client
+
+
+def slugify(name: str) -> str:
+    """Lowercase, non-alnum → underscore. Base for a generated exercise key."""
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "exercise"
 
 
 def _owner_fields(user_id: UUID, athlete_id: UUID | None) -> dict[str, str]:
@@ -37,20 +43,110 @@ def _scope(query: Any, user_id: UUID, athlete_id: UUID | None) -> Any:
 
 
 class ExercisesRepository:
-    """Read-only global movement catalog."""
+    """Exercise catalog: the canonical public library + coach-owned exercises.
+
+    The backend uses the service-role key (RLS-exempt), so visibility and
+    ownership are enforced here in-query: reads = public OR owned by the caller;
+    writes are constrained to the caller's own rows.
+    """
 
     def __init__(self, supabase: Client):
         self.supabase = supabase
 
     def list_all(self) -> list[dict[str, Any]]:
+        """Every row, unfiltered (canonical seed maintenance / migrations)."""
         result = (
             self.supabase.table("exercises").select("*").order("category").order("key").execute()
         )
         return cast(list[dict[str, Any]], result.data)
 
+    def list_visible(self, user_id: UUID) -> list[dict[str, Any]]:
+        """Exercises the user can use: the public library + their own private ones."""
+        result = (
+            self.supabase.table("exercises")
+            .select("*")
+            .or_(f"visibility.eq.public,owner_id.eq.{user_id}")
+            .order("display_name")
+            .execute()
+        )
+        return cast(list[dict[str, Any]], result.data)
+
+    def search(self, user_id: UUID, query: str, limit: int = 20) -> list[dict[str, Any]]:
+        """Fuzzy match over display_name + aliases across the visible catalog.
+
+        Drives search-first selection and the publish-time dedup warning. The
+        catalog is small, so we match in Python (case-insensitive substring)
+        rather than a DB text index; move to trigram/tsvector if it grows.
+        """
+        q = query.strip().lower()
+        if not q:
+            return []
+        hits = []
+        for row in self.list_visible(user_id):
+            haystay = [row.get("display_name", "")] + list(row.get("aliases") or [])
+            if any(q in str(h).lower() for h in haystay):
+                hits.append(row)
+            if len(hits) >= limit:
+                break
+        return hits
+
+    def get(self, key: str) -> dict[str, Any] | None:
+        result = self.supabase.table("exercises").select("*").eq("key", key).execute()
+        rows = cast(list[dict[str, Any]], result.data)
+        return rows[0] if rows else None
+
     def keys(self) -> set[str]:
         result = self.supabase.table("exercises").select("key").execute()
         return {r["key"] for r in cast(list[dict[str, Any]], result.data)}
+
+    def _unique_key(self, display_name: str) -> str:
+        """Generate a globally-unique slug key from a name (dedupe with -2, -3…)."""
+        base = slugify(display_name)
+        taken = self.keys()
+        if base not in taken:
+            return base
+        i = 2
+        while f"{base}_{i}" in taken:
+            i += 1
+        return f"{base}_{i}"
+
+    def create(self, user_id: UUID, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create a coach-owned exercise; the key is generated to stay unique."""
+        row = {
+            **payload,
+            "key": self._unique_key(payload["display_name"]),
+            "owner_id": str(user_id),
+            "created_by": str(user_id),
+        }
+        result = self.supabase.table("exercises").insert(row).execute()
+        return cast(list[dict[str, Any]], result.data)[0]
+
+    def update(self, user_id: UUID, key: str, patch: dict[str, Any]) -> dict[str, Any] | None:
+        """Patch an exercise the caller owns. None if not found / not theirs."""
+        result = (
+            self.supabase.table("exercises")
+            .update(patch)
+            .eq("key", key)
+            .eq("owner_id", str(user_id))
+            .execute()
+        )
+        rows = cast(list[dict[str, Any]], result.data)
+        return rows[0] if rows else None
+
+    def publish(self, user_id: UUID, key: str) -> dict[str, Any] | None:
+        """Promote an owned private exercise to the public library."""
+        return self.update(user_id, key, {"visibility": "public"})
+
+    def delete(self, user_id: UUID, key: str) -> bool:
+        """Delete an exercise the caller owns. False if not found / not theirs."""
+        result = (
+            self.supabase.table("exercises")
+            .delete()
+            .eq("key", key)
+            .eq("owner_id", str(user_id))
+            .execute()
+        )
+        return bool(cast(list[dict[str, Any]], result.data))
 
 
 class WorkoutTemplatesRepository:
