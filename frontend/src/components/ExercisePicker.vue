@@ -66,7 +66,7 @@
         <div class="mt-1 flex flex-wrap items-center gap-1 text-[10px]">
           <span class="tag">{{ ex.category }}</span>
           <span v-if="ex.movement_pattern" class="tag">{{ ex.movement_pattern }}</span>
-          <span v-for="eq in ex.equipment" :key="eq" class="tag-muted">{{ eq }}</span>
+          <span v-for="eq in realEquipment(ex)" :key="eq" class="tag-muted">{{ eq }}</span>
           <span v-if="ex.owner_id" class="tag-mine">Mine</span>
           <span v-if="ex.visibility === 'private'" class="tag-private">Private</span>
         </div>
@@ -178,6 +178,9 @@ const patternFacets = computed(() => {
 })
 
 const isSelected = (ex: Exercise): boolean => props.selectedKeys.includes(ex.key)
+
+// 'none' is a no-equipment sentinel in the seed — don't render it as a tag.
+const realEquipment = (ex: Exercise): string[] => ex.equipment.filter((e) => e !== 'none')
 
 const filtered = computed<Exercise[]>(() => {
   const q = query.value.trim().toLowerCase()
