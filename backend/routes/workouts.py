@@ -140,6 +140,28 @@ async def create_template(
     return WorkoutTemplate(**row)
 
 
+@router.patch("/templates/{template_id}", response_model=WorkoutTemplate)
+async def update_template(
+    template_id: UUID,
+    body: WorkoutTemplateCreate,
+    user_id: UUID = Depends(authenticate_request),
+    athlete_id: UUID | None = Depends(acting_athlete),
+) -> WorkoutTemplate:
+    supabase = get_supabase_client()
+    valid = ExercisesRepository(supabase).keys()
+    unknown = {i.exercise_key for i in body.items} - valid
+    if unknown:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown exercise(s): {sorted(unknown)}")
+
+    row = WorkoutTemplatesRepository(supabase).update(
+        user_id, template_id, body.model_dump(mode="json", exclude_none=True), athlete_id=athlete_id
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found or not yours")
+    await invalidate_user(user_id)
+    return WorkoutTemplate(**row)
+
+
 @router.get("/templates", response_model=list[WorkoutTemplate])
 def list_templates(
     user_id: UUID = Depends(authenticate_request),

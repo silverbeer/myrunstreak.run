@@ -4,7 +4,7 @@
       ← Back
     </RouterLink>
 
-    <h1 class="text-2xl font-bold text-gray-900 mt-4">Build workout</h1>
+    <h1 class="text-2xl font-bold text-gray-900 mt-4">{{ editingId ? 'Edit workout' : 'Build workout' }}</h1>
 
     <!-- Template meta -->
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mt-4 space-y-3">
@@ -120,13 +120,14 @@ import { useRoute, useRouter } from 'vue-router'
 import ExercisePicker from '@/components/ExercisePicker.vue'
 import { useExercises } from '@/composables/useExercises'
 import { useRoles } from '@/composables/useCoach'
-import { createTemplate } from '@/composables/useWorkoutTemplates'
-import { SECTIONS, buildTemplatePayload } from '@/utils/workoutPayload'
+import { createTemplate, getTemplate, updateTemplate } from '@/composables/useWorkoutTemplates'
+import { SECTIONS, buildTemplatePayload, kgToLb } from '@/utils/workoutPayload'
 import type { BuilderItem, Exercise, WorkoutSectionKey, WorkoutType } from '@/types/workout'
 
 const route = useRoute()
 const router = useRouter()
 const athleteId = route.params.athleteId as string
+const editingId = (route.params.templateId as string | undefined) || null
 
 const { isCoach, loadRoles } = useRoles()
 const { exercises, load } = useExercises()
@@ -190,7 +191,8 @@ const save = async (): Promise<void> => {
   error.value = null
   try {
     const payload = buildTemplatePayload(name.value, type.value, rounds.value, items.value)
-    await createTemplate(payload, athleteId)
+    if (editingId) await updateTemplate(editingId, payload, athleteId)
+    else await createTemplate(payload, athleteId)
     router.push(`/coach/${athleteId}`)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save workout'
@@ -199,6 +201,30 @@ const save = async (): Promise<void> => {
   }
 }
 
+// Load an existing template into the builder state (kg → lb, key → Exercise).
+const prefillFrom = (templateId: string): Promise<void> =>
+  getTemplate(templateId, athleteId).then((tpl) => {
+    name.value = tpl.name
+    type.value = tpl.type
+    rounds.value = tpl.rounds
+    const byKey = new Map(exercises.value.map((e) => [e.key, e]))
+    items.value = tpl.items
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map((it) => ({
+        uid: nextUid++,
+        exercise: byKey.get(it.exercise_key) ?? ({ key: it.exercise_key, display_name: it.exercise_key, measures: [] } as unknown as Exercise),
+        section: it.section as WorkoutSectionKey,
+        reps: it.target_reps,
+        duration_s: it.target_duration_seconds,
+        load_lb: kgToLb(it.target_load_kg),
+        distance_m: it.target_distance_m,
+        rest_s: it.rest_seconds,
+        variant: it.variant,
+        notes: it.notes,
+      }))
+  })
+
 onMounted(async () => {
   await loadRoles()
   if (!isCoach.value) {
@@ -206,6 +232,7 @@ onMounted(async () => {
     return
   }
   await load()
+  if (editingId) await prefillFrom(editingId)
 })
 </script>
 

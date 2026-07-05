@@ -3,11 +3,14 @@ import { mount, flushPromises } from '@vue/test-utils'
 
 const h = vi.hoisted(() => ({
   createTemplate: vi.fn(),
+  updateTemplate: vi.fn(),
+  getTemplate: vi.fn(),
   push: vi.fn(),
   replace: vi.fn(),
   isCoach: { value: true },
   loadRoles: vi.fn().mockResolvedValue(undefined),
   load: vi.fn().mockResolvedValue(undefined),
+  params: { athleteId: 'ath1' } as Record<string, string>,
 }))
 
 const catalog = [
@@ -34,9 +37,11 @@ vi.mock('@/composables/useCoach', () => ({
 }))
 vi.mock('@/composables/useWorkoutTemplates', () => ({
   createTemplate: (...a: unknown[]) => h.createTemplate(...a),
+  updateTemplate: (...a: unknown[]) => h.updateTemplate(...a),
+  getTemplate: (...a: unknown[]) => h.getTemplate(...a),
 }))
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { athleteId: 'ath1' } }),
+  useRoute: () => ({ params: h.params }),
   useRouter: () => ({ push: h.push, replace: h.replace }),
   RouterLink: { template: '<a><slot /></a>' },
 }))
@@ -44,6 +49,7 @@ vi.mock('vue-router', () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   h.isCoach.value = true
+  h.params = { athleteId: 'ath1' }
 })
 
 async function mountBuilder() {
@@ -96,6 +102,46 @@ describe('WorkoutBuilderView', () => {
       target_load_kg: 4.5, // 10 lb
     })
     expect(h.push).toHaveBeenCalledWith('/coach/ath1')
+  })
+
+  it('edit mode: prefills from the template and saves via updateTemplate', async () => {
+    h.params = { athleteId: 'ath1', templateId: 't9' }
+    h.getTemplate.mockResolvedValue({
+      id: 't9',
+      name: 'Existing',
+      type: 'circuit',
+      rounds: 3,
+      source: null,
+      notes: null,
+      created_at: null,
+      items: [
+        {
+          id: 'i1',
+          exercise_key: 'pushups',
+          section: 'main',
+          position: 0,
+          target_reps: 15,
+          target_duration_seconds: null,
+          target_load_kg: null,
+          target_distance_m: null,
+          rest_seconds: null,
+          variant: null,
+          notes: null,
+        },
+      ],
+    })
+    h.updateTemplate.mockResolvedValue({ id: 't9' })
+    const w = await mountBuilder()
+
+    expect(w.text()).toContain('Edit workout')
+    expect(h.getTemplate).toHaveBeenCalledWith('t9', 'ath1')
+    expect(w.find('[data-testid="item-pushups"]').exists()).toBe(true) // prefilled
+
+    await w.find('[data-testid="save"]').trigger('click')
+    await flushPromises()
+    expect(h.updateTemplate).toHaveBeenCalledTimes(1)
+    expect(h.updateTemplate.mock.calls[0][0]).toBe('t9')
+    expect(h.createTemplate).not.toHaveBeenCalled()
   })
 
   it('removes an added item', async () => {
