@@ -80,9 +80,11 @@ describe('WorkoutTemplateCard', () => {
     expect(w.text()).toContain('1 min') // side_plank / bicep 60s
   })
 
-  it('numbers the main circuit and emits delete', async () => {
+  it('emits edit and delete from the header actions', async () => {
     const w = mount(WorkoutTemplateCard, { props: { template } })
+    await w.find('button[aria-label="Edit workout"]').trigger('click')
     await w.find('button[aria-label="Delete workout"]').trigger('click')
+    expect(w.emitted('edit')).toHaveLength(1)
     expect(w.emitted('delete')).toHaveLength(1)
   })
 })

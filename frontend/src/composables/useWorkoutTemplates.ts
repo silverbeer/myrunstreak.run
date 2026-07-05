@@ -1,5 +1,5 @@
 import { apiCall } from '@/config/api'
-import type { WorkoutTemplateInput } from '@/types/workout'
+import type { WorkoutTemplate, WorkoutTemplateInput } from '@/types/workout'
 
 /**
  * Create a workout template on an athlete's account. The coach acts on the
@@ -12,6 +12,24 @@ export async function createTemplate(
 ): Promise<{ id: string }> {
   return apiCall<{ id: string }>('/workouts/templates', {
     method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'X-Act-As-Athlete': athleteId },
+  })
+}
+
+export async function getTemplate(templateId: string, athleteId: string): Promise<WorkoutTemplate> {
+  return apiCall<WorkoutTemplate>(`/workouts/templates/${templateId}`, {
+    headers: { 'X-Act-As-Athlete': athleteId },
+  })
+}
+
+export async function updateTemplate(
+  templateId: string,
+  payload: WorkoutTemplateInput,
+  athleteId: string,
+): Promise<WorkoutTemplate> {
+  return apiCall<WorkoutTemplate>(`/workouts/templates/${templateId}`, {
+    method: 'PATCH',
     body: JSON.stringify(payload),
     headers: { 'X-Act-As-Athlete': athleteId },
   })

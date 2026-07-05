@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from src.shared.supabase_ops.workout_repository import (
     WorkoutSessionsRepository,
@@ -44,6 +44,13 @@ class _FakeQuery:
         self._mode, self._payload = "insert", payload
         return self
 
+    def update(self, payload: Any) -> _FakeQuery:
+        self._mode, self._payload = "update", payload
+        return self
+
+    def in_(self, *a: Any, **k: Any) -> _FakeQuery:
+        return self
+
     def delete(self) -> _FakeQuery:
         self._mode = "delete"
         return self
@@ -57,6 +64,11 @@ class _FakeQuery:
                 self.store.setdefault(self.table, []).append(row)
                 out.append(row)
             return SimpleNamespace(data=out)
+        if self._mode == "update":
+            rows = self.store.get(self.table, [])
+            for r in rows:
+                r.update(self._payload)
+            return SimpleNamespace(data=rows)
         if self._mode == "delete":
             data = self.store.get(self.table, [])
             self.store[self.table] = []
@@ -93,6 +105,35 @@ def test_template_create_round_trips_with_items():
     assert len(out["items"]) == 2
     assert all(i["user_id"] == str(user) for i in out["items"])
     assert all(i["template_id"] == out["id"] for i in out["items"])
+
+
+def test_template_update_replaces_items_and_fields():
+    supa = _FakeSupabase()
+    repo = WorkoutTemplatesRepository(supa)
+    user = uuid4()
+    out = repo.create(
+        user,
+        {
+            "name": "A",
+            "type": "circuit",
+            "rounds": 2,
+            "items": [{"exercise_key": "pushups", "position": 0, "target_reps": 10}],
+        },
+    )
+    upd = repo.update(
+        user,
+        UUID(out["id"]),
+        {
+            "name": "B",
+            "rounds": 3,
+            "items": [{"exercise_key": "plank", "position": 0, "target_duration_seconds": 60}],
+        },
+    )
+    assert upd is not None
+    assert upd["name"] == "B"
+    assert upd["rounds"] == 3
+    assert len(upd["items"]) == 1
+    assert upd["items"][0]["exercise_key"] == "plank"
 
 
 def test_session_create_round_trips_with_sets():

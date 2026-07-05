@@ -15,6 +15,9 @@
         <button type="button" class="act" title="Print" aria-label="Print workout" @click="print">
           <Printer class="w-4 h-4" />
         </button>
+        <button type="button" class="act" title="Edit" aria-label="Edit workout" @click="$emit('edit')">
+          <Pencil class="w-4 h-4" />
+        </button>
         <button
           type="button"
           class="act hover:text-red-600 hover:bg-red-50"
@@ -67,7 +70,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Printer, Repeat, Trash2 } from 'lucide-vue-next'
+import { Pencil, Printer, Repeat, Trash2 } from 'lucide-vue-next'
 import type { Exercise, TemplateItem, WorkoutSectionKey, WorkoutTemplate } from '@/types/workout'
 import { SECTIONS, fmtDuration, kgToLb, prettifyKey } from '@/utils/workoutPayload'
 
@@ -76,7 +79,7 @@ const props = defineProps<{
   exercises?: Exercise[]
 }>()
 
-defineEmits<{ (e: 'delete'): void }>()
+defineEmits<{ (e: 'edit'): void; (e: 'delete'): void }>()
 
 const byKey = computed<Record<string, Exercise>>(() => {
   const map: Record<string, Exercise> = {}

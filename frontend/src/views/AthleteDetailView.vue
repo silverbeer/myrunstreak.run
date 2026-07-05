@@ -55,6 +55,7 @@
           :key="t.id"
           :template="t"
           :exercises="exercises"
+          @edit="router.push(`/coach/${athleteId}/build/${t.id}`)"
           @delete="onDeleteTemplate(t.id)"
         />
       </div>
@@ -90,7 +91,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAthleteDetail } from '@/composables/useCoach'
 import { useExercises } from '@/composables/useExercises'
 import AthleteProfileForm from '@/components/AthleteProfileForm.vue'
@@ -100,6 +101,7 @@ import { deleteTemplate } from '@/composables/useWorkoutTemplates'
 import type { Athlete } from '@/types/coach'
 
 const route = useRoute()
+const router = useRouter()
 const athleteId = route.params.athleteId as string
 const { athlete, sessions, templates, loading, error, load } = useAthleteDetail(athleteId)
 const { exercises, load: loadExercises } = useExercises()

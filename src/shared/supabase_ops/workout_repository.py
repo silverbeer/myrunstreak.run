@@ -169,6 +169,36 @@ class WorkoutTemplatesRepository:
         assert got is not None
         return got
 
+    def update(
+        self,
+        user_id: UUID,
+        template_id: UUID,
+        payload: dict[str, Any],
+        athlete_id: UUID | None = None,
+    ) -> dict[str, Any] | None:
+        """Update a template the caller owns and replace its items. None if not
+        found / not theirs."""
+        if self.get(user_id, template_id, athlete_id) is None:
+            return None
+
+        items: Sequence[dict[str, Any]] | None = payload.pop("items", None)
+        if payload:
+            self.supabase.table("workout_templates").update(payload).eq(
+                "id", str(template_id)
+            ).execute()
+
+        if items is not None:
+            # Replace the item set wholesale (simplest correct edit).
+            self.supabase.table("template_items").delete().eq(
+                "template_id", str(template_id)
+            ).execute()
+            if items:
+                owner = _owner_fields(user_id, athlete_id)
+                item_rows = [{**it, **owner, "template_id": str(template_id)} for it in items]
+                self.supabase.table("template_items").insert(item_rows).execute()
+
+        return self.get(user_id, template_id, athlete_id)
+
     def list(self, user_id: UUID, athlete_id: UUID | None = None) -> list[dict[str, Any]]:
         query = _scope(self.supabase.table("workout_templates").select("*"), user_id, athlete_id)
         templates = cast(list[dict[str, Any]], query.order("created_at", desc=True).execute().data)
