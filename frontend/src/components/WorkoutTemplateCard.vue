@@ -1,5 +1,8 @@
 <template>
-  <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden print:shadow-none print:border-gray-300">
+  <div
+    ref="rootEl"
+    class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden print:shadow-none print:border-gray-300"
+  >
     <!-- Header -->
     <div class="flex items-start justify-between gap-3 p-5 border-b border-gray-100">
       <div class="min-w-0">
@@ -69,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Pencil, Printer, Repeat, Trash2 } from 'lucide-vue-next'
 import type { Exercise, TemplateItem, WorkoutSectionKey, WorkoutTemplate } from '@/types/workout'
 import { SECTIONS, fmtDuration, kgToLb, prettifyKey } from '@/utils/workoutPayload'
@@ -124,7 +127,25 @@ const pills = (it: TemplateItem): Pill[] => {
   return out
 }
 
-const print = (): void => window.print()
+const rootEl = ref<HTMLElement | null>(null)
+
+// Print just this card on its own page: mark it + <body>, print, then clean up.
+const print = (): void => {
+  const el = rootEl.value
+  if (!el) {
+    window.print()
+    return
+  }
+  document.body.classList.add('printing-card')
+  el.classList.add('print-target')
+  const cleanup = (): void => {
+    document.body.classList.remove('printing-card')
+    el.classList.remove('print-target')
+    window.removeEventListener('afterprint', cleanup)
+  }
+  window.addEventListener('afterprint', cleanup)
+  window.print()
+}
 </script>
 
 <style scoped>

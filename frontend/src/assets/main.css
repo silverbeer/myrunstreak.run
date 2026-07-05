@@ -41,3 +41,28 @@
     @apply block text-sm font-semibold text-gray-700 mb-1;
   }
 }
+
+/* Print a single workout card on its own page. The card's Print button adds
+   `printing-card` to <body> and `print-target` to the card being printed, so a
+   normal browser print (whole page) is unaffected. */
+@media print {
+  body.printing-card * {
+    visibility: hidden;
+  }
+  body.printing-card .print-target,
+  body.printing-card .print-target * {
+    visibility: visible;
+  }
+  body.printing-card .print-target {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none !important;
+    border: none !important;
+    page-break-inside: avoid;
+  }
+  @page {
+    margin: 14mm;
+  }
+}
