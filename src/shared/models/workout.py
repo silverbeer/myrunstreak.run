@@ -36,14 +36,104 @@ class WorkoutType(StrEnum):
     session = "session"
 
 
-class Exercise(BaseModel):
-    """A row in the global movement catalog."""
+class ExerciseVisibility(StrEnum):
+    private = "private"  # owner only
+    public = "public"  # canonical shared library
+
+
+class MovementPattern(StrEnum):
+    squat = "squat"
+    hinge = "hinge"
+    lunge = "lunge"
+    push = "push"
+    pull = "pull"
+    carry = "carry"
+    rotation = "rotation"
+    anti_rotation = "anti_rotation"
+    jump = "jump"
+    sprint = "sprint"
+    isometric = "isometric"
+    mobility = "mobility"
+    other = "other"
+
+
+class Laterality(StrEnum):
+    bilateral = "bilateral"
+    unilateral = "unilateral"
+
+
+class Difficulty(StrEnum):
+    beginner = "beginner"
+    intermediate = "intermediate"
+    advanced = "advanced"
+
+
+class ExerciseMeta(BaseModel):
+    """Classification + presentation metadata shared by Exercise / create / update.
+
+    All optional — the search/select component uses whatever is present (facets,
+    balance nudge off movement_pattern, cues + media on the card and the
+    printable take-home).
+    """
+
+    aliases: list[str] = Field(default_factory=list)  # synonyms → search + dedup
+    movement_pattern: MovementPattern | None = None
+    equipment: list[str] = Field(default_factory=list)
+    body_region: list[str] = Field(default_factory=list)
+    laterality: Laterality | None = None
+    difficulty: Difficulty | None = None
+    tags: list[str] = Field(default_factory=list)
+    media_url: str | None = None
+    thumbnail_url: str | None = None
+    cues: list[str] = Field(default_factory=list)
+    instructions: str | None = None
+
+
+class Exercise(ExerciseMeta):
+    """A row in the movement catalog — canonical (public) or coach-owned."""
 
     key: str
     display_name: str
     category: ExerciseCategory
     measures: list[str] = Field(default_factory=list)
     is_benchmark: bool = False
+    owner_id: UUID | None = None  # NULL = canonical library
+    visibility: ExerciseVisibility = ExerciseVisibility.public
+    created_by: UUID | None = None
+    forked_from: str | None = None
+
+
+class ExerciseCreate(ExerciseMeta):
+    """Coach adds an exercise. Private by default; publishable later. The key
+    (slug) is generated server-side to stay globally unique."""
+
+    display_name: str
+    category: ExerciseCategory
+    measures: list[str] = Field(default_factory=list)
+    is_benchmark: bool = False
+    visibility: ExerciseVisibility = ExerciseVisibility.private
+    forked_from: str | None = None
+
+
+class ExerciseUpdate(BaseModel):
+    """Partial patch of an owned exercise (server enforces ownership)."""
+
+    display_name: str | None = None
+    category: ExerciseCategory | None = None
+    measures: list[str] | None = None
+    is_benchmark: bool | None = None
+    visibility: ExerciseVisibility | None = None
+    aliases: list[str] | None = None
+    movement_pattern: MovementPattern | None = None
+    equipment: list[str] | None = None
+    body_region: list[str] | None = None
+    laterality: Laterality | None = None
+    difficulty: Difficulty | None = None
+    tags: list[str] | None = None
+    media_url: str | None = None
+    thumbnail_url: str | None = None
+    cues: list[str] | None = None
+    instructions: str | None = None
 
 
 # --------------------------------------------------------------------------- #

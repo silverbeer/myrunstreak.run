@@ -17,6 +17,8 @@ from backend.cache import invalidate_user
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from src.shared.models.workout import (
     Exercise,
+    ExerciseCreate,
+    ExerciseUpdate,
     WorkoutSession,
     WorkoutSessionCreate,
     WorkoutTemplate,
@@ -52,10 +54,68 @@ def acting_athlete(
 
 @router.get("/exercises", response_model=list[Exercise])
 def list_exercises(
-    _user_id: UUID = Depends(authenticate_request),
+    user_id: UUID = Depends(authenticate_request),
 ) -> list[Exercise]:
-    rows = ExercisesRepository(get_supabase_client()).list_all()
+    """The catalog the caller can use: the public library + their own private ones."""
+    rows = ExercisesRepository(get_supabase_client()).list_visible(user_id)
     return [Exercise(**r) for r in rows]
+
+
+@router.get("/exercises/search", response_model=list[Exercise])
+def search_exercises(
+    q: str = Query(..., min_length=1, description="Fuzzy match over name + aliases"),
+    user_id: UUID = Depends(authenticate_request),
+) -> list[Exercise]:
+    """Search-first selection + dedup: find existing exercises before creating one."""
+    rows = ExercisesRepository(get_supabase_client()).search(user_id, q)
+    return [Exercise(**r) for r in rows]
+
+
+@router.post("/exercises", response_model=Exercise, status_code=status.HTTP_201_CREATED)
+def create_exercise(
+    body: ExerciseCreate,
+    user_id: UUID = Depends(authenticate_request),
+) -> Exercise:
+    """Add a coach-owned exercise (private by default; publishable later)."""
+    payload = body.model_dump(exclude_none=True, mode="json")
+    row = ExercisesRepository(get_supabase_client()).create(user_id, payload)
+    return Exercise(**row)
+
+
+@router.patch("/exercises/{key}", response_model=Exercise)
+def update_exercise(
+    key: str,
+    body: ExerciseUpdate,
+    user_id: UUID = Depends(authenticate_request),
+) -> Exercise:
+    """Patch an exercise the caller owns (404 if not found or not theirs)."""
+    patch = body.model_dump(exclude_none=True, mode="json")
+    row = ExercisesRepository(get_supabase_client()).update(user_id, key, patch)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Exercise not found or not yours")
+    return Exercise(**row)
+
+
+@router.post("/exercises/{key}/publish", response_model=Exercise)
+def publish_exercise(
+    key: str,
+    user_id: UUID = Depends(authenticate_request),
+) -> Exercise:
+    """Promote an owned private exercise to the public library."""
+    row = ExercisesRepository(get_supabase_client()).publish(user_id, key)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Exercise not found or not yours")
+    return Exercise(**row)
+
+
+@router.delete("/exercises/{key}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_exercise(
+    key: str,
+    user_id: UUID = Depends(authenticate_request),
+) -> None:
+    """Delete an exercise the caller owns (404 if not found or not theirs)."""
+    if not ExercisesRepository(get_supabase_client()).delete(user_id, key):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Exercise not found or not yours")
 
 
 # ---------------------------------------------------------------- templates
