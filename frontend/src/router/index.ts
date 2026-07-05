@@ -67,6 +67,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/exercises',
+      name: 'exercise-catalog',
+      component: () => import('@/views/ExerciseCatalogView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/profile',
       name: 'my-profile',
       component: () => import('@/views/MyProfileView.vue'),
