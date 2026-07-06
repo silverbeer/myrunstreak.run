@@ -15,6 +15,16 @@
         </div>
       </div>
       <div class="flex items-center gap-1 shrink-0 print:hidden">
+        <button
+          type="button"
+          class="act hover:text-brand-600 hover:bg-brand-50"
+          title="Log this"
+          aria-label="Log this workout"
+          data-testid="log-this"
+          @click="$emit('log')"
+        >
+          <ClipboardCheck class="w-4 h-4" />
+        </button>
         <button type="button" class="act" title="Print" aria-label="Print workout" @click="print">
           <Printer class="w-4 h-4" />
         </button>
@@ -73,7 +83,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Pencil, Printer, Repeat, Trash2 } from 'lucide-vue-next'
+import { ClipboardCheck, Pencil, Printer, Repeat, Trash2 } from 'lucide-vue-next'
 import type { Exercise, TemplateItem, WorkoutSectionKey, WorkoutTemplate } from '@/types/workout'
 import { SECTIONS, fmtDuration, kgToLb, prettifyKey } from '@/utils/workoutPayload'
 
@@ -82,7 +92,7 @@ const props = defineProps<{
   exercises?: Exercise[]
 }>()
 
-defineEmits<{ (e: 'edit'): void; (e: 'delete'): void }>()
+defineEmits<{ (e: 'edit'): void; (e: 'delete'): void; (e: 'log'): void }>()
 
 const byKey = computed<Record<string, Exercise>>(() => {
   const map: Record<string, Exercise> = {}

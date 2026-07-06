@@ -26,6 +26,9 @@
           <RouterLink :to="`/coach/${athlete.id}/build`" class="btn-primary text-sm">
             + Build workout
           </RouterLink>
+          <RouterLink :to="`/coach/${athlete.id}/log`" class="btn-secondary text-sm" data-testid="log-workout">
+            Log workout
+          </RouterLink>
         </div>
       </div>
 
@@ -56,6 +59,7 @@
           :template="t"
           :exercises="exercises"
           @edit="router.push(`/coach/${athleteId}/build/${t.id}`)"
+          @log="router.push(`/coach/${athleteId}/log/${t.id}`)"
           @delete="onDeleteTemplate(t.id)"
         />
       </div>
