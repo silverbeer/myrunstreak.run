@@ -112,3 +112,56 @@ export interface BuilderItem {
   variant: string | null
   notes: string | null
 }
+
+// --------------------------------------------------------------------------- //
+// Session logging (the actual performance — SB-230)
+// --------------------------------------------------------------------------- //
+
+/** One logged set in the API payload. Only the used dimensions are filled. */
+export interface SessionSetInput {
+  exercise_key: string
+  round_number?: number | null
+  set_index?: number | null
+  variant?: string | null
+  reps?: number | null
+  duration_seconds?: number | null
+  load_kg?: number | null
+  distance_m?: number | null
+  time_seconds?: number | null
+  rpe?: number | null
+  notes?: string | null
+}
+
+export interface WorkoutSessionInput {
+  session_date: string
+  template_id?: string | null
+  type: WorkoutType
+  total_minutes?: number | null
+  how_felt?: string | null
+  notes?: string | null
+  sets: SessionSetInput[]
+}
+
+/**
+ * One attempt of an exercise while logging — a single set. A 40-dash logged
+ * three times is three attempts on one row (each its own set_index/time).
+ * Loads are entered in lb (US coach), stored as kg.
+ */
+export interface LoggerAttempt {
+  reps: number | null
+  duration_s: number | null
+  load_lb: number | null
+  distance_m: number | null
+  time_seconds: number | null
+  rpe: number | null
+}
+
+/** One exercise being logged, with one or more attempts (sets). */
+export interface LoggerRow {
+  uid: number
+  exercise: Exercise
+  round_number: number | null
+  variant: string | null
+  notes: string | null
+  attempts: LoggerAttempt[]
+}
