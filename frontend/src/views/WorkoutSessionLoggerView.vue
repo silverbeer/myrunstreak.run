@@ -220,7 +220,7 @@ const FIELD_DEFS: FieldDef[] = [
   { measure: 'duration_s', label: 'Secs', model: 'duration_s' },
   { measure: 'load_kg', label: 'Load(lb)', model: 'load_lb' },
   { measure: 'distance_m', label: 'Dist(m)', model: 'distance_m' },
-  { measure: 'time_seconds', label: 'Time(s)', model: 'time_seconds' },
+  { measure: 'time_s', label: 'Time(s)', model: 'time_seconds' },
 ]
 const FALLBACK: FieldDef[] = [FIELD_DEFS[0], FIELD_DEFS[4]] // reps + time
 

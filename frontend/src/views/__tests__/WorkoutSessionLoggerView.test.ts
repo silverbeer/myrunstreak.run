@@ -26,7 +26,7 @@ const catalog = [
     difficulty: null, tags: [], media_url: null, thumbnail_url: null, cues: [], instructions: null,
   },
   {
-    key: '40_yard_dash', display_name: '40-yard dash', category: 'test', measures: ['time_seconds'],
+    key: '40yd_dash', display_name: '40-yard dash', category: 'test', measures: ['distance_m', 'time_s'],
     is_benchmark: true, owner_id: null, visibility: 'public', created_by: null, forked_from: null,
     aliases: [], movement_pattern: 'sprint', equipment: [], body_region: [], laterality: null,
     difficulty: null, tags: [], media_url: null, thumbnail_url: null, cues: [], instructions: null,
@@ -110,12 +110,12 @@ describe('WorkoutSessionLoggerView', () => {
     h.createSession.mockResolvedValue({ id: 's2' })
     const w = await mountLogger()
     await w.find('[data-testid="add-exercise"]').trigger('click')
-    await w.find('[data-testid="ex-40_yard_dash"]').trigger('click')
-    await w.find('[data-testid="add-set-40_yard_dash"]').trigger('click')
-    await w.find('[data-testid="add-set-40_yard_dash"]').trigger('click')
-    await w.find('[data-testid="time_seconds-40_yard_dash-0"]').setValue(5.4)
-    await w.find('[data-testid="time_seconds-40_yard_dash-1"]').setValue(5.2)
-    await w.find('[data-testid="time_seconds-40_yard_dash-2"]').setValue(5.3)
+    await w.find('[data-testid="ex-40yd_dash"]').trigger('click')
+    await w.find('[data-testid="add-set-40yd_dash"]').trigger('click')
+    await w.find('[data-testid="add-set-40yd_dash"]').trigger('click')
+    await w.find('[data-testid="time_seconds-40yd_dash-0"]').setValue(5.4)
+    await w.find('[data-testid="time_seconds-40yd_dash-1"]').setValue(5.2)
+    await w.find('[data-testid="time_seconds-40yd_dash-2"]').setValue(5.3)
     await w.find('[data-testid="save"]').trigger('click')
     await flushPromises()
 
