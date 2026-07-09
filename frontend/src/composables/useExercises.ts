@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { apiCall } from '@/config/api'
-import type { Exercise, ExerciseCreate } from '@/types/workout'
+import type { Exercise, ExerciseCreate, ExerciseUpdate } from '@/types/workout'
 
 /**
  * The exercise catalog: the public library + the caller's own private exercises
@@ -39,6 +39,21 @@ export function useExercises() {
     }
   }
 
+  const update = async (key: string, patch: ExerciseUpdate): Promise<Exercise | null> => {
+    error.value = null
+    try {
+      const updated = await apiCall<Exercise>(`/workouts/exercises/${key}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      })
+      exercises.value = exercises.value.map((e) => (e.key === key ? updated : e))
+      return updated
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to update exercise'
+      return null
+    }
+  }
+
   const publish = async (key: string): Promise<Exercise | null> => {
     error.value = null
     try {
@@ -53,5 +68,5 @@ export function useExercises() {
     }
   }
 
-  return { exercises, loading, error, load, create, publish }
+  return { exercises, loading, error, load, create, update, publish }
 }

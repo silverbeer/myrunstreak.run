@@ -138,6 +138,22 @@ describe('ExercisePicker', () => {
     expect(w.find('[data-testid="publish-goblet_squat"]').exists()).toBe(false)
   })
 
+  it('manage mode shows Edit only on editableKeys and emits the exercise', async () => {
+    const w = mount(ExercisePicker, {
+      props: { exercises: catalog, mode: 'manage', editableKeys: ['goblet_squat'] },
+    })
+    expect(w.find('[data-testid="edit-pushups"]').exists()).toBe(false) // not editable
+    const edit = w.find('[data-testid="edit-goblet_squat"]')
+    expect(edit.exists()).toBe(true)
+    await edit.trigger('click')
+    expect((w.emitted('edit')?.[0]?.[0] as Exercise).key).toBe('goblet_squat')
+  })
+
+  it('manage mode with no editableKeys shows no Edit buttons', () => {
+    const w = mount(ExercisePicker, { props: { exercises: catalog, mode: 'manage' } })
+    expect(w.find('[data-testid="edit-goblet_squat"]').exists()).toBe(false)
+  })
+
   it('empty search offers create; submitting emits a private create payload prefilled from the query', async () => {
     const w = mount(ExercisePicker, { props: { exercises: catalog } })
     await setSearch(w, 'zzz new move')

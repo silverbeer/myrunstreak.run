@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date
 from uuid import UUID
 
-from backend.admin import require_athlete_access
+from backend.admin import is_admin, require_athlete_access
 from backend.auth import authenticate_request
 from backend.cache import invalidate_user
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -88,9 +88,12 @@ def update_exercise(
     body: ExerciseUpdate,
     user_id: UUID = Depends(authenticate_request),
 ) -> Exercise:
-    """Patch an exercise the caller owns (404 if not found or not theirs)."""
+    """Patch an exercise. A coach may patch only their own; an admin may patch
+    any, including the canonical library (404 if not found or not permitted)."""
     patch = body.model_dump(exclude_none=True, mode="json")
-    row = ExercisesRepository(get_supabase_client()).update(user_id, key, patch)
+    row = ExercisesRepository(get_supabase_client()).update(
+        user_id, key, patch, is_admin=is_admin(user_id)
+    )
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Exercise not found or not yours")
     return Exercise(**row)
