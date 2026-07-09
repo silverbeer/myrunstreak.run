@@ -15,27 +15,62 @@
       {{ error }}
     </div>
 
-    <ExercisePicker
-      v-else
-      :exercises="exercises"
-      mode="manage"
-      @create="onCreate"
-      @publish="onPublish"
-    />
+    <template v-else>
+      <ExerciseEditForm
+        v-if="editing"
+        :exercise="editing"
+        class="mb-4"
+        @save="onSave"
+        @cancel="editing = null"
+      />
+
+      <ExercisePicker
+        :exercises="exercises"
+        :editable-keys="editableKeys"
+        mode="manage"
+        @create="onCreate"
+        @publish="onPublish"
+        @edit="startEdit"
+      />
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import ExercisePicker from '@/components/ExercisePicker.vue'
+import ExerciseEditForm from '@/components/ExerciseEditForm.vue'
 import { useExercises } from '@/composables/useExercises'
 import { useRoles } from '@/composables/useCoach'
-import type { ExerciseCreate } from '@/types/workout'
+import { useAuthStore } from '@/stores/auth'
+import type { Exercise, ExerciseCreate, ExerciseUpdate } from '@/types/workout'
 
 const router = useRouter()
-const { isCoach, loadRoles } = useRoles()
-const { exercises, loading, error, load, create, publish } = useExercises()
+const { isCoach, isAdmin, loadRoles } = useRoles()
+const auth = useAuthStore()
+const { exercises, loading, error, load, create, update, publish } = useExercises()
+
+const editing = ref<Exercise | null>(null)
+
+// A coach edits only their own; an admin edits anything (incl. the canonical
+// library, owner_id === null). Mirrors the backend permission.
+const editableKeys = computed<string[]>(() => {
+  const myId = auth.user?.id ?? null
+  return exercises.value
+    .filter((ex) => isAdmin.value || (!!ex.owner_id && ex.owner_id === myId))
+    .map((ex) => ex.key)
+})
+
+const startEdit = (ex: Exercise): void => {
+  editing.value = ex
+}
+
+const onSave = async (patch: ExerciseUpdate): Promise<void> => {
+  if (!editing.value) return
+  const updated = await update(editing.value.key, patch)
+  if (updated) editing.value = null
+}
 
 const onCreate = async (payload: ExerciseCreate) => {
   await create(payload)

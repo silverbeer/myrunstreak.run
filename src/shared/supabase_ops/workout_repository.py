@@ -121,15 +121,16 @@ class ExercisesRepository:
         result = self.supabase.table("exercises").insert(row).execute()
         return cast(list[dict[str, Any]], result.data)[0]
 
-    def update(self, user_id: UUID, key: str, patch: dict[str, Any]) -> dict[str, Any] | None:
-        """Patch an exercise the caller owns. None if not found / not theirs."""
-        result = (
-            self.supabase.table("exercises")
-            .update(patch)
-            .eq("key", key)
-            .eq("owner_id", str(user_id))
-            .execute()
-        )
+    def update(
+        self, user_id: UUID, key: str, patch: dict[str, Any], *, is_admin: bool = False
+    ) -> dict[str, Any] | None:
+        """Patch an exercise. A coach may patch only their own; an admin may
+        patch any (including the canonical library). None if not found / not
+        theirs."""
+        query = self.supabase.table("exercises").update(patch).eq("key", key)
+        if not is_admin:
+            query = query.eq("owner_id", str(user_id))
+        result = query.execute()
         rows = cast(list[dict[str, Any]], result.data)
         return rows[0] if rows else None
 

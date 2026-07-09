@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -127,6 +128,7 @@ def test_update_exercise_patches_owned() -> None:
     body = ExerciseUpdate(cues=["Chest up"])
     with (
         patch("backend.routes.workouts.get_supabase_client"),
+        patch("backend.routes.workouts.is_admin", return_value=False),
         patch("backend.routes.workouts.ExercisesRepository", return_value=repo),
     ):
         from backend.routes.workouts import update_exercise
@@ -135,6 +137,55 @@ def test_update_exercise_patches_owned() -> None:
 
     assert result.cues == ["Chest up"]
     assert repo.update.call_args.args[2] == {"cues": ["Chest up"]}  # only patched field
+    # A non-admin coach edits as owner-scoped.
+    assert repo.update.call_args.kwargs["is_admin"] is False
+
+
+def test_update_exercise_admin_patches_any() -> None:
+    """An admin patches even a canonical (owner_id NULL) exercise — is_admin
+    flows to the repo so the owner filter is dropped."""
+    uid = uuid4()
+    repo = _repo()
+    repo.update.return_value = {
+        "key": "pushups",
+        "display_name": "Push-ups",
+        "category": "strength",
+        "cues": ["Elbows in"],
+    }
+    body = ExerciseUpdate(cues=["Elbows in"])
+    with (
+        patch("backend.routes.workouts.get_supabase_client"),
+        patch("backend.routes.workouts.is_admin", return_value=True),
+        patch("backend.routes.workouts.ExercisesRepository", return_value=repo),
+    ):
+        from backend.routes.workouts import update_exercise
+
+        result = update_exercise(key="pushups", body=body, user_id=uid)
+
+    assert result.cues == ["Elbows in"]
+    assert repo.update.call_args.kwargs["is_admin"] is True
+
+
+def test_repo_update_admin_skips_owner_filter() -> None:
+    """The repo drops the owner_id eq() when is_admin — verify via a spy query."""
+    query = MagicMock()
+    query.update.return_value = query
+    query.eq.return_value = query
+    query.execute.return_value = SimpleNamespace(data=[{"key": "pushups"}])
+    supabase = MagicMock()
+    supabase.table.return_value = query
+
+    repo = ExercisesRepository(supabase)
+    uid = uuid4()
+
+    repo.update(uid, "pushups", {"cues": ["x"]}, is_admin=True)
+    admin_eq_cols = [c.args[0] for c in query.eq.call_args_list]
+    assert "owner_id" not in admin_eq_cols  # admin: no owner scoping
+
+    query.eq.reset_mock()
+    repo.update(uid, "pushups", {"cues": ["x"]}, is_admin=False)
+    coach_eq_cols = [c.args[0] for c in query.eq.call_args_list]
+    assert "owner_id" in coach_eq_cols  # coach: owner-scoped
 
 
 def test_delete_exercise_404_when_not_owned() -> None:

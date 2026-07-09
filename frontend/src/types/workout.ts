@@ -51,6 +51,21 @@ export interface ExerciseCreate {
   cues?: string[]
 }
 
+/** Partial patch of an existing exercise (all fields optional). */
+export interface ExerciseUpdate {
+  display_name?: string
+  category?: ExerciseCategory
+  measures?: string[]
+  is_benchmark?: boolean
+  visibility?: ExerciseVisibility
+  aliases?: string[]
+  movement_pattern?: MovementPattern | null
+  equipment?: string[]
+  cues?: string[]
+  difficulty?: string | null
+  instructions?: string | null
+}
+
 export type WorkoutSectionKey = 'warmup' | 'main' | 'cooldown'
 export type WorkoutType = 'circuit' | 'intervals' | 'test' | 'session'
 

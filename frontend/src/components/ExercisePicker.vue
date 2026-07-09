@@ -73,15 +73,26 @@
         <p v-if="ex.cues.length" class="mt-1 text-[11px] text-gray-500 line-clamp-1">
           {{ ex.cues.join(' · ') }}
         </p>
-        <button
-          v-if="mode === 'manage' && ex.owner_id && ex.visibility === 'private'"
-          type="button"
-          class="mt-2 btn-secondary text-[11px]"
-          :data-testid="`publish-${ex.key}`"
-          @click.stop="$emit('publish', ex.key)"
-        >
-          Publish to library
-        </button>
+        <div v-if="mode === 'manage'" class="mt-2 flex items-center gap-2">
+          <button
+            v-if="editableKeys.includes(ex.key)"
+            type="button"
+            class="inline-flex items-center gap-1 btn-secondary text-[11px]"
+            :data-testid="`edit-${ex.key}`"
+            @click.stop="$emit('edit', ex)"
+          >
+            <Pencil class="w-3 h-3" /> Edit
+          </button>
+          <button
+            v-if="ex.owner_id && ex.visibility === 'private'"
+            type="button"
+            class="btn-secondary text-[11px]"
+            :data-testid="`publish-${ex.key}`"
+            @click.stop="$emit('publish', ex.key)"
+          >
+            Publish to library
+          </button>
+        </div>
       </button>
     </div>
 
@@ -134,7 +145,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { Check, Scale, Search } from 'lucide-vue-next'
+import { Check, Pencil, Scale, Search } from 'lucide-vue-next'
 import type { Exercise, ExerciseCategory, ExerciseCreate, MovementPattern } from '@/types/workout'
 import { balanceNudges } from '@/utils/exerciseBalance'
 
@@ -142,15 +153,17 @@ const props = withDefaults(
   defineProps<{
     exercises: Exercise[]
     selectedKeys?: string[]
+    editableKeys?: string[]
     mode?: 'select' | 'manage'
   }>(),
-  { selectedKeys: () => [], mode: 'select' },
+  { selectedKeys: () => [], editableKeys: () => [], mode: 'select' },
 )
 
 const emit = defineEmits<{
   (e: 'toggle', exercise: Exercise): void
   (e: 'create', payload: ExerciseCreate): void
   (e: 'publish', key: string): void
+  (e: 'edit', exercise: Exercise): void
 }>()
 
 const CATEGORIES: ExerciseCategory[] = ['strength', 'speed', 'power', 'mobility', 'cardio', 'test']
