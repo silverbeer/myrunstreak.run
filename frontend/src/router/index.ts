@@ -44,6 +44,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/runs/:activityId',
+      name: 'run-detail',
+      component: () => import('@/views/RunDetailView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),

@@ -81,6 +81,19 @@ class RunsRepository:
 
         return data_list[0] if data_list else None
 
+    def get_run_by_activity_id(self, user_id: UUID, activity_id: str) -> dict[str, Any] | None:
+        """A user's run by its source activity id (what the frontend holds)."""
+        result = (
+            self.supabase.table("runs")
+            .select("*")
+            .eq("user_id", str(user_id))
+            .eq("source_activity_id", activity_id)
+            .limit(1)
+            .execute()
+        )
+        data_list = cast(list[dict[str, Any]], result.data)
+        return data_list[0] if data_list else None
+
     def _apply_run_filters(
         self,
         query: Any,

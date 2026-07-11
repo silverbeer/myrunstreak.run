@@ -113,6 +113,7 @@
             :pace-min-per-km="run.avg_pace_min_per_km"
             :unit="unit"
             :weather="run.weather"
+            :activity-id="run.activity_id"
           />
         </div>
       </div>
