@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { resolveLanding } from '@/composables/useLanding'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -120,7 +121,15 @@ router.beforeEach(async (to) => {
   }
 
   if (to.meta.requiresGuest && auth.isAuthenticated) {
-    return { name: 'dashboard' }
+    return resolveLanding()
+  }
+
+  // '/' is the only implicit entry (its redirect targets the dashboard);
+  // route it by role so coaches don't land on a runner page (SB-265).
+  // Explicit visits to /dashboard are left alone.
+  if (auth.isAuthenticated && to.redirectedFrom?.path === '/') {
+    const landing = await resolveLanding()
+    if (landing !== '/dashboard') return landing
   }
 })
 

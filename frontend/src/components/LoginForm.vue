@@ -88,6 +88,7 @@
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { resolveLanding } from '@/composables/useLanding'
 import BrandLogo from '@/components/BrandLogo.vue'
 
 const auth = useAuthStore()
@@ -109,7 +110,8 @@ const switchMode = (next: Mode) => {
 const handleSignIn = async () => {
   const result = await auth.signIn(email.value, password.value)
   if (result.success) {
-    const redirect = (route.query.redirect as string) || '/dashboard'
+    // A deep link the user was headed to wins; otherwise land by role (SB-265).
+    const redirect = (route.query.redirect as string) || (await resolveLanding())
     router.push(redirect)
   }
 }

@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase, getOAuthRedirectUrl } from '@/config/supabase'
 import { apiCall } from '@/config/api'
+import { resetLanding } from '@/composables/useLanding'
 
 export const useAuthStore = defineStore('auth', () => {
   const session = ref<Session | null>(null)
@@ -102,6 +103,7 @@ export const useAuthStore = defineStore('auth', () => {
       await supabase.auth.signOut()
       session.value = null
       user.value = null
+      resetLanding() // next account may land elsewhere (SB-265)
     } finally {
       loading.value = false
     }

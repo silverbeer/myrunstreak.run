@@ -21,7 +21,7 @@
       {{ loadError }}
     </div>
 
-    <EmptyState v-else-if="isNewUser" @synced="reload" />
+    <EmptyState v-else-if="isNewUser" :variant="isCoach ? 'coach' : 'runner'" @synced="reload" />
 
     <template v-else>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
@@ -143,6 +143,7 @@ import { useMonthlyStats } from '@/composables/useMonthlyStats'
 import { useGoals } from '@/composables/useGoals'
 import { useGoalHistory } from '@/composables/useGoalHistory'
 import { useUserPreferences } from '@/composables/useUserPreferences'
+import { useRoles } from '@/composables/useCoach'
 import { useAuthStore } from '@/stores/auth'
 import {
   formatDistance,
@@ -213,6 +214,10 @@ const loadError = computed(
 )
 const isNewUser = computed(() => stats.value !== null && stats.value.total_runs === 0)
 
+// Coaches with no runs get a pointer to the Coach area instead of a SmashRun
+// CTA they can't use (SB-265).
+const { isCoach, loadRoles } = useRoles()
+
 const heatmapGrid = computed(() => buildHeatmapGrid(recentRuns.value, 12))
 
 const reload = async () => {
@@ -220,6 +225,6 @@ const reload = async () => {
 }
 
 onMounted(async () => {
-  await Promise.all([reload(), loadMetricTypes()])
+  await Promise.all([reload(), loadMetricTypes(), loadRoles()])
 })
 </script>
