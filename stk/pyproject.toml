@@ -24,6 +24,11 @@ dev = [
 requires = ["uv_build>=0.9.5,<0.12.0"]
 build-backend = "uv_build"
 
+[tool.pytest.ini_options]
+# Own config so stk's suite doesn't inherit the repo-root --cov addopts.
+testpaths = ["tests"]
+addopts = ""
+
 # The package is `cli` (top-level, matching `from cli import ...`), not derived
 # from the project name `stk`. module-root defaults to `src`, so the package
 # lives at stk/src/cli.
@@ -33,11 +38,6 @@ module-name = "cli"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-
-[tool.pytest.ini_options]
-# Own config so stk's suite doesn't inherit the repo-root --cov addopts.
-testpaths = ["tests"]
-addopts = ""
 
 [dependency-groups]
 dev = [
