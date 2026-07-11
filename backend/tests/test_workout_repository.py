@@ -107,6 +107,47 @@ def test_template_create_round_trips_with_items():
     assert all(i["template_id"] == out["id"] for i in out["items"])
 
 
+def test_template_item_broken_rep_round_trips():
+    """Segment goals + a pace range survive create -> read (SB-264)."""
+    supa = _FakeSupabase()
+    repo = WorkoutTemplatesRepository(supa)
+    out = repo.create(
+        uuid4(),
+        {
+            "name": "Track Thursday",
+            "type": "intervals",
+            "items": [
+                {
+                    "exercise_key": "interval_run",
+                    "position": 0,
+                    "target_distance_m": 400,
+                    "target_duration_seconds": 20,
+                    "target_duration_max_seconds": 22,
+                    "segments": [
+                        {
+                            "distance_m": 100,
+                            "target_s_min": 20,
+                            "target_s_max": 22,
+                            "label": "0-100",
+                        },
+                        {"distance_m": 100, "target_s_min": 15, "label": "100-200"},
+                    ],
+                }
+            ],
+        },
+    )
+    item = out["items"][0]
+    assert item["target_duration_max_seconds"] == 22
+    assert len(item["segments"]) == 2
+    assert item["segments"][0] == {
+        "distance_m": 100,
+        "target_s_min": 20,
+        "target_s_max": 22,
+        "label": "0-100",
+    }
+    assert item["segments"][1]["target_s_min"] == 15
+
+
 def test_template_update_replaces_items_and_fields():
     supa = _FakeSupabase()
     repo = WorkoutTemplatesRepository(supa)
