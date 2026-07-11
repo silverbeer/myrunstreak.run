@@ -58,17 +58,44 @@ def templates(
         )
 
 
+def _fmt_secs(value: float) -> str:
+    """Seconds → compact display: 14 -> '14s', 100 -> '1:40'."""
+    if value >= 60:
+        return f"{int(value // 60)}:{int(value % 60):02d}"
+    return f"{value:g}s"
+
+
+def _fmt_goal(smin: float | None, smax: float | None) -> str:
+    """A goal that may be a range: (20, 22) -> '20-22s'; (15, None) -> '15s'."""
+    if smin is not None and smax is not None:
+        return f"{smin:g}-{smax:g}s"
+    if smin is not None:
+        return _fmt_secs(smin)
+    if smax is not None:
+        return f"≤{_fmt_secs(smax)}"
+    return "—"
+
+
 def _fmt_target(item: dict[str, Any]) -> str:
     parts = []
     if item.get("target_reps") is not None:
         parts.append(f"{item['target_reps']} reps")
-    if item.get("target_duration_seconds") is not None:
-        parts.append(f"{item['target_duration_seconds']}s")
+    smin, smax = item.get("target_duration_seconds"), item.get("target_duration_max_seconds")
+    if smin is not None or smax is not None:
+        parts.append(_fmt_goal(smin, smax))
     if item.get("target_load_kg") is not None:
         parts.append(f"{item['target_load_kg'] * 2.20462:.0f}lb")
     if item.get("target_distance_m") is not None:
-        parts.append(f"{item['target_distance_m'] / 0.9144:.0f}yd")
+        parts.append(_fmt_distance(item["target_distance_m"]))
     return " · ".join(parts) if parts else "—"
+
+
+def _fmt_distance(meters: float) -> str:
+    """Yd-native values (40yd dash -> 36.576m) render as yards; track reps as meters."""
+    yards = meters / 0.9144
+    if abs(yards - round(yards)) < 0.01 and abs(meters - round(meters)) > 0.01:
+        return f"{round(yards)}yd"
+    return f"{meters:g}m"
 
 
 def show(
@@ -96,6 +123,13 @@ def show(
         display.console.print(
             f"  {item['position'] + 1}. {item['exercise_key']:<16} {_fmt_target(item)}"
         )
+        # Broken rep (SB-264): one rep split into segments with per-segment goals.
+        for seg in item.get("segments") or []:
+            label = seg.get("label") or f"{seg['distance_m']:g}m"
+            display.console.print(
+                f"       [dim]{label:<10}[/dim] "
+                f"{_fmt_goal(seg.get('target_s_min'), seg.get('target_s_max'))}"
+            )
     if t.get("notes"):
         display.console.print(f"  [dim]{t['notes']}[/dim]")
     display.console.print("")
@@ -150,9 +184,95 @@ def log(
         )
 
 
+def _goal_status(time_s: float, smin: float | None, smax: float | None) -> str:
+    """Compare an actual segment time to its goal (range or fixed ±1s grace)."""
+    if smin is None and smax is None:
+        return ""
+    lo = smin if smin is not None else 0.0
+    hi = smax if smax is not None else lo + 1.0  # fixed goal: within a second
+    if time_s <= hi:
+        return "[green]hit[/green]" if time_s >= lo else "[green]fast[/green]"
+    return "[red]missed[/red]"
+
+
+def review(
+    session_id: str = typer.Argument(
+        ..., help="Session id (full or 8-char prefix from `sessions`)"
+    ),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+) -> None:
+    """Goal vs reality for a logged session (SB-264) — the coach's debrief view."""
+    sid = session_id
+    if len(session_id) < 36:  # prefix → resolve against the list
+        match = [
+            s for s in api.request("workouts/sessions", {"limit": 100}) if s["id"].startswith(sid)
+        ]
+        if not match:
+            display.console.print(f"[red]No session id starting {session_id}[/red]")
+            raise typer.Exit(1)
+        sid = match[0]["id"]
+    s = api.request(f"workouts/sessions/{sid}")
+    if json_output:
+        _dump(s)
+        return
+
+    # Segment goals come from the template the session was logged against.
+    goals_by_key: dict[str, list[dict[str, Any]]] = {}
+    tpl_name = None
+    if s.get("template_id"):
+        tpl = api.request(f"workouts/templates/{s['template_id']}")
+        tpl_name = tpl.get("name")
+        for item in tpl.get("items", []):
+            if item.get("segments"):
+                goals_by_key.setdefault(item["exercise_key"], []).append(item)
+
+    header = f"\n[bold]{s['session_date']}[/bold]  {s['type']}"
+    if tpl_name:
+        header += f"  — {tpl_name}"
+    display.console.print(header)
+    if s.get("how_felt"):
+        display.console.print(f"  [dim]felt: {s['how_felt']}[/dim]")
+
+    for st in s.get("sets", []):
+        actual = f"{_fmt_secs(st['time_seconds'])}" if st.get("time_seconds") is not None else ""
+        line = f"  {st['exercise_key']:<16}"
+        if st.get("distance_m") is not None:
+            line += f" {_fmt_distance(st['distance_m']):<7}"
+        if actual:
+            line += f" {actual}"
+        if st.get("reps") is not None:
+            line += f" {st['reps']} reps"
+        display.console.print(line.rstrip())
+
+        # Broken rep: goal vs reality per segment.
+        segments = (st.get("extra") or {}).get("segments") or []
+        if segments:
+            goal_items = goals_by_key.get(st["exercise_key"], [])
+            goal_segs = goal_items[0]["segments"] if goal_items else []
+            display.console.print(f"       [dim]{'segment':<10} {'goal':<9} {'reality':<9}[/dim]")
+            for i, seg in enumerate(segments):
+                goal = goal_segs[i] if i < len(goal_segs) else {}
+                label = seg.get("label") or goal.get("label") or f"#{i + 1}"
+                goal_txt = _fmt_goal(goal.get("target_s_min"), goal.get("target_s_max"))
+                reality = _fmt_secs(seg["time_s"]) if seg.get("time_s") is not None else "—"
+                status = (
+                    _goal_status(seg["time_s"], goal.get("target_s_min"), goal.get("target_s_max"))
+                    if seg.get("time_s") is not None
+                    else ""
+                )
+                note = f"  [dim]{seg['note']}[/dim]" if seg.get("note") else ""
+                display.console.print(
+                    f"       {label:<10} {goal_txt:<9} {reality:<9} {status}{note}"
+                )
+        if st.get("notes"):
+            display.console.print(f"       [dim]{st['notes']}[/dim]")
+    display.console.print("")
+
+
 workout_app.command(name="exercises")(exercises)
 workout_app.command(name="templates")(templates)
 workout_app.command(name="show")(show)
 workout_app.command(name="sessions")(sessions)
+workout_app.command(name="review")(review)
 workout_app.command(name="add-template")(add_template)
 workout_app.command(name="log")(log)

@@ -54,6 +54,21 @@ When given a screenshot or pasted workout (the coach's prescription):
 3. Create it: `echo '<json>' | stk workout add-template --file -` (or write a temp
    file). Report the name + id.
 
+### Broken reps + goal pace ranges (SB-264)
+
+Track plans often prescribe a **range** ("2x200 goal 30-32") or a **broken rep**
+("400m broken into 100m sections: 20-22 / 15 / 20-22 / 15"). Model them:
+
+- Range → `target_duration_seconds` (min) + `target_duration_max_seconds` (max).
+- Broken rep → one item with a `segments` list, one entry per section:
+  ```json
+  {"exercise_key":"interval_run","position":5,"target_reps":1,"target_distance_m":400,
+   "segments":[{"distance_m":100,"target_s_min":20,"target_s_max":22,"label":"0-100"},
+               {"distance_m":100,"target_s_min":15,"label":"100-200"}]}
+  ```
+  A fixed goal sets only `target_s_min`. Track reps (200s, 400s) use
+  `interval_run` with `target_distance_m`.
+
 ## Flow B — log the actuals → a session (the live capture)
 
 When the user reads/speaks what the athlete did ("set 2, interval 12s, 18 reps;
@@ -77,7 +92,7 @@ When the user reads/speaks what the athlete did ("set 2, interval 12s, 18 reps;
      push-ups  R1 22 · R2 20 · R3 18
      40-yd dash  5.4 s   (vs last 5.6 — faster!)
      planks felt hard (RPE 8)
-   Save? 
+   Save?
    ```
 5. Save: `echo '<session json>' | stk workout log --file -`. Session JSON:
    ```json
@@ -85,6 +100,23 @@ When the user reads/speaks what the athlete did ("set 2, interval 12s, 18 reps;
     "sets":[{"exercise_key":"pushups","round_number":1,"reps":22},
             {"exercise_key":"40yd_dash","distance_m":36.58,"time_seconds":5.4}]}
    ```
+
+### Broken-rep REALITY (SB-264)
+
+When the athlete reports per-section times for a broken rep ("21 / 14 / stopped,
+walked, 1:40 / 14"), put them in the set's `extra.segments` — same order as the
+template's segments; anomalies go in a segment `note`:
+```json
+{"exercise_key":"interval_run","distance_m":400,
+ "notes":"broken 400 — stopped in 200-300",
+ "extra":{"segments":[{"distance_m":100,"time_s":21,"label":"0-100"},
+                      {"distance_m":100,"time_s":14,"label":"100-200"},
+                      {"distance_m":100,"time_s":100,"label":"200-300","note":"stop, walk — 1:40"},
+                      {"distance_m":100,"time_s":14,"label":"300-400"}]}}
+```
+Parse "1:40" → 100 seconds. Afterwards show the debrief:
+`stk workout review <session-id>` renders goal vs reality per segment
+(hit / fast / missed) — lead the narration with what it shows.
 
 ## Flow C — progress (the coach's feedback loop)
 
