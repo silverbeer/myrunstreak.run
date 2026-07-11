@@ -106,3 +106,43 @@ export interface GoalHistoryItem extends GoalProgress {
   period: 'year' | 'month'
   hit: boolean
 }
+
+// ---- Run detail (SB-263) ----
+
+export interface RunSplit {
+  split_number: number
+  split_unit: string | null
+  cumulative_distance_km: number | null
+  cumulative_seconds: number | null
+  pace_min_per_km: number | null
+  heart_rate: number | null
+  elevation_gain_m: number | null
+  elevation_loss_m: number | null
+}
+
+export interface RunWeather {
+  temperature_celsius: number | null
+  weather_type: string | null
+  humidity_percent: number | null
+  wind_speed_kph: number | null
+}
+
+export interface RunVitals {
+  heart_rate_avg: number | null
+  heart_rate_min: number | null
+  heart_rate_max: number | null
+  cadence_avg: number | null
+}
+
+export interface RunDetail {
+  activity_id: string
+  date: string
+  distance_km: number
+  duration_seconds: number
+  avg_pace_min_per_km: number | null
+  weather: RunWeather
+  vitals: RunVitals
+  how_felt: string | null
+  notes: string | null
+  splits: RunSplit[]
+}

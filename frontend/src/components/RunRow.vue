@@ -1,5 +1,10 @@
 <template>
-  <div class="flex items-center justify-between py-3 px-4 hover:bg-gray-50 transition">
+  <component
+    :is="activityId ? RouterLink : 'div'"
+    :to="activityId ? `/runs/${activityId}` : undefined"
+    class="flex items-center justify-between py-3 px-4 hover:bg-gray-50 transition"
+    :class="activityId ? 'cursor-pointer' : ''"
+  >
     <div class="flex flex-col">
       <span class="text-sm font-semibold text-gray-900">{{ formatDate(date) }}</span>
       <span v-if="weather" class="text-xs text-gray-400 mt-0.5">{{ weather }}</span>
@@ -8,12 +13,15 @@
       <span class="font-medium">{{ formatDistanceWithUnit(distanceKm, unit) }}</span>
       <span>{{ duration }}</span>
       <span class="hidden sm:inline text-gray-500">{{ formatPace(paceMinPerKm, unit) }}</span>
+      <ChevronRight v-if="activityId" class="w-4 h-4 text-gray-300" />
     </div>
-  </div>
+  </component>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { RouterLink } from 'vue-router'
+import { ChevronRight } from 'lucide-vue-next'
 import { formatDate, formatDistanceWithUnit, formatPace, formatDuration } from '@/utils/format'
 import type { Unit } from '@/types/runs'
 
@@ -25,6 +33,8 @@ const props = defineProps<{
   paceMinPerKm: number | null
   unit: Unit
   weather?: string | null
+  /** When set, the row links to the run detail view (SB-263). */
+  activityId?: string
 }>()
 
 const duration = computed(() => {

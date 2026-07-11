@@ -43,6 +43,7 @@
           :duration-minutes="run.duration_minutes"
           :pace-min-per-km="run.avg_pace_min_per_km"
           :unit="unit"
+          :activity-id="run.activity_id"
         />
       </div>
     </div>
