@@ -33,3 +33,13 @@ module-name = "cli"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.pytest.ini_options]
+# Own config so stk's suite doesn't inherit the repo-root --cov addopts.
+testpaths = ["tests"]
+addopts = ""
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
