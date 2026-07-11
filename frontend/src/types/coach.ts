@@ -92,3 +92,32 @@ export interface WorkoutSession {
   notes: string | null
   sets: ExerciseSet[]
 }
+
+// ---- Coach home aggregate (SB-266) ----
+
+export interface CoachHomeAthlete {
+  athlete: Athlete
+  last_session_date: string | null
+  sessions_count: number
+  latest_template_id: string | null
+  latest_template_name: string | null
+  latest_template_created_at: string | null
+  needs_attention: boolean
+}
+
+export interface CoachHomeSession {
+  id: string
+  athlete_id: string
+  athlete_name: string
+  session_date: string
+  type: WorkoutType
+  template_id: string | null
+  template_name: string | null
+  how_felt: string | null
+}
+
+export interface CoachHome {
+  athletes: CoachHomeAthlete[]
+  recent_sessions: CoachHomeSession[]
+  pending_invites: number
+}
