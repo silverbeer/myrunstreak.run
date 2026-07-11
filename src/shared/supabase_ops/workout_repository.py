@@ -223,6 +223,21 @@ class WorkoutTemplatesRepository:
             t["items"] = by_template.get(t["id"], [])
         return templates
 
+    def list_for_athletes(self, athlete_ids: Sequence[UUID]) -> list[dict[str, Any]]:
+        """Template header rows (no items) across a coach's athletes, newest
+        first. Feeds the coach home aggregate (SB-266); callers hold the
+        athlete set, so access is enforced upstream."""
+        if not athlete_ids:
+            return []
+        result = (
+            self.supabase.table("workout_templates")
+            .select("*")
+            .in_("athlete_id", [str(a) for a in athlete_ids])
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return cast(list[dict[str, Any]], result.data)
+
     def get(
         self, user_id: UUID, template_id: UUID, athlete_id: UUID | None = None
     ) -> dict[str, Any] | None:
@@ -288,6 +303,23 @@ class WorkoutSessionsRepository:
         if date_to is not None:
             query = query.lte("session_date", date_to.isoformat())
         result = query.order("session_date", desc=True).limit(limit).execute()
+        return cast(list[dict[str, Any]], result.data)
+
+    def list_for_athletes(
+        self, athlete_ids: Sequence[UUID], limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """Recent sessions across a coach's athletes, newest first (no sets).
+        Feeds the coach home aggregate (SB-266); access enforced upstream."""
+        if not athlete_ids:
+            return []
+        result = (
+            self.supabase.table("workout_sessions")
+            .select("*")
+            .in_("athlete_id", [str(a) for a in athlete_ids])
+            .order("session_date", desc=True)
+            .limit(limit)
+            .execute()
+        )
         return cast(list[dict[str, Any]], result.data)
 
     def get(
