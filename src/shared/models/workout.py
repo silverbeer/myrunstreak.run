@@ -139,6 +139,19 @@ class ExerciseUpdate(BaseModel):
 # --------------------------------------------------------------------------- #
 # Templates (the coach's prescribed plan)
 # --------------------------------------------------------------------------- #
+class SegmentTarget(BaseModel):
+    """Goal for one segment of a broken rep (SB-264).
+
+    E.g. a 400m broken into 100m sections: ``{distance_m: 100, target_s_min: 20,
+    target_s_max: 22}``. A fixed goal sets only ``target_s_min``.
+    """
+
+    distance_m: float = Field(gt=0)
+    target_s_min: float | None = Field(default=None, ge=0)
+    target_s_max: float | None = Field(default=None, ge=0)
+    label: str | None = None  # e.g. "0-100"
+
+
 class TemplateItemCreate(BaseModel):
     """One prescribed exercise within a template."""
 
@@ -147,9 +160,14 @@ class TemplateItemCreate(BaseModel):
     position: int = 0
     target_reps: int | None = Field(default=None, ge=0)
     target_duration_seconds: float | None = Field(default=None, ge=0)
+    # Upper bound when the goal is a range ("20-22 sec"); the field above is the
+    # lower bound (SB-264).
+    target_duration_max_seconds: float | None = Field(default=None, ge=0)
     target_load_kg: float | None = Field(default=None, ge=0)
     target_distance_m: float | None = Field(default=None, ge=0)
     rest_seconds: float | None = Field(default=None, ge=0)
+    # Per-segment goals for a broken rep (SB-264); None for ordinary items.
+    segments: list[SegmentTarget] | None = None
     variant: str | None = None
     notes: str | None = None
 
