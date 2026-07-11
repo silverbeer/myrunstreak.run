@@ -17,29 +17,24 @@ def _write_config(tmp_path: Path, cfg: dict) -> Path:
     return path
 
 
-def test_resolve_role_builds_op_ref(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_resolve_role_builds_op_ref_per_env(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     cfg = {
-        "env": "prod",
         "op_vault": "Personal",
         "roles": {"admin": {"email": "me@example.com", "op_field": "admin_password"}},
     }
     monkeypatch.setattr(auth, "CONFIG_FILE", _write_config(tmp_path, cfg))
-    email, op_ref = auth._resolve_role("admin")
+    email, op_ref = auth._resolve_role("admin", "prod")
     assert email == "me@example.com"
     assert op_ref == "op://Personal/stk-prod/admin_password"
-
-
-def test_resolve_role_env_defaults_to_local(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    cfg = {"roles": {"admin": {"email": "me@example.com", "op_field": "admin_password"}}}
-    monkeypatch.setattr(auth, "CONFIG_FILE", _write_config(tmp_path, cfg))
-    _, op_ref = auth._resolve_role("admin")
-    assert op_ref == "op://Personal/stk-local/admin_password"  # env->local, vault->Personal
+    # Same role, different env -> different item.
+    _, local_ref = auth._resolve_role("admin", "local")
+    assert local_ref == "op://Personal/stk-local/admin_password"
 
 
 def test_resolve_role_unknown_exits(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(auth, "CONFIG_FILE", _write_config(tmp_path, {"roles": {}}))
     with pytest.raises(typer.Exit):
-        auth._resolve_role("admin")
+        auth._resolve_role("admin", "prod")
 
 
 def test_op_read_missing_cli_exits(monkeypatch) -> None:  # type: ignore[no-untyped-def]
