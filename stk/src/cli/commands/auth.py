@@ -1,7 +1,9 @@
 """Auth commands for stk CLI."""
 
 import json
+import shutil
 import socket
+import subprocess
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -15,7 +17,7 @@ from rich.panel import Panel
 
 from cli import display
 from cli import session as session_mod
-from cli.api import get_api_url, post_unauth
+from cli.api import DEFAULT_API_URL, get_api_url, post_unauth
 
 app = typer.Typer(help="Authentication commands")
 console = Console()
@@ -25,6 +27,9 @@ CONFIG_DIR = Path.home() / ".config" / "stk"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 TIMEOUT = 30.0
+
+# Env -> API base. $STK_API_URL still overrides both for one-off dev runs.
+_ENV_API_URLS = {"prod": DEFAULT_API_URL, "local": "http://localhost:8000"}
 
 
 def ensure_config_dir() -> None:
@@ -46,6 +51,57 @@ def get_config() -> dict[str, str]:
     with open(CONFIG_FILE) as f:
         data: dict[str, str] = json.load(f)
         return data
+
+
+def _load_config_any() -> dict[str, Any]:
+    """Load the stk config as raw JSON (supports nested role maps)."""
+    if not CONFIG_FILE.exists():
+        return {}
+    with open(CONFIG_FILE) as f:
+        data: dict[str, Any] = json.load(f)
+        return data
+
+
+def _op_read(ref: str) -> str:
+    """Read a secret from 1Password via the ``op`` CLI (Touch ID). Exits on failure."""
+    if shutil.which("op") is None:
+        console.print(
+            "[red]1Password CLI 'op' not found.[/red] "
+            "Install: https://developer.1password.com/docs/cli/"
+        )
+        raise typer.Exit(1)
+    try:
+        result = subprocess.run(
+            ["op", "read", ref], capture_output=True, text=True, timeout=60, check=True
+        )
+    except subprocess.CalledProcessError as exc:
+        console.print(f"[red]1Password read failed[/red] for {ref}\n{exc.stderr.strip()}")
+        raise typer.Exit(1) from exc
+    except subprocess.TimeoutExpired as exc:
+        console.print("[red]1Password read timed out[/red] (is the app unlocked?)")
+        raise typer.Exit(1) from exc
+    return result.stdout.strip()
+
+
+def _resolve_role(role: str, env: str) -> tuple[str, str]:
+    """Return ``(email, op_ref)`` for a configured login role in ``env``.
+
+    Reads ``roles.<role>`` = ``{email, op_field}`` from the stk config; the op
+    reference is built from ``env`` (stk-local / stk-prod), matching the shared
+    1Password convention ``op://<vault>/stk-<env>/<field>``.
+    """
+    cfg = _load_config_any()
+    entry = cfg.get("roles", {}).get(role)
+    if not entry:
+        console.print(f"[red]Role '{role}' not configured.[/red] Add it to {CONFIG_FILE}:")
+        console.print(
+            f'  "roles": {{ "{role}": {{ "email": "you@example.com", '
+            f'"op_field": "{role}_password" }} }}'
+        )
+        raise typer.Exit(1)
+    vault = cfg.get("op_vault", "Personal")
+    op_ref = f"op://{vault}/stk-{env}/{entry['op_field']}"
+    return entry["email"], op_ref
 
 
 class OAuthCallbackHandler(BaseHTTPRequestHandler):
@@ -129,18 +185,44 @@ def is_port_available(port: int) -> bool:
 
 @app.command()
 def login(
+    role: str = typer.Argument(
+        None, help="Configured role — pulls password from 1Password (e.g. 'admin')."
+    ),
     email: str = typer.Option(None, "--email", "-e", help="Account email"),
+    env: str = typer.Option("prod", "--env", help="Target environment: prod|local."),
+    local: bool = typer.Option(False, "--local", help="Shortcut for --env local."),
 ) -> None:
     """Log in to MyRunStreak (email + password).
 
-    Creates the app session the CLI needs for plan, metrics, stats, and sync.
-    To connect your SmashRun source for run-sync, use 'stk auth connect'.
+    Targets prod by default; pass --local (or --env local) for the local stack.
+    The choice is persisted, so 'stk plan', 'stk sync', etc. use the same API.
+    With a ROLE, the email comes from config and the password from 1Password
+    (Touch ID) for that env — e.g. 'stk auth login admin --prod'. Without a role,
+    prompts for email + password.
     """
-    if not email:
-        email = typer.prompt("Email")
-    password = typer.prompt("Password", hide_input=True)
+    if local:
+        env = "local"
+    if env not in _ENV_API_URLS:
+        console.print(f"[red]Invalid --env '{env}'[/red] — use prod or local.")
+        raise typer.Exit(2)
 
-    display.display_sync_progress("Logging in...")
+    # Persist the target so every later command (and post_unauth below) uses it.
+    # $STK_API_URL still overrides for one-off dev runs.
+    cfg = get_config()
+    cfg["env"] = env
+    cfg["api_url"] = _ENV_API_URLS[env]
+    save_config(cfg)
+
+    if role:
+        email, op_ref = _resolve_role(role, env)
+        display.display_sync_progress(f"Reading {role} password from 1Password ({env})...")
+        password = _op_read(op_ref)
+    else:
+        if not email:
+            email = typer.prompt("Email")
+        password = typer.prompt("Password", hide_input=True)
+
+    display.display_sync_progress(f"Logging in ({env})...")
     # post_unauth prints a useful error and exits on failure (e.g. bad password).
     data = post_unauth("auth/login", {"email": email, "password": password})
 

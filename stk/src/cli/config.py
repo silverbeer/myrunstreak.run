@@ -43,3 +43,9 @@ def clear_active_athlete() -> None:
     data = _load()
     data.pop("active_athlete", None)
     _save(data)
+
+
+def get_api_url_override() -> str | None:
+    """Persisted API base set by ``stk auth login --env`` (None if unset)."""
+    url = _load().get("api_url")
+    return url if isinstance(url, str) else None

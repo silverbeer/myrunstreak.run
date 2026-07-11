@@ -21,8 +21,15 @@ TIMEOUT = 30.0
 
 
 def get_api_url() -> str:
-    """Base URL for the myrunstreak API. Override with $STK_API_URL for dev."""
-    return os.getenv("STK_API_URL", os.getenv("API_BASE_URL", DEFAULT_API_URL))
+    """Base URL for the myrunstreak API.
+
+    Precedence: ``$STK_API_URL`` / ``$API_BASE_URL`` (one-off dev override) →
+    the env persisted by ``stk auth login --env`` → prod default.
+    """
+    override = os.getenv("STK_API_URL") or os.getenv("API_BASE_URL")
+    if override:
+        return override
+    return config_mod.get_api_url_override() or DEFAULT_API_URL
 
 
 # ---------------------------------------------------------------------------
