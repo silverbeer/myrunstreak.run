@@ -52,6 +52,16 @@ export interface PaginatedRun {
   distance_km: number
   duration_minutes: number
   avg_pace_min_per_km: number | null
+  weather: string | null
+  temperature_celsius: number | null
+}
+
+/** GET /runs filter params (SB-268 history filters). */
+export interface RunFilters {
+  date_from?: string
+  date_to?: string
+  distance_min?: number
+  distance_max?: number
 }
 
 export interface RecentRunsResponse {
