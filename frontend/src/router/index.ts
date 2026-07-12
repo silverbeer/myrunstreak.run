@@ -74,6 +74,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/coach/:athleteId/print/:templateId',
+      name: 'workout-print',
+      component: () => import('@/views/WorkoutPrintView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/coach/:athleteId/build',
       name: 'workout-builder',
       component: () => import('@/views/WorkoutBuilderView.vue'),

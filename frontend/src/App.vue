@@ -17,6 +17,6 @@ import AppFooter from './components/AppFooter.vue'
 const route = useRoute()
 // Hide header/footer on login and auth callback pages
 const showChrome = computed(() =>
-  !['login', 'auth-callback'].includes(route.name as string)
+  !['login', 'auth-callback', 'workout-print'].includes(route.name as string)
 )
 </script>

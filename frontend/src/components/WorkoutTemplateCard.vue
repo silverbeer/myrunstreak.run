@@ -25,7 +25,7 @@
         >
           <ClipboardCheck class="w-4 h-4" />
         </button>
-        <button type="button" class="act" title="Print" aria-label="Print workout" @click="print">
+        <button type="button" class="act" title="Print" aria-label="Print workout" @click="$emit('print')">
           <Printer class="w-4 h-4" />
         </button>
         <button type="button" class="act" title="Edit" aria-label="Edit workout" @click="$emit('edit')">
@@ -92,7 +92,7 @@ const props = defineProps<{
   exercises?: Exercise[]
 }>()
 
-defineEmits<{ (e: 'edit'): void; (e: 'delete'): void; (e: 'log'): void }>()
+defineEmits<{ (e: 'edit'): void; (e: 'delete'): void; (e: 'log'): void; (e: 'print'): void }>()
 
 const byKey = computed<Record<string, Exercise>>(() => {
   const map: Record<string, Exercise> = {}
@@ -139,23 +139,6 @@ const pills = (it: TemplateItem): Pill[] => {
 
 const rootEl = ref<HTMLElement | null>(null)
 
-// Print just this card on its own page: mark it + <body>, print, then clean up.
-const print = (): void => {
-  const el = rootEl.value
-  if (!el) {
-    window.print()
-    return
-  }
-  document.body.classList.add('printing-card')
-  el.classList.add('print-target')
-  const cleanup = (): void => {
-    document.body.classList.remove('printing-card')
-    el.classList.remove('print-target')
-    window.removeEventListener('afterprint', cleanup)
-  }
-  window.addEventListener('afterprint', cleanup)
-  window.print()
-}
 </script>
 
 <style scoped>

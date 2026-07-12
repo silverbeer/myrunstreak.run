@@ -89,6 +89,14 @@ export interface WorkoutTemplateInput {
   items: TemplateItemInput[]
 }
 
+/** Per-segment goal of a broken rep (SB-264). */
+export interface SegmentTarget {
+  distance_m: number
+  target_s_min: number | null
+  target_s_max: number | null
+  label: string | null
+}
+
 export interface TemplateItem {
   id: string
   exercise_key: string
@@ -96,9 +104,11 @@ export interface TemplateItem {
   position: number
   target_reps: number | null
   target_duration_seconds: number | null
+  target_duration_max_seconds?: number | null
   target_load_kg: number | null
   target_distance_m: number | null
   rest_seconds: number | null
+  segments?: SegmentTarget[] | null
   variant: string | null
   notes: string | null
 }
