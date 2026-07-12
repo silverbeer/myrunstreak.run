@@ -159,6 +159,46 @@ async def list_runs(
     )
 
 
+@cached(ttl=60, key_prefix="runs:summary")
+async def _summary(user_id: UUID, **filters: Any) -> dict[str, Any]:
+    repo = RunsRepository(get_supabase_client())
+    summary = repo.summarize_runs(user_id, **{k: v for k, v in filters.items() if v is not None})
+    overall = repo.summarize_runs(user_id)
+    summary["overall_avg_pace_min_per_km"] = overall["avg_pace_min_per_km"]
+    return summary
+
+
+@router.get("/summary")
+async def runs_summary(
+    user_id: UUID = Depends(authenticate_request),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    distance_min: float | None = Query(None, ge=0),
+    distance_max: float | None = Query(None, ge=0),
+    weather_type: str | None = Query(None),
+    temp_min: float | None = Query(None),
+    temp_max: float | None = Query(None),
+    pace_min: float | None = Query(None, ge=0),
+    pace_max: float | None = Query(None, ge=0),
+    on_this_day: str | None = Query(None, pattern=r"^\d{2}-\d{2}$"),
+) -> dict[str, Any]:
+    """Aggregate of the filtered set vs overall — the conditions-impact readout
+    ("runs above 75% humidity: 22s/mi slower"). SB-269."""
+    return await _summary(
+        user_id,
+        date_from=date_from,
+        date_to=date_to,
+        distance_min=distance_min,
+        distance_max=distance_max,
+        weather_type=weather_type,
+        temp_min=temp_min,
+        temp_max=temp_max,
+        pace_min=pace_min,
+        pace_max=pace_max,
+        on_this_day=on_this_day,
+    )
+
+
 # NOTE: registered after /recent and "" so the static paths keep priority.
 @router.get("/{activity_id}")
 async def get_run_detail(

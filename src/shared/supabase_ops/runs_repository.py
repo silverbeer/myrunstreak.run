@@ -202,6 +202,39 @@ class RunsRepository:
         result = query.execute()
         return cast(int, result.count or 0)
 
+    def summarize_runs(self, user_id: UUID, **filters: Any) -> dict[str, Any]:
+        """Aggregate the FULL filtered set (SB-269 conditions impact): count,
+        total km, and distance-weighted avg pace. Fetches only two columns."""
+        query = (
+            self.supabase.table("runs")
+            .select("distance_km,average_pace_min_per_km")
+            .eq("user_id", str(user_id))
+        )
+        query = self._apply_run_filters(
+            query,
+            filters.pop("date_from", None),
+            filters.pop("date_to", None),
+            filters.pop("distance_min", None),
+            filters.pop("distance_max", None),
+            **filters,
+        )
+        rows = cast(list[dict[str, Any]], query.limit(10000).execute().data)
+        total_km = 0.0
+        weighted = 0.0
+        paced_km = 0.0
+        for r in rows:
+            km = float(r["distance_km"] or 0)
+            total_km += km
+            pace = r.get("average_pace_min_per_km")
+            if pace is not None and km > 0:
+                weighted += float(pace) * km
+                paced_km += km
+        return {
+            "count": len(rows),
+            "total_km": round(total_km, 2),
+            "avg_pace_min_per_km": round(weighted / paced_km, 4) if paced_km else None,
+        }
+
     def get_runs_by_date_range(
         self, user_id: UUID, start_date: date, end_date: date
     ) -> list[dict[str, Any]]:

@@ -10,6 +10,38 @@
       <SyncButton mode="full" @synced="reload" />
     </div>
 
+    <form class="mb-3" @submit.prevent="submitSearch">
+      <div class="relative">
+        <input
+          v-model="searchText"
+          type="search"
+          placeholder='Try "rainy 5 milers last summer" or "hot runs under 9:30"…'
+          class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-200"
+        />
+        <button
+          type="submit"
+          class="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-brand-600 px-2 py-1"
+        >
+          Search
+        </button>
+      </div>
+      <div v-if="nlChips.length || nlIgnored.length" class="flex flex-wrap items-center gap-1.5 mt-2">
+        <span
+          v-for="chip in nlChips"
+          :key="chip"
+          class="px-2.5 py-0.5 rounded-full bg-brand-50 border border-brand-200 text-brand-700 text-xs font-medium"
+        >
+          {{ chip }}
+        </span>
+        <span v-if="nlIgnored.length" class="text-xs text-gray-400">
+          (ignored: {{ nlIgnored.join(', ') }})
+        </span>
+        <button type="button" class="text-xs text-gray-500 underline ml-1" @click="clearSearch">
+          clear
+        </button>
+      </div>
+    </form>
+
     <div class="flex flex-wrap items-center gap-2 mb-3">
       <button
         v-for="c in collections"
@@ -43,6 +75,10 @@
         {{ d.label }}
       </button>
     </div>
+
+    <p v-if="impact" class="text-sm mb-4 px-1" :class="impact.slower ? 'text-amber-700' : 'text-green-700'">
+      {{ impact.text }}
+    </p>
 
     <div v-if="loading && runs.length === 0" class="space-y-2">
       <div v-for="i in 5" :key="i" class="bg-white rounded-lg border border-gray-100 h-14 animate-pulse" />
@@ -104,7 +140,9 @@ import RunRow from '@/components/RunRow.vue'
 import SyncButton from '@/components/SyncButton.vue'
 import { useRuns } from '@/composables/useRuns'
 import { useUserPreferences } from '@/composables/useUserPreferences'
+import { apiCall } from '@/config/api'
 import { formatDistanceWithUnit, formatPace } from '@/utils/format'
+import { parseRunQuery } from '@/utils/runQuery'
 import type { PaginatedRun, RunFilters } from '@/types/runs'
 
 const KM_PER_MI = 1.609344
@@ -170,9 +208,78 @@ const selectCollection = (key: CollectionKey) => {
   void applyFilters()
 }
 
+// ---- natural-language search (SB-269 PR2) ----
+const searchText = ref('')
+const nlFilters = ref<RunFilters>({})
+const nlChips = ref<string[]>([])
+const nlIgnored = ref<string[]>([])
+
+const submitSearch = () => {
+  const parsed = parseRunQuery(searchText.value, unit.value)
+  nlFilters.value = parsed.filters
+  nlChips.value = parsed.chips
+  nlIgnored.value = parsed.ignored
+  void applyFilters()
+}
+
+const clearSearch = () => {
+  searchText.value = ''
+  nlFilters.value = {}
+  nlChips.value = []
+  nlIgnored.value = []
+  void applyFilters()
+}
+
 const isFiltered = computed(
-  () => period.value !== 'all' || distance.value !== 'all' || collection.value !== null,
+  () =>
+    period.value !== 'all' ||
+    distance.value !== 'all' ||
+    collection.value !== null ||
+    nlChips.value.length > 0,
 )
+
+// ---- conditions impact: filtered set vs overall (SB-269 PR2) ----
+interface RunsSummary {
+  count: number
+  total_km: number
+  avg_pace_min_per_km: number | null
+  overall_avg_pace_min_per_km: number | null
+}
+
+const summary = ref<RunsSummary | null>(null)
+
+const loadSummary = async (f: RunFilters) => {
+  if (!isFiltered.value) {
+    summary.value = null
+    return
+  }
+  try {
+    const params = new URLSearchParams()
+    for (const [k, v] of Object.entries(f)) {
+      if (v !== undefined && v !== null && k !== 'sort' && k !== 'order') params.set(k, String(v))
+    }
+    summary.value = await apiCall<RunsSummary>(`/runs/summary?${params.toString()}`)
+  } catch {
+    summary.value = null
+  }
+}
+
+const impact = computed(() => {
+  const s = summary.value
+  if (!s || !isFiltered.value || s.avg_pace_min_per_km == null || s.overall_avg_pace_min_per_km == null)
+    return null
+  const deltaMinPerKm = s.avg_pace_min_per_km - s.overall_avg_pace_min_per_km
+  const perUnit = unit.value === 'mi' ? deltaMinPerKm * KM_PER_MI : deltaMinPerKm
+  const secs = Math.round(Math.abs(perUnit) * 60)
+  const slower = deltaMinPerKm > 0
+  if (secs < 2) {
+    return { slower: false, text: `${s.count} runs · avg ${formatPace(s.avg_pace_min_per_km, unit.value)} — right at your overall pace` }
+  }
+  return {
+    slower,
+    text: `${s.count} runs · avg ${formatPace(s.avg_pace_min_per_km, unit.value)} — ${secs}s/${unit.value} ${slower ? 'slower' : 'faster'} than your overall ${formatPace(s.overall_avg_pace_min_per_km, unit.value)}`,
+  }
+})
 
 const chipClass = (active: boolean) =>
   [
@@ -200,10 +307,14 @@ const buildFilters = (): RunFilters => {
   }
   if (distance.value === 'long') f.distance_min = toKm(5)
   if (collection.value) Object.assign(f, COLLECTION_PRESETS[collection.value])
+  Object.assign(f, nlFilters.value) // typed search wins
   return f
 }
 
-const applyFilters = () => setFilters(buildFilters())
+const applyFilters = async () => {
+  const f = buildFilters()
+  await Promise.all([setFilters(f), loadSummary(f)])
+}
 const selectPeriod = (key: PeriodKey) => {
   period.value = key
   void applyFilters()
