@@ -60,6 +60,7 @@
           :exercises="exercises"
           @edit="router.push(`/coach/${athleteId}/build/${t.id}`)"
           @log="router.push(`/coach/${athleteId}/log/${t.id}`)"
+          @print="router.push(`/coach/${athleteId}/print/${t.id}`)"
           @delete="onDeleteTemplate(t.id)"
         />
       </div>
