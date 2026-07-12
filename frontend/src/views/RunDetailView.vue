@@ -14,7 +14,10 @@
       <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mt-4">
         <div class="flex items-start justify-between flex-wrap gap-3">
           <div>
-            <h1 class="text-xl font-bold text-gray-900">{{ formatDate(run.date) }}</h1>
+            <h1 class="text-xl font-bold text-gray-900">
+              {{ formatDate(run.date) }}
+              <span class="text-base font-normal text-gray-500"> · {{ startTime }}</span>
+            </h1>
             <div
               v-if="weatherText"
               class="inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full border text-xs"
@@ -111,6 +114,15 @@ const KM_PER_MI = 1.609344
 const route = useRoute()
 const { unit } = useUserPreferences()
 const { run, loading, error, load } = useRunDetail(String(route.params.activityId))
+
+// Start time (browser-local, matching formatDate) + early-bird nod (SB-270).
+const startTime = computed(() => {
+  if (!run.value) return ''
+  const d = new Date(run.value.date)
+  if (Number.isNaN(d.getTime())) return ''
+  const label = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return d.getHours() < 7 ? `🌅 ${label}` : label
+})
 
 // ---- weather (the "hot + humid" story) ----
 const WEATHER_ICONS: Record<string, unknown> = {

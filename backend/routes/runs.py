@@ -70,6 +70,8 @@ async def _list_runs(
     pace_min: float | None = None,
     pace_max: float | None = None,
     on_this_day: str | None = None,
+    hour_min: int | None = None,
+    hour_max: int | None = None,
     sort: str = "date",
     order: str = "desc",
 ) -> dict[str, Any]:
@@ -86,6 +88,8 @@ async def _list_runs(
         "pace_min": pace_min,
         "pace_max": pace_max,
         "on_this_day": on_this_day,
+        "hour_min": hour_min,
+        "hour_max": hour_max,
     }
     sort_by = _SORT_COLUMNS.get(sort, "start_date_time_local")
     sort_desc = order != "asc"
@@ -137,6 +141,8 @@ async def list_runs(
     on_this_day: str | None = Query(
         None, pattern=r"^\d{2}-\d{2}$", description="MM-DD across all years (SB-269)"
     ),
+    hour_min: int | None = Query(None, ge=0, le=23, description="Earliest start hour (SB-270)"),
+    hour_max: int | None = Query(None, ge=0, le=23, description="Latest start hour (SB-270)"),
     sort: str = Query("date", pattern="^(date|distance|pace|temperature)$"),
     order: str = Query("desc", pattern="^(asc|desc)$"),
 ) -> dict[str, Any]:
@@ -154,6 +160,8 @@ async def list_runs(
         pace_min,
         pace_max,
         on_this_day,
+        hour_min,
+        hour_max,
         sort,
         order,
     )
@@ -181,6 +189,8 @@ async def runs_summary(
     pace_min: float | None = Query(None, ge=0),
     pace_max: float | None = Query(None, ge=0),
     on_this_day: str | None = Query(None, pattern=r"^\d{2}-\d{2}$"),
+    hour_min: int | None = Query(None, ge=0, le=23),
+    hour_max: int | None = Query(None, ge=0, le=23),
 ) -> dict[str, Any]:
     """Aggregate of the filtered set vs overall — the conditions-impact readout
     ("runs above 75% humidity: 22s/mi slower"). SB-269."""
@@ -196,6 +206,8 @@ async def runs_summary(
         pace_min=pace_min,
         pace_max=pace_max,
         on_this_day=on_this_day,
+        hour_min=hour_min,
+        hour_max=hour_max,
     )
 
 

@@ -107,6 +107,8 @@ class RunsRepository:
         pace_min: float | None = None,
         pace_max: float | None = None,
         on_this_day: str | None = None,
+        hour_min: int | None = None,
+        hour_max: int | None = None,
     ) -> Any:
         """Apply optional filters to a runs query (SB-184 date/distance;
         SB-269 weather/temp/pace + on-this-day)."""
@@ -128,6 +130,10 @@ class RunsRepository:
             query = query.gte("average_pace_min_per_km", pace_min)
         if pace_max is not None:
             query = query.lte("average_pace_min_per_km", pace_max)
+        if hour_min is not None:
+            query = query.gte("start_hour", hour_min)
+        if hour_max is not None:
+            query = query.lte("start_hour", hour_max)
         if on_this_day is not None:
             # "MM-DD" across every plausible streak year -> exact date list, so
             # count + pagination keep working (no post-filtering).

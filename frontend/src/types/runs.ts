@@ -68,6 +68,8 @@ export interface RunFilters {
   pace_min?: number
   pace_max?: number
   on_this_day?: string
+  hour_min?: number
+  hour_max?: number
   sort?: 'date' | 'distance' | 'pace' | 'temperature'
   order?: 'asc' | 'desc'
 }

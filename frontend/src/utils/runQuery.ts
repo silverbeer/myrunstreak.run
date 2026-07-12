@@ -35,6 +35,19 @@ const TEMP_WORDS: Record<string, Partial<RunFilters>> = {
   freezing: { temp_max: 0 },
 }
 
+// Time-of-day words -> start-hour bands (SB-270). "early" = the early-bird
+// badge threshold (<7am).
+const TIME_OF_DAY: Record<string, Partial<RunFilters>> = {
+  early: { hour_max: 6 },
+  dawn: { hour_max: 6 },
+  morning: { hour_max: 9 },
+  midday: { hour_min: 10, hour_max: 15 },
+  lunch: { hour_min: 11, hour_max: 13 },
+  afternoon: { hour_min: 12, hour_max: 17 },
+  evening: { hour_min: 16 },
+  night: { hour_min: 20 },
+}
+
 const SORT_WORDS: Record<string, Pick<RunFilters, 'sort' | 'order'>> = {
   fastest: { sort: 'pace', order: 'asc' },
   slowest: { sort: 'pace', order: 'desc' },
@@ -173,6 +186,14 @@ export function parseRunQuery(
     // --- sort words ---
     if (tok in SORT_WORDS) {
       Object.assign(filters, SORT_WORDS[tok])
+      chips.push(tok)
+      i += 1
+      continue
+    }
+
+    // --- time of day ---
+    if (tok in TIME_OF_DAY) {
+      Object.assign(filters, TIME_OF_DAY[tok])
       chips.push(tok)
       i += 1
       continue

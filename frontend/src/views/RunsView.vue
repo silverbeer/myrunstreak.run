@@ -175,7 +175,7 @@ const distanceChips = computed<{ key: DistanceKey; label: string }[]>(() => {
 })
 
 // ---- collections: curated filter+sort presets (SB-269) ----
-type CollectionKey = 'today' | 'hottest' | 'coldest' | 'rainy' | 'fastest' | 'longest'
+type CollectionKey = 'today' | 'hottest' | 'coldest' | 'rainy' | 'fastest' | 'longest' | 'early'
 
 const collection = ref<CollectionKey | null>(null)
 
@@ -192,6 +192,7 @@ const COLLECTION_PRESETS: Record<CollectionKey, RunFilters> = {
   // Ignore sub-mile stub runs when hunting PRs.
   fastest: { sort: 'pace', order: 'asc', distance_min: 1.61 },
   longest: { sort: 'distance', order: 'desc' },
+  early: { hour_max: 6, sort: 'date', order: 'desc' },
 }
 
 const collections: { key: CollectionKey; label: string }[] = [
@@ -201,6 +202,7 @@ const collections: { key: CollectionKey; label: string }[] = [
   { key: 'hottest', label: '🔥 Hottest' },
   { key: 'coldest', label: '❄️ Coldest' },
   { key: 'rainy', label: '🌧 Rainy' },
+  { key: 'early', label: '🌅 Early bird' },
 ]
 
 const selectCollection = (key: CollectionKey) => {
@@ -369,6 +371,13 @@ const maxKm = computed(() => Math.max(...runs.value.map((r) => r.distance_km), 0
 
 const weatherText = (run: PaginatedRun): string | null => {
   const parts: string[] = []
+  const started = new Date(run.date)
+  if (!Number.isNaN(started.getTime())) {
+    const early = started.getHours() < 7 ? '🌅 ' : ''
+    parts.push(
+      `${early}${started.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`,
+    )
+  }
   if (run.weather) parts.push(run.weather)
   if (run.temperature_celsius != null) {
     parts.push(

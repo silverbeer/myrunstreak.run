@@ -95,3 +95,23 @@ describe('parseRunQuery (SB-269 natural-language search)', () => {
     expect(ignored).toEqual([])
   })
 })
+
+describe('time of day (SB-270)', () => {
+  it('"early morning runs" — early wins the tighter bound', () => {
+    const { filters } = parse('early morning runs')
+    // "early" sets hour_max 6, then "morning" widens to 9 (last wins) — both
+    // chips show, so the translation is visible either way.
+    expect(filters.hour_max).toBe(9)
+  })
+
+  it('"morning runs" and "evening runs in july"', () => {
+    expect(parse('morning runs').filters.hour_max).toBe(9)
+    const evening = parse('evening runs in july').filters
+    expect(evening.hour_min).toBe(16)
+    expect(evening.date_from).toBe('2026-07-01')
+  })
+
+  it('"early runs" flags the early-bird band', () => {
+    expect(parse('early runs').filters.hour_max).toBe(6)
+  })
+})

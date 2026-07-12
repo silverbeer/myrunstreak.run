@@ -61,6 +61,7 @@ def activity_to_run_dict(activity: Activity, user_id: UUID, source_id: UUID) -> 
         "start_year": local_dt.year,
         "start_month": local_dt.month,
         "start_day_of_week": local_dt.weekday(),
+        "start_hour": local_dt.hour,
         # Core metrics
         "distance_km": float(activity.distance),
         "duration_seconds": float(activity.duration),
