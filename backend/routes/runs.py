@@ -46,6 +46,15 @@ async def get_recent_runs(
     return await _recent(user_id, limit)
 
 
+# Whitelist for the sort param -> actual column (SB-269).
+_SORT_COLUMNS = {
+    "date": "start_date_time_local",
+    "distance": "distance_km",
+    "pace": "average_pace_min_per_km",
+    "temperature": "temperature_celsius",
+}
+
+
 @cached(ttl=60, key_prefix="runs:list")
 async def _list_runs(
     user_id: UUID,
@@ -55,6 +64,14 @@ async def _list_runs(
     date_to: date | None = None,
     distance_min: float | None = None,
     distance_max: float | None = None,
+    weather_type: str | None = None,
+    temp_min: float | None = None,
+    temp_max: float | None = None,
+    pace_min: float | None = None,
+    pace_max: float | None = None,
+    on_this_day: str | None = None,
+    sort: str = "date",
+    order: str = "desc",
 ) -> dict[str, Any]:
     supabase = get_supabase_client()
     runs_repo = RunsRepository(supabase)
@@ -63,8 +80,18 @@ async def _list_runs(
         "date_to": date_to,
         "distance_min": distance_min,
         "distance_max": distance_max,
+        "weather_type": weather_type,
+        "temp_min": temp_min,
+        "temp_max": temp_max,
+        "pace_min": pace_min,
+        "pace_max": pace_max,
+        "on_this_day": on_this_day,
     }
-    runs_data = runs_repo.get_runs_by_user(user_id, limit=limit, offset=offset, **filters)
+    sort_by = _SORT_COLUMNS.get(sort, "start_date_time_local")
+    sort_desc = order != "asc"
+    runs_data = runs_repo.get_runs_by_user(
+        user_id, limit=limit, offset=offset, sort_by=sort_by, sort_desc=sort_desc, **filters
+    )
     total = runs_repo.count_runs_by_user(user_id, **filters)
 
     runs = [
@@ -102,8 +129,34 @@ async def list_runs(
     date_to: date | None = Query(None, description="Runs on/before this date (inclusive)"),
     distance_min: float | None = Query(None, ge=0, description="Min distance in km"),
     distance_max: float | None = Query(None, ge=0, description="Max distance in km"),
+    weather_type: str | None = Query(None, description="Exact weather condition"),
+    temp_min: float | None = Query(None, description="Min temperature (C)"),
+    temp_max: float | None = Query(None, description="Max temperature (C)"),
+    pace_min: float | None = Query(None, ge=0, description="Min pace (min/km) — slower bound"),
+    pace_max: float | None = Query(None, ge=0, description="Max pace (min/km) — faster bound"),
+    on_this_day: str | None = Query(
+        None, pattern=r"^\d{2}-\d{2}$", description="MM-DD across all years (SB-269)"
+    ),
+    sort: str = Query("date", pattern="^(date|distance|pace|temperature)$"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
 ) -> dict[str, Any]:
-    return await _list_runs(user_id, offset, limit, date_from, date_to, distance_min, distance_max)
+    return await _list_runs(
+        user_id,
+        offset,
+        limit,
+        date_from,
+        date_to,
+        distance_min,
+        distance_max,
+        weather_type,
+        temp_min,
+        temp_max,
+        pace_min,
+        pace_max,
+        on_this_day,
+        sort,
+        order,
+    )
 
 
 # NOTE: registered after /recent and "" so the static paths keep priority.
