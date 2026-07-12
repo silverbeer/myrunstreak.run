@@ -77,3 +77,9 @@ docs/PLANNING.md
 
 # Playwright CLI
 .playwright-cli/
+
+# qe-plugin state
+.qe/coverage_history.jsonl
+coverage.json
+backend/coverage.json
+frontend/coverage/

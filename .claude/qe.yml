@@ -1,0 +1,36 @@
+# QE plugin config (silverbeer/qe-plugin) — read by /qe and /generate-tests
+# Top level = the root suite (src/ core lib). All commands run from the repo root.
+stack: python
+test_cmd: "uv run pytest tests/ -q"
+coverage_cmd: "uv run pytest tests/ -q --cov=src --cov-report=json"
+coverage_report: "coverage.json"
+coverage_format: python-json
+
+# Floors mirror CI (.github/workflows/test.yml --cov-fail-under values).
+goals:
+  coverage_total_min: 60
+  coverage_no_regression: true
+  coverage_target: 75
+
+subprojects:
+  backend:
+    stack: python
+    # Backend tests import `backend.*` — commands MUST run from the repo root.
+    test_cmd: "uv run --project backend python -m pytest backend/tests/ -q"
+    coverage_cmd: "uv run --project backend python -m pytest backend/tests/ -q --cov=backend --cov-report=json:backend/coverage.json"
+    coverage_report: "coverage.json"
+    coverage_format: python-json
+    openapi_url: "http://localhost:8000/openapi.json"
+    goals:
+      coverage_total_min: 80
+      coverage_no_regression: true
+      coverage_target: 85
+  frontend:
+    stack: node
+    test_cmd: "npm test"
+    coverage_cmd: "npx vitest run --coverage --coverage.reporter=json-summary --coverage.reportOnFailure"
+    coverage_report: "coverage/coverage-summary.json"
+    coverage_format: istanbul-json
+    goals:
+      coverage_no_regression: true
+      coverage_target: 60
