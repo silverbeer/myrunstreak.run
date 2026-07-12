@@ -76,6 +76,10 @@ async def _list_runs(
             "avg_pace_min_per_km": (
                 float(r["average_pace_min_per_km"]) if r["average_pace_min_per_km"] else None
             ),
+            "weather": r.get("weather_type"),
+            "temperature_celsius": (
+                float(r["temperature_celsius"]) if r.get("temperature_celsius") else None
+            ),
         }
         for r in runs_data
     ]
