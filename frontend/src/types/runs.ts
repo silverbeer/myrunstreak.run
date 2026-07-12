@@ -56,12 +56,20 @@ export interface PaginatedRun {
   temperature_celsius: number | null
 }
 
-/** GET /runs filter params (SB-268 history filters). */
+/** GET /runs filter params (SB-268 history filters; SB-269 explorer). */
 export interface RunFilters {
   date_from?: string
   date_to?: string
   distance_min?: number
   distance_max?: number
+  weather_type?: string
+  temp_min?: number
+  temp_max?: number
+  pace_min?: number
+  pace_max?: number
+  on_this_day?: string
+  sort?: 'date' | 'distance' | 'pace' | 'temperature'
+  order?: 'asc' | 'desc'
 }
 
 export interface RecentRunsResponse {

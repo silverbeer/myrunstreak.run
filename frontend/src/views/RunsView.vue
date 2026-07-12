@@ -10,6 +10,18 @@
       <SyncButton mode="full" @synced="reload" />
     </div>
 
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <button
+        v-for="c in collections"
+        :key="c.key"
+        type="button"
+        @click="selectCollection(c.key)"
+        :class="chipClass(collection === c.key)"
+      >
+        {{ c.label }}
+      </button>
+    </div>
+
     <div class="flex flex-wrap items-center gap-2 mb-5">
       <button
         v-for="p in periodChips"
@@ -124,7 +136,43 @@ const distanceChips = computed<{ key: DistanceKey; label: string }[]>(() => {
   ]
 })
 
-const isFiltered = computed(() => period.value !== 'all' || distance.value !== 'all')
+// ---- collections: curated filter+sort presets (SB-269) ----
+type CollectionKey = 'today' | 'hottest' | 'coldest' | 'rainy' | 'fastest' | 'longest'
+
+const collection = ref<CollectionKey | null>(null)
+
+const todayMmDd = () => {
+  const d = new Date()
+  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const COLLECTION_PRESETS: Record<CollectionKey, RunFilters> = {
+  today: { on_this_day: todayMmDd(), sort: 'date', order: 'desc' },
+  hottest: { sort: 'temperature', order: 'desc' },
+  coldest: { sort: 'temperature', order: 'asc' },
+  rainy: { weather_type: 'rainy' },
+  // Ignore sub-mile stub runs when hunting PRs.
+  fastest: { sort: 'pace', order: 'asc', distance_min: 1.61 },
+  longest: { sort: 'distance', order: 'desc' },
+}
+
+const collections: { key: CollectionKey; label: string }[] = [
+  { key: 'today', label: '📅 On this day' },
+  { key: 'fastest', label: '⚡ Fastest' },
+  { key: 'longest', label: '🏔 Longest' },
+  { key: 'hottest', label: '🔥 Hottest' },
+  { key: 'coldest', label: '❄️ Coldest' },
+  { key: 'rainy', label: '🌧 Rainy' },
+]
+
+const selectCollection = (key: CollectionKey) => {
+  collection.value = collection.value === key ? null : key
+  void applyFilters()
+}
+
+const isFiltered = computed(
+  () => period.value !== 'all' || distance.value !== 'all' || collection.value !== null,
+)
 
 const chipClass = (active: boolean) =>
   [
@@ -151,6 +199,7 @@ const buildFilters = (): RunFilters => {
     f.distance_max = toKm(5)
   }
   if (distance.value === 'long') f.distance_min = toKm(5)
+  if (collection.value) Object.assign(f, COLLECTION_PRESETS[collection.value])
   return f
 }
 

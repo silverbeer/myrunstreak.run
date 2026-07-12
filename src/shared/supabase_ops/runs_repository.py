@@ -101,8 +101,15 @@ class RunsRepository:
         date_to: date | None,
         distance_min: float | None,
         distance_max: float | None,
+        weather_type: str | None = None,
+        temp_min: float | None = None,
+        temp_max: float | None = None,
+        pace_min: float | None = None,
+        pace_max: float | None = None,
+        on_this_day: str | None = None,
     ) -> Any:
-        """Apply optional date/distance filters to a runs query (SB-184)."""
+        """Apply optional filters to a runs query (SB-184 date/distance;
+        SB-269 weather/temp/pace + on-this-day)."""
         if date_from is not None:
             query = query.gte("start_date", date_from.isoformat())
         if date_to is not None:
@@ -111,6 +118,27 @@ class RunsRepository:
             query = query.gte("distance_km", distance_min)
         if distance_max is not None:
             query = query.lte("distance_km", distance_max)
+        if weather_type is not None:
+            query = query.eq("weather_type", weather_type)
+        if temp_min is not None:
+            query = query.gte("temperature_celsius", temp_min)
+        if temp_max is not None:
+            query = query.lte("temperature_celsius", temp_max)
+        if pace_min is not None:
+            query = query.gte("average_pace_min_per_km", pace_min)
+        if pace_max is not None:
+            query = query.lte("average_pace_min_per_km", pace_max)
+        if on_this_day is not None:
+            # "MM-DD" across every plausible streak year -> exact date list, so
+            # count + pagination keep working (no post-filtering).
+            month, day = on_this_day.split("-")
+            dates = []
+            for year in range(2000, date.today().year + 1):
+                try:
+                    dates.append(date(year, int(month), int(day)).isoformat())
+                except ValueError:  # Feb 29 in non-leap years
+                    continue
+            query = query.in_("start_date", dates)
         return query
 
     def get_runs_by_user(
@@ -123,6 +151,9 @@ class RunsRepository:
         date_to: date | None = None,
         distance_min: float | None = None,
         distance_max: float | None = None,
+        sort_by: str = "start_date_time_local",
+        sort_desc: bool = True,
+        **extra_filters: Any,
     ) -> list[dict[str, Any]]:
         """
         Get runs for a specific user with pagination + optional filters.
@@ -140,9 +171,13 @@ class RunsRepository:
             List of run records
         """
         query = self.supabase.table("runs").select("*").eq("user_id", str(user_id))
-        query = self._apply_run_filters(query, date_from, date_to, distance_min, distance_max)
+        query = self._apply_run_filters(
+            query, date_from, date_to, distance_min, distance_max, **extra_filters
+        )
+        # Sortable columns are whitelisted at the route; date is the tiebreaker.
         result = (
-            query.order("start_date_time_local", desc=True)
+            query.order(sort_by, desc=sort_desc, nullsfirst=False)
+            .order("start_date_time_local", desc=True)
             .range(offset, offset + limit - 1)
             .execute()
         )
@@ -157,10 +192,13 @@ class RunsRepository:
         date_to: date | None = None,
         distance_min: float | None = None,
         distance_max: float | None = None,
+        **extra_filters: Any,
     ) -> int:
         """Count runs for a user, honoring the same filters as get_runs_by_user."""
         query = self.supabase.table("runs").select("id", count="exact").eq("user_id", str(user_id))
-        query = self._apply_run_filters(query, date_from, date_to, distance_min, distance_max)
+        query = self._apply_run_filters(
+            query, date_from, date_to, distance_min, distance_max, **extra_filters
+        )
         result = query.execute()
         return cast(int, result.count or 0)
 
