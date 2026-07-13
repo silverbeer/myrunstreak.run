@@ -68,6 +68,18 @@ export interface AthleteCreate {
   notes?: string | null
 }
 
+export interface CoachAthlete {
+  id: string
+  coach_id: string
+  athlete_id: string
+  status: 'active' | 'ended'
+  started_at: string
+  ended_at: string | null
+  created_at: string
+  coach_display_name: string | null
+  coach_email: string | null
+}
+
 export type WorkoutType = 'circuit' | 'intervals' | 'test' | string
 
 export interface ExerciseSet {

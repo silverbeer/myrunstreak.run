@@ -242,3 +242,81 @@ def test_assign_coach_request_requires_id_or_email() -> None:
 
     with pytest.raises(ValueError):
         AssignCoachRequest()
+
+
+def test_list_coaches_enriches_with_name_and_email() -> None:
+    """SB-272: each coach link carries the coach's display name + email for the UI."""
+    from backend.routes.athletes import list_coaches
+
+    aid = uuid4()
+    coach_a, coach_b = uuid4(), uuid4()
+    links_repo = MagicMock()
+    links_repo.list_active_for_athlete.return_value = [
+        {
+            "id": str(uuid4()),
+            "coach_id": str(coach_a),
+            "athlete_id": str(aid),
+            "status": "active",
+            "started_at": "2026-07-02T00:00:00+00:00",
+            "ended_at": None,
+            "created_at": "2026-07-02T00:00:00+00:00",
+        },
+        {
+            "id": str(uuid4()),
+            "coach_id": str(coach_b),
+            "athlete_id": str(aid),
+            "status": "active",
+            "started_at": "2026-07-13T00:00:00+00:00",
+            "ended_at": None,
+            "created_at": "2026-07-13T00:00:00+00:00",
+        },
+    ]
+    users_repo = MagicMock()
+    users_repo.get_user_by_id.side_effect = lambda cid: {
+        str(coach_a): {"display_name": "Tom", "email": "tom@example.com"},
+        str(coach_b): {"display_name": "Matthew", "email": "matthew@example.com"},
+    }[str(cid)]
+
+    with (
+        _admin_env(roles={"admin"}, athlete={"id": str(aid), "linked_user_id": None}),
+        patch("backend.routes.athletes.get_supabase_client", return_value=MagicMock()),
+        patch("backend.routes.athletes.CoachAthletesRepository", return_value=links_repo),
+        patch("backend.routes.athletes.UsersRepository", return_value=users_repo),
+    ):
+        out = list_coaches(aid, user_id=uuid4())
+
+    assert [c.coach_display_name for c in out] == ["Tom", "Matthew"]
+    assert [c.coach_email for c in out] == ["tom@example.com", "matthew@example.com"]
+
+
+def test_list_coaches_tolerates_missing_user() -> None:
+    """A coach link whose user row can't be resolved still returns (name/email None)."""
+    from backend.routes.athletes import list_coaches
+
+    aid, coach = uuid4(), uuid4()
+    links_repo = MagicMock()
+    links_repo.list_active_for_athlete.return_value = [
+        {
+            "id": str(uuid4()),
+            "coach_id": str(coach),
+            "athlete_id": str(aid),
+            "status": "active",
+            "started_at": "2026-07-13T00:00:00+00:00",
+            "ended_at": None,
+            "created_at": "2026-07-13T00:00:00+00:00",
+        }
+    ]
+    users_repo = MagicMock()
+    users_repo.get_user_by_id.return_value = None
+
+    with (
+        _admin_env(roles={"admin"}, athlete={"id": str(aid), "linked_user_id": None}),
+        patch("backend.routes.athletes.get_supabase_client", return_value=MagicMock()),
+        patch("backend.routes.athletes.CoachAthletesRepository", return_value=links_repo),
+        patch("backend.routes.athletes.UsersRepository", return_value=users_repo),
+    ):
+        out = list_coaches(aid, user_id=uuid4())
+
+    assert len(out) == 1
+    assert out[0].coach_display_name is None
+    assert out[0].coach_email is None

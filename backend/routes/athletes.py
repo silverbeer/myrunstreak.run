@@ -199,10 +199,28 @@ def list_coaches(
     athlete_id: UUID,
     user_id: UUID = Depends(authenticate_request),
 ) -> list[CoachAthlete]:
-    """Active coaches of an athlete."""
+    """Active coaches of an athlete, each enriched with the coach's name/email."""
     require_athlete_access(user_id, athlete_id)
-    rows = CoachAthletesRepository(get_supabase_client()).list_active_for_athlete(athlete_id)
-    return [CoachAthlete(**r) for r in rows]
+    supabase = get_supabase_client()
+    rows = CoachAthletesRepository(supabase).list_active_for_athlete(athlete_id)
+    users = UsersRepository(supabase)
+    # Resolve each coach's display name/email (the link row carries only the id).
+    # Cache per coach_id so duplicate coaches don't re-query.
+    resolved: dict[str, dict[str, Any] | None] = {}
+    out: list[CoachAthlete] = []
+    for r in rows:
+        cid = r["coach_id"]
+        if cid not in resolved:
+            resolved[cid] = users.get_user_by_id(UUID(cid))
+        user = resolved[cid]
+        out.append(
+            CoachAthlete(
+                **r,
+                coach_display_name=(user or {}).get("display_name"),
+                coach_email=(user or {}).get("email"),
+            )
+        )
+    return out
 
 
 @router.delete("/{athlete_id}/coaches/{coach_id}", status_code=status.HTTP_204_NO_CONTENT)

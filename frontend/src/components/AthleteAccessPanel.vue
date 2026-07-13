@@ -31,6 +31,36 @@
       {{ athlete.display_name }} has their own login. ✓
     </p>
 
+    <!-- Current coaches -->
+    <div class="space-y-2 border-t border-gray-100 pt-5">
+      <p class="text-sm font-medium text-gray-700">Coaches</p>
+      <p v-if="loadingCoaches" class="text-sm text-gray-400">Loading…</p>
+      <p v-else-if="!coaches.length" class="text-sm text-gray-400">
+        No coaches yet — add one below.
+      </p>
+      <ul v-else class="divide-y divide-gray-100">
+        <li v-for="c in coaches" :key="c.id" class="flex items-center justify-between py-2">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-gray-800 truncate">
+              {{ c.coach_display_name || c.coach_email || 'Unknown coach' }}
+            </p>
+            <p class="text-xs text-gray-400 truncate">
+              <span v-if="c.coach_display_name && c.coach_email">{{ c.coach_email }} · </span>since
+              {{ formatDate(c.started_at) }}
+            </p>
+          </div>
+          <button
+            type="button"
+            :disabled="removingId === c.coach_id"
+            class="btn-secondary text-xs shrink-0"
+            @click="doRemoveCoach(c)"
+          >
+            {{ removingId === c.coach_id ? 'Removing…' : 'Remove' }}
+          </button>
+        </li>
+      </ul>
+    </div>
+
     <!-- Add an existing user as a coach -->
     <div class="space-y-2 border-t border-gray-100 pt-5">
       <p class="text-sm font-medium text-gray-700">Add a coach</p>
@@ -62,9 +92,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { addCoachByEmail, inviteAthlete } from '@/composables/useCoach'
-import type { Athlete } from '@/types/coach'
+import { onMounted, ref } from 'vue'
+import {
+  addCoachByEmail,
+  inviteAthlete,
+  listCoaches,
+  removeCoach,
+} from '@/composables/useCoach'
+import type { Athlete, CoachAthlete } from '@/types/coach'
 
 const props = defineProps<{ athlete: Athlete }>()
 
@@ -76,8 +111,45 @@ const copied = ref(false)
 const coachEmail = ref('')
 const addingCoach = ref(false)
 
+const coaches = ref<CoachAthlete[]>([])
+const loadingCoaches = ref(false)
+const removingId = ref<string | null>(null)
+
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
+
+const formatDate = (iso: string): string =>
+  new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+
+const loadCoaches = async (): Promise<void> => {
+  loadingCoaches.value = true
+  try {
+    coaches.value = await listCoaches(props.athlete.id)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to load coaches'
+  } finally {
+    loadingCoaches.value = false
+  }
+}
+
+onMounted(loadCoaches)
+
+const doRemoveCoach = async (coach: CoachAthlete): Promise<void> => {
+  const who = coach.coach_display_name || coach.coach_email || 'this coach'
+  if (!window.confirm(`Remove ${who} as a coach of ${props.athlete.display_name}?`)) return
+  removingId.value = coach.coach_id
+  error.value = null
+  success.value = null
+  try {
+    await removeCoach(props.athlete.id, coach.coach_id)
+    success.value = `Removed ${who}.`
+    await loadCoaches()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to remove coach'
+  } finally {
+    removingId.value = null
+  }
+}
 
 const copy = async (text: string) => {
   await navigator.clipboard?.writeText(text)
@@ -109,6 +181,7 @@ const doAddCoach = async () => {
     await addCoachByEmail(props.athlete.id, coachEmail.value)
     success.value = `Added ${coachEmail.value} as a coach.`
     coachEmail.value = ''
+    await loadCoaches()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to add coach'
   } finally {

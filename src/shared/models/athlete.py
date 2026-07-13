@@ -120,6 +120,9 @@ class CoachAthlete(BaseModel):
     started_at: datetime
     ended_at: datetime | None = None
     created_at: datetime
+    # Resolved from the users table for display; the DB row carries only coach_id.
+    coach_display_name: str | None = None
+    coach_email: str | None = None
 
 
 # Resolve the forward reference to AthleteProfile on Athlete.profile.

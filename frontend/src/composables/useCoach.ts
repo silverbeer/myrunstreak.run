@@ -4,6 +4,7 @@ import type {
   Athlete,
   AthleteCreate,
   AthleteProfileUpdate,
+  CoachAthlete,
   Invite,
   MyRoles,
   WorkoutSession,
@@ -96,6 +97,14 @@ export async function addCoachByEmail(athleteId: string, email: string): Promise
     method: 'POST',
     body: JSON.stringify({ coach_email: email }),
   })
+}
+
+export async function listCoaches(athleteId: string): Promise<CoachAthlete[]> {
+  return apiCall<CoachAthlete[]>(`/athletes/${athleteId}/coaches`)
+}
+
+export async function removeCoach(athleteId: string, coachId: string): Promise<void> {
+  await apiCall(`/athletes/${athleteId}/coaches/${coachId}`, { method: 'DELETE' })
 }
 
 export function useCoach() {
