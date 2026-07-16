@@ -211,7 +211,24 @@ async def runs_summary(
     )
 
 
-# NOTE: registered after /recent and "" so the static paths keep priority.
+@cached(ttl=60, key_prefix="runs:head")
+async def _head(user_id: UUID) -> dict[str, Any]:
+    return RunsRepository(get_supabase_client()).get_runs_head(user_id)
+
+
+@router.get("/head")
+async def runs_head(
+    user_id: UUID = Depends(authenticate_request),
+) -> dict[str, Any]:
+    """Cheap version token for the caller's run history — ``{count,
+    latest_run_date}``. Clients (the ``stk`` CLI) hit this once per invocation
+    and gate their local response cache on the pair: unchanged → serve from
+    cache, changed → a run was added/removed → refetch. Cleared alongside the
+    other run caches whenever a sync invalidates the user (SB run cache)."""
+    return await _head(user_id)
+
+
+# NOTE: registered after /recent, /head, and "" so the static paths keep priority.
 @router.get("/{activity_id}")
 async def get_run_detail(
     activity_id: str,

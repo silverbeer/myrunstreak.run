@@ -208,6 +208,30 @@ class RunsRepository:
         result = query.execute()
         return cast(int, result.count or 0)
 
+    def get_runs_head(self, user_id: UUID) -> dict[str, Any]:
+        """Cheap change-signal for a user's run history: total count and the
+        latest run's local date.
+
+        Used by ``GET /runs/head`` to build a version token
+        (``"{count}:{latest_run_date}"``) that clients use to gate their local
+        cache — it advances only when a run is added or removed, so re-syncs
+        that merely re-upsert existing runs (bumping ``updated_at``) do not
+        needlessly bust the cache. In-place edits to an existing run are
+        intentionally NOT reflected (rare; clients can force a refresh).
+        """
+        count = self.count_runs_by_user(user_id)
+        result = (
+            self.supabase.table("runs")
+            .select("start_date_time_local")
+            .eq("user_id", str(user_id))
+            .order("start_date_time_local", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = cast(list[dict[str, Any]], result.data)
+        latest = rows[0]["start_date_time_local"] if rows else None
+        return {"count": count, "latest_run_date": latest}
+
     def summarize_runs(self, user_id: UUID, **filters: Any) -> dict[str, Any]:
         """Aggregate the FULL filtered set (SB-269 conditions impact): count,
         total km, and distance-weighted avg pace. Fetches only two columns."""

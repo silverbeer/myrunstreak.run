@@ -12,12 +12,19 @@ from typing import Any
 
 import httpx
 
+from cli import cache as cache_mod
 from cli import config as config_mod
 from cli import session as session_mod
 from cli.display import display_error, display_info
 
 DEFAULT_API_URL = "https://api.myrunstreak.run"
 TIMEOUT = 30.0
+
+# Per-process memo of the run-version token, keyed by session scope. One
+# ``GET /runs/head`` per CLI invocation gates every version-cached read.
+_run_version: dict[str, str | None] = {}
+# Scopes whose stale cache rows have already been swept this invocation.
+_swept: set[str] = set()
 
 
 def get_api_url() -> str:
@@ -121,9 +128,59 @@ def _exit_with_error(response: httpx.Response) -> None:
     sys.exit(1)
 
 
+def get_run_version(s: session_mod.Session, scope: str) -> str | None:
+    """Run-history version token (``count:latest_run_date``) for local-cache gating.
+
+    One tiny live ``GET /runs/head`` per process (memoized by scope). Returns
+    None on any failure — endpoint missing (backend not yet deployed), network
+    error, or non-2xx — so the caller falls back to a live, uncached read. We
+    never serve possibly-stale data we couldn't verify.
+    """
+    if scope in _run_version:
+        return _run_version[scope]
+    token: str | None = None
+    try:
+        response = httpx.get(
+            f"{get_api_url()}/runs/head", headers=_auth_headers(s), timeout=TIMEOUT
+        )
+        if response.status_code == 200:
+            data = response.json()
+            token = f"{data.get('count')}:{data.get('latest_run_date')}"
+    except (httpx.HTTPError, ValueError):
+        token = None
+    _run_version[scope] = token
+    return token
+
+
 def request(endpoint: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Authenticated GET. Refreshes the access token transparently on expiry/401."""
+    """Authenticated GET. Refreshes the access token transparently on expiry/401.
+
+    Read-through the local cache (``cli.cache``) for cacheable endpoints: a hit
+    returns immediately with no network round-trip; a miss fetches live and
+    stores the result. Gated by a run-version token so a newly-synced run busts
+    the cache automatically. Bypass with ``--no-cache`` / ``STK_NO_CACHE``.
+    """
     s = _ensure_fresh(_require_session())
+    scope = s.email or "anon"
+
+    cls = cache_mod.policy(endpoint)
+    token: str | None = None
+    use_cache = cls is not None and not cache_mod.bypassed()
+    if use_cache:
+        if cls == "versioned":
+            token = get_run_version(s, scope)
+            if token is None:
+                use_cache = False  # can't verify freshness → go live, don't cache
+            elif scope not in _swept:
+                cache_mod.sweep_stale(scope, token)
+                _swept.add(scope)
+        else:  # reference
+            token = cache_mod.REFERENCE_TOKEN
+    if use_cache and token is not None:
+        hit = cache_mod.get(endpoint, params, scope, token)
+        if hit is not None:
+            return hit  # type: ignore[return-value]
+
     url = f"{get_api_url()}/{endpoint.lstrip('/')}"
     try:
         response = httpx.get(url, params=params, headers=_auth_headers(s), timeout=TIMEOUT)
@@ -146,6 +203,8 @@ def request(endpoint: str, params: dict[str, Any] | None = None) -> dict[str, An
         _exit_with_error(response)
 
     result: dict[str, Any] = response.json()
+    if use_cache and token is not None:
+        cache_mod.set(endpoint, params, scope, token, result)
     return result
 
 
@@ -173,6 +232,10 @@ def delete_request(endpoint: str, timeout: float | None = None) -> None:
 
     if response.status_code >= 400:
         _exit_with_error(response)
+
+    # A write may change reference data (version-gating only covers run data);
+    # drop this scope's local cache so the next read refetches.
+    cache_mod.invalidate_scope(s.email or "anon")
 
 
 def post_request(
@@ -217,5 +280,6 @@ def post_request(
     if response.status_code >= 400:
         _exit_with_error(response)
 
+    cache_mod.invalidate_scope(s.email or "anon")
     result: dict[str, Any] = response.json()
     return result
