@@ -7,10 +7,12 @@ the HTTP endpoint.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 from uuid import UUID
 
+from backend.cache import invalidate_user
 from backend.config import get_settings
 from backend.routes.sync import run_user_sync
 from src.shared.supabase_client import get_supabase_client
@@ -33,6 +35,12 @@ def main() -> int:
     for user_id in user_ids:
         try:
             result = run_user_sync(user_id)
+            # The HTTP "Sync now" path invalidates the user's Redis cache; the
+            # cron path must too, else read endpoints (and the /runs/head
+            # version token) serve stale data for up to their TTL after a new
+            # run lands — which would pin stale data in clients' local caches
+            # under a freshly-advanced token.
+            asyncio.run(invalidate_user(user_id))
             logger.info(f"Synced {result['runs_synced']} runs for {user_id}")
         except Exception as exc:  # noqa: BLE001
             failures += 1
