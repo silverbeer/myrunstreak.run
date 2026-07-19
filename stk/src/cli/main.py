@@ -9,6 +9,9 @@ Usage:
     stk stats            # Overall statistics
     stk recent           # Recent runs
     stk records          # Personal records
+    stk runs             # List runs (filters: --on-this-day, --weather, --sort, ...)
+    stk summary          # Aggregate of a filtered set vs overall
+    stk goals            # Distance-goal progress
     stk sync             # Sync runs from SmashRun
     stk auth login       # Authenticate with SmashRun
 """
@@ -78,6 +81,8 @@ app.command(name="recent")(runs.recent)
 app.command(name="records")(stats.records)
 app.command(name="monthly")(stats.monthly)
 app.command(name="runs")(runs.list_runs)
+app.command(name="summary")(runs.summary)
+app.command(name="goals")(stats.goals)
 app.command(name="sync")(sync.sync_runs)
 
 
