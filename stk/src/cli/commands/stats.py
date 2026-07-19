@@ -60,3 +60,22 @@ def monthly(
         print(json.dumps(data, indent=2))
     else:
         display.display_monthly_stats(data)
+
+
+def goals(
+    history: bool = typer.Option(
+        False, "--history", help="All past goal periods (target vs achieved)"
+    ),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+) -> None:
+    """Show distance-goal progress (current year + month, or full history)."""
+    data = api.request("stats/goals/history" if history else "stats/goals")
+
+    if json_output:
+        import json
+
+        print(json.dumps(data, indent=2))
+    elif history:
+        display.display_goal_history(data)
+    else:
+        display.display_goals(data)

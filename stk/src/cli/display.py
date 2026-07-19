@@ -290,6 +290,83 @@ def display_records(data: dict[str, Any]) -> None:
     console.print(table)
 
 
+def display_summary(data: dict[str, Any]) -> None:
+    """Display a filtered-runs aggregate vs overall (the conditions-impact readout)."""
+    count = data.get("count", 0)
+    total_miles = km_to_miles(data.get("total_km", 0))
+
+    table = Table(title=f"Run Summary ({count} runs)", show_header=True, border_style="cyan")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", justify="right", style="green")
+
+    table.add_row("Runs", str(count))
+    table.add_row("Total", f"{total_miles:.1f} mi")
+
+    pace = data.get("avg_pace_min_per_km")
+    overall = data.get("overall_avg_pace_min_per_km")
+    if pace is not None:
+        table.add_row("Avg Pace", f"{format_pace(pace)} /mi")
+    if pace is not None and overall is not None:
+        # Delta in sec/mi — the arithmetic lives here, not in any narration layer.
+        delta_sec = round((pace - overall) / KM_TO_MILES * 60)
+        vs = f"{abs(delta_sec)}s/mi {'slower' if delta_sec > 0 else 'faster'} than overall"
+        table.add_row("vs Overall", f"{format_pace(overall)} /mi ({vs})")
+
+    console.print(table)
+
+
+def _goal_row(table: Table, label: str, goal: dict[str, Any] | None) -> None:
+    """Add one GoalProgress payload (already in miles) to a goals table."""
+    if goal is None:
+        table.add_row(label, "-", "-", "[dim]no goal set[/dim]")
+        return
+    pct = goal.get("percent")
+    table.add_row(
+        label,
+        f"{goal.get('goal_mi', 0):.0f} mi",
+        f"{goal.get('progress_mi', 0):.1f} mi",
+        f"{pct:.1f}%" if pct is not None else "-",
+    )
+
+
+def display_goals(data: dict[str, Any]) -> None:
+    """Display current-year and current-month goal progress."""
+    table = Table(title="Distance Goals", show_header=True, border_style="cyan")
+    table.add_column("Period", style="cyan")
+    table.add_column("Target", justify="right")
+    table.add_column("Progress", justify="right", style="green")
+    table.add_column("%", justify="right", style="yellow")
+
+    _goal_row(table, "Year", data.get("yearly"))
+    _goal_row(table, "Month", data.get("monthly"))
+    console.print(table)
+
+
+def display_goal_history(data: list[dict[str, Any]]) -> None:
+    """Display every goal period: target vs achieved, hit/miss."""
+    table = Table(title="Goal History", show_header=True, border_style="cyan")
+    table.add_column("Period", style="cyan")
+    table.add_column("Target", justify="right")
+    table.add_column("Achieved", justify="right", style="green")
+    table.add_column("%", justify="right", style="yellow")
+    table.add_column("Hit", justify="center")
+
+    for goal in data:
+        year = goal.get("year", "")
+        month = goal.get("month")
+        period = f"{year}" if month is None else f"{year}-{int(month):02d}"
+        pct = goal.get("percent")
+        table.add_row(
+            period,
+            f"{goal.get('goal_mi', 0):.0f} mi",
+            f"{goal.get('progress_mi', 0):.1f} mi",
+            f"{pct:.1f}%" if pct is not None else "-",
+            "[green]✓[/green]" if goal.get("hit") else "[red]✗[/red]",
+        )
+
+    console.print(table)
+
+
 def display_sync_progress(message: str, done: bool = False) -> None:
     """Display sync progress message."""
     if done:
