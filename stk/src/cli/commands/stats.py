@@ -1,8 +1,36 @@
 """Stats commands for stk CLI."""
 
+from datetime import datetime
+from typing import Any
+
 import typer
 
 from cli import api, display
+
+
+def dashboard() -> None:
+    """One-screen morning glance (the bare ``stk`` default).
+
+    Streak is required; goals / last run / on-this-day are progressive
+    enhancement — a failing optional read (older backend, transient error)
+    degrades to a sparser dashboard instead of killing the command. All four
+    reads are version-cached, so the repeat cost is zero.
+    """
+    streak_data = api.request("stats/streaks")
+
+    def _try(endpoint: str, params: dict[str, Any] | None = None) -> Any:
+        try:
+            return api.request(endpoint, params)
+        except SystemExit:  # api.request exits on HTTP/network errors
+            return None
+
+    goals_data = _try("stats/goals")
+    recent = _try("runs/recent", {"limit": 1})
+    otd = _try("runs", {"on_this_day": datetime.now().strftime("%m-%d"), "limit": 1, "offset": 0})
+
+    last_run = (recent or {}).get("runs", [None])[0] if recent else None
+    otd_count = (otd or {}).get("total") if otd else None
+    display.display_dashboard(streak_data, goals_data, last_run, otd_count)
 
 
 def streak(
