@@ -241,21 +241,35 @@ async def get_run_detail(
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
 
-    splits = [
-        {
-            "split_number": s["split_number"],
-            "split_unit": s.get("split_unit"),
-            "cumulative_distance_km": _f(s.get("cumulative_distance_km")),
-            "cumulative_seconds": _f(s.get("cumulative_seconds")),
-            "pace_min_per_km": _f(s.get("pace_min_per_km")),
-            "heart_rate": s.get("heart_rate"),
-            "elevation_gain_m": _f(s.get("cumulative_elevation_gain_meters")),
-            "elevation_loss_m": _f(s.get("cumulative_elevation_loss_meters")),
-        }
-        for s in sorted(
-            repo.get_splits_for_run(UUID(run["id"])), key=lambda s: s["split_number"] or 0
+    splits: list[dict[str, Any]] = []
+    prev_km, prev_sec = 0.0, 0.0
+    for s in sorted(repo.get_splits_for_run(UUID(run["id"])), key=lambda s: s["split_number"] or 0):
+        cum_km = _f(s.get("cumulative_distance_km"))
+        cum_sec = _f(s.get("cumulative_seconds"))
+        # Splits store only cumulative metrics; per-split pace is derived from
+        # the deltas (the stored pace column is unpopulated by sync).
+        pace = _f(s.get("pace_min_per_km"))
+        if pace is None and cum_km is not None and cum_sec is not None:
+            delta_km = cum_km - prev_km
+            delta_sec = cum_sec - prev_sec
+            if delta_km > 0.001 and delta_sec > 0:
+                pace = round(delta_sec / 60 / delta_km, 2)
+        if cum_km is not None:
+            prev_km = cum_km
+        if cum_sec is not None:
+            prev_sec = cum_sec
+        splits.append(
+            {
+                "split_number": s["split_number"],
+                "split_unit": s.get("split_unit"),
+                "cumulative_distance_km": cum_km,
+                "cumulative_seconds": cum_sec,
+                "pace_min_per_km": pace,
+                "heart_rate": s.get("heart_rate"),
+                "elevation_gain_m": _f(s.get("cumulative_elevation_gain_meters")),
+                "elevation_loss_m": _f(s.get("cumulative_elevation_loss_meters")),
+            }
         )
-    ]
 
     return {
         "activity_id": run["source_activity_id"],
