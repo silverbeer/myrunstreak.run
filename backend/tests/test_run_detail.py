@@ -91,6 +91,29 @@ def test_detail_shapes_weather_vitals_and_sorted_splits(monkeypatch: Any) -> Non
     assert out["splits"][1]["elevation_gain_m"] == 29.0
 
 
+def test_detail_derives_pace_from_cumulative_deltas(monkeypatch: Any) -> None:
+    # Real sync never populates pace_min_per_km — pace must come from deltas.
+    splits = [
+        {**_SPLITS[1], "pace_min_per_km": None},  # mile 1: 612s / 1.609km
+        {**_SPLITS[0], "pace_min_per_km": None},  # mile 2: 642s / 1.610km
+        {
+            "split_number": 3,
+            "split_unit": "mi",
+            "cumulative_distance_km": "3.219",  # zero-distance tail split
+            "cumulative_seconds": "1254",
+            "pace_min_per_km": None,
+            "heart_rate": None,
+            "cumulative_elevation_gain_meters": None,
+            "cumulative_elevation_loss_meters": None,
+        },
+    ]
+    out = _detail(_RUN, splits, monkeypatch)
+    paces = [s["pace_min_per_km"] for s in out["splits"]]
+    assert paces[0] == pytest.approx(612 / 60 / 1.609, abs=0.01)
+    assert paces[1] == pytest.approx((1254 - 612) / 60 / (3.219 - 1.609), abs=0.01)
+    assert paces[2] is None  # no distance covered -> no pace, not a divide-by-zero
+
+
 def test_detail_404_when_not_owned(monkeypatch: Any) -> None:
     with pytest.raises(HTTPException) as err:
         _detail(None, [], monkeypatch)
