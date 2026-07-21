@@ -84,6 +84,24 @@ describe('GoalsCard', () => {
     expect(w.text()).not.toMatch(/ahead of pace/)
   })
 
+  it('shows a catch-up line with days left and mi/day when behind', () => {
+    // May 9, 31-day month → 22 days left; (125 - 13.5) / 22 ≈ 5.07 mi/day.
+    const w = mount(GoalsCard, { props: { yearly: null, monthly: monthlyBehind } })
+    expect(w.text()).toContain('22 days left')
+    expect(w.text()).toContain('5.1 mi/day to finish')
+  })
+
+  it('omits the catch-up line when on/ahead of pace', () => {
+    // yearlyOnPace is exactly on pace → no catch-up coaching.
+    const w = mount(GoalsCard, { props: { yearly: yearlyOnPace, monthly: null } })
+    expect(w.text()).not.toContain('to finish')
+  })
+
+  it('omits the catch-up line when the goal is already complete', () => {
+    const w = mount(GoalsCard, { props: { yearly: null, monthly: monthlyComplete } })
+    expect(w.text()).not.toContain('to finish')
+  })
+
   it('uses the current month name in the monthly header', () => {
     // FIXED_NOW is 2026-05-09 → "May"
     const w = mount(GoalsCard, { props: { yearly: null, monthly: monthlyBehind } })

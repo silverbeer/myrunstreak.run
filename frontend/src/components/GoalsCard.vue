@@ -51,6 +51,12 @@
           {{ formatMilesDelta(monthlyMilesDelta) }}
         </span>
       </div>
+      <p
+        v-if="monthlyCatchUp"
+        class="mt-1 text-xs font-medium text-amber-600 inline-flex items-center gap-1"
+      >
+        <Zap class="w-3.5 h-3.5 inline" /> {{ monthlyCatchUp }}
+      </p>
     </div>
 
     <!-- Yearly goal -->
@@ -89,13 +95,19 @@
           {{ formatMilesDelta(yearlyMilesDelta) }}
         </span>
       </div>
+      <p
+        v-if="yearlyCatchUp"
+        class="mt-1 text-xs font-medium text-amber-600 inline-flex items-center gap-1"
+      >
+        <Zap class="w-3.5 h-3.5 inline" /> {{ yearlyCatchUp }}
+      </p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Calendar, PartyPopper, Target } from 'lucide-vue-next'
+import { Calendar, PartyPopper, Target, Zap } from 'lucide-vue-next'
 import type { GoalProgress } from '@/types/runs'
 
 const props = defineProps<{
@@ -153,6 +165,46 @@ const yearlyMilesDelta = computed((): number | null => {
   if (delta === null || !props.yearly) return null
   return (delta / 100) * props.yearly.goal_mi
 })
+
+// Catch-up coaching: when behind, the deficit alone scolds — the actionable
+// number is "what to run per day to still finish". Today's run is assumed
+// banked into progress_mi, so days left excludes today (guarded against the
+// final-day divide-by-zero).
+const monthlyDaysLeft = computed((): number => {
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  return daysInMonth - now.getDate()
+})
+
+const yearlyDaysLeft = computed((): number => {
+  const start = new Date(now.getFullYear(), 0, 0)
+  const dayOfYear = Math.floor((now.getTime() - start.getTime()) / 86400000)
+  const isLeap =
+    (now.getFullYear() % 4 === 0 && now.getFullYear() % 100 !== 0) ||
+    now.getFullYear() % 400 === 0
+  return (isLeap ? 366 : 365) - dayOfYear
+})
+
+const catchUpText = (
+  goal: GoalProgress | null,
+  delta: number | null,
+  daysLeft: number,
+): string | null => {
+  // Only when meaningfully behind (amber/red) and the goal is still reachable-by-running.
+  if (!goal || delta === null || delta > -0.5) return null
+  const remaining = goal.goal_mi - goal.progress_mi
+  if (remaining <= 0 || daysLeft <= 0) return null
+  const perDay = remaining / daysLeft
+  const dayWord = daysLeft === 1 ? 'day' : 'days'
+  return `${daysLeft} ${dayWord} left · ${perDay.toFixed(1)} mi/day to finish`
+}
+
+const monthlyCatchUp = computed((): string | null =>
+  catchUpText(props.monthly, monthlyPaceDelta.value, monthlyDaysLeft.value),
+)
+
+const yearlyCatchUp = computed((): string | null =>
+  catchUpText(props.yearly, yearlyPaceDelta.value, yearlyDaysLeft.value),
+)
 
 const formatMilesDelta = (milesDelta: number | null): string => {
   if (milesDelta === null) return ''
