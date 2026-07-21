@@ -102,10 +102,15 @@ def activity_to_run_dict(activity: Activity, user_id: UUID, source_id: UUID) -> 
             activity.external_device_type.value if activity.external_device_type else None
         ),
         "app_version": activity.external_app_version,
+        # Location & GPS (SB-290) — all from the list payload, no detail call
+        "start_latitude": activity.start_latitude,
+        "start_longitude": activity.start_longitude,
+        "is_treadmill": activity.is_treadmill,
         # Data availability flags
-        "has_gps_data": (
-            activity.recording_keys is not None and "latitude" in (activity.recording_keys or [])
-        ),
+        # has_gps_data now sourced from SmashRun's hasDetailsGPS. The old
+        # derivation from recording_keys was always false in list-based sync
+        # (the list omits recordingKeys), so it never reflected reality.
+        "has_gps_data": activity.has_details_gps,
         "has_heart_rate_data": activity.heart_rate_average is not None,
         "has_cadence_data": activity.cadence_average is not None,
         "has_splits": False,  # Will be updated when splits are added
