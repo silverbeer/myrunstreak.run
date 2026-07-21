@@ -62,6 +62,32 @@ class Activity(BaseModel):
         alias="externalDeviceType",
     )
 
+    # Location & GPS (SB-290) — present in the list payload, no detail call
+    start_latitude: float | None = Field(
+        default=None,
+        description="Latitude at the start of the run",
+        alias="startLatitude",
+        ge=-90,
+        le=90,
+    )
+    start_longitude: float | None = Field(
+        default=None,
+        description="Longitude at the start of the run",
+        alias="startLongitude",
+        ge=-180,
+        le=180,
+    )
+    has_details_gps: bool = Field(
+        default=False,
+        description="Whether SmashRun has a GPS track for this activity",
+        alias="hasDetailsGPS",
+    )
+    is_treadmill: bool = Field(
+        default=False,
+        description="Indoor/treadmill run (no outdoor route)",
+        alias="isTreadmill",
+    )
+
     # Performance Metrics - Cadence
     cadence_average: float | None = Field(
         default=None,
