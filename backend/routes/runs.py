@@ -228,7 +228,25 @@ async def runs_head(
     return await _head(user_id)
 
 
-# NOTE: registered after /recent, /head, and "" so the static paths keep priority.
+@cached(ttl=60, key_prefix="runs:routes")
+async def _routes(user_id: UUID, min_runs: int) -> dict[str, Any]:
+    repo = RunsRepository(get_supabase_client())
+    routes = repo.get_route_leaderboard(user_id, min_runs=min_runs)
+    return {"count": len(routes), "routes": routes}
+
+
+@router.get("/routes")
+async def route_leaderboard(
+    user_id: UUID = Depends(authenticate_request),
+    min_runs: int = Query(2, ge=1, le=100, description="Only routes run at least this many times"),
+) -> dict[str, Any]:
+    """Repeated-route leaderboard (SB-291): GPS runs grouped by start cell +
+    distance bucket, sorted by run count. Answers "how many times have I run
+    this route". Treadmill / no-GPS runs are excluded."""
+    return await _routes(user_id, min_runs)
+
+
+# NOTE: registered after /recent, /head, /routes, and "" so the static paths keep priority.
 @router.get("/{activity_id}")
 async def get_run_detail(
     activity_id: str,

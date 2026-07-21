@@ -360,6 +360,80 @@ class RunsRepository:
             "avg_pace_min_per_km": round(sum(paces) / len(paces), 2) if paces else 0,
         }
 
+    def get_route_leaderboard(
+        self,
+        user_id: UUID,
+        min_runs: int = 2,
+        precision: int = 3,
+        dist_bucket_km: float = 0.5,
+    ) -> list[dict[str, Any]]:
+        """Group a user's GPS runs into repeated routes (SB-291).
+
+        A route is approximated by (rounded start cell, distance bucket) — for
+        loop runs (start ≈ end, the common case) that identifies the route well
+        without any polyline. Treadmill / no-GPS runs are excluded (they have
+        no start coordinates).
+
+        Args:
+            user_id: User UUID
+            min_runs: Only return routes run at least this many times
+            precision: Decimal places to round start lat/lon (3 ≈ 110 m cell)
+            dist_bucket_km: Distance bucket width in km
+
+        Returns:
+            Routes sorted by run count desc. Each: route_key, start_latitude,
+            start_longitude, distance_km (bucket midpoint), run_count,
+            first_date, last_date, best_pace_min_per_km, avg_pace_min_per_km,
+            pace_series (chronological avg pace per run, for a sparkline).
+        """
+        result = (
+            self.supabase.table("runs")
+            .select(
+                "start_latitude, start_longitude, distance_km, average_pace_min_per_km, start_date"
+            )
+            .eq("user_id", str(user_id))
+            .not_.is_("start_latitude", "null")
+            .not_.is_("start_longitude", "null")
+            .limit(10000)
+            .execute()
+        )
+        rows = cast(list[dict[str, Any]], result.data)
+
+        groups: dict[tuple[float, float, float], list[dict[str, Any]]] = {}
+        for r in rows:
+            lat = round(float(r["start_latitude"]), precision)
+            lon = round(float(r["start_longitude"]), precision)
+            bucket = round(float(r["distance_km"]) / dist_bucket_km) * dist_bucket_km
+            groups.setdefault((lat, lon, round(bucket, 3)), []).append(r)
+
+        routes: list[dict[str, Any]] = []
+        for (lat, lon, bucket), members in groups.items():
+            if len(members) < min_runs:
+                continue
+            chron = sorted(members, key=lambda m: m["start_date"])
+            paces = [
+                float(m["average_pace_min_per_km"])
+                for m in chron
+                if m["average_pace_min_per_km"] is not None
+            ]
+            routes.append(
+                {
+                    "route_key": f"{lat},{lon},{bucket}",
+                    "start_latitude": lat,
+                    "start_longitude": lon,
+                    "distance_km": bucket,
+                    "run_count": len(members),
+                    "first_date": chron[0]["start_date"],
+                    "last_date": chron[-1]["start_date"],
+                    "best_pace_min_per_km": round(min(paces), 2) if paces else None,
+                    "avg_pace_min_per_km": round(sum(paces) / len(paces), 2) if paces else None,
+                    "pace_series": [round(p, 2) for p in paces],
+                }
+            )
+
+        routes.sort(key=lambda x: x["run_count"], reverse=True)
+        return routes
+
     def get_monthly_stats(self, user_id: UUID, limit: int = 12) -> list[dict[str, Any]]:
         """
         Get monthly statistics for a user using the monthly_summary view.

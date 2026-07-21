@@ -558,3 +558,57 @@ def display_warning(message: str) -> None:
 def display_info(message: str) -> None:
     """Display info message."""
     console.print(f"[dim]ℹ[/dim] {message}")
+
+
+_SPARK = "▁▂▃▄▅▆▇█"
+
+
+def _pace_sparkline(paces: list[float]) -> str:
+    """Unicode sparkline of pace over time. Taller = faster: pace is inverted so
+    an improving route reads as rising bars."""
+    if not paces:
+        return ""
+    if len(paces) == 1:
+        return _SPARK[3]
+    speeds = [-p for p in paces]  # faster (lower pace) -> taller
+    lo, hi = min(speeds), max(speeds)
+    span = (hi - lo) or 1.0
+    return "".join(_SPARK[min(7, int((s - lo) / span * 7 + 0.5))] for s in speeds)
+
+
+def display_route_leaderboard(data: dict[str, Any], limit: int = 15) -> None:
+    """Repeated-route leaderboard: how many times you've run each route (SB-291)."""
+    routes = data.get("routes", [])
+    if not routes:
+        console.print(
+            "[dim]No repeated routes yet — needs GPS runs you've done more than once. "
+            "Run [bold]stk sync --full[/bold] if you haven't backfilled.[/dim]"
+        )
+        return
+
+    table = Table(
+        title=f"Your Routes ({data.get('count', len(routes))})",
+        show_header=True,
+        border_style="cyan",
+    )
+    table.add_column("#", justify="right", style="dim")
+    table.add_column("Start (lat, lon)", style="cyan")
+    table.add_column("Dist", justify="right", style="green")
+    table.add_column("Runs", justify="right", style="bold")
+    table.add_column("Best", justify="right", style="yellow")
+    table.add_column("Avg", justify="right")
+    table.add_column("Trend ↑faster", style="magenta")
+
+    for i, r in enumerate(routes[:limit], 1):
+        miles = km_to_miles(r.get("distance_km", 0))
+        best = (
+            f"{format_pace(r['best_pace_min_per_km'])}/mi" if r.get("best_pace_min_per_km") else "—"
+        )
+        avg = f"{format_pace(r['avg_pace_min_per_km'])}/mi" if r.get("avg_pace_min_per_km") else "—"
+        spark = _pace_sparkline((r.get("pace_series") or [])[-24:])
+        start = f"{r['start_latitude']:.3f}, {r['start_longitude']:.3f}"
+        table.add_row(
+            str(i), start, f"{miles:.1f} mi", str(r.get("run_count", 0)), best, avg, spark
+        )
+
+    console.print(table)
