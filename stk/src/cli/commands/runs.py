@@ -100,6 +100,22 @@ def list_runs(
         display.display_recent_runs(data)
 
 
+def routes(
+    min_runs: int = typer.Option(2, "--min-runs", help="Only routes run at least this many times"),
+    limit: int = typer.Option(15, "--limit", "-n", help="Max routes to show"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+) -> None:
+    """Your most-run routes — how many times you've run each (GPS runs only)."""
+    data = api.request("runs/routes", {"min_runs": min_runs})
+
+    if json_output:
+        import json
+
+        print(json.dumps(data, indent=2))
+    else:
+        display.display_route_leaderboard(data, limit=limit)
+
+
 def summary(
     on_this_day: str | None = typer.Option(
         None, "--on-this-day", help='MM-DD across all years, or "today"'
