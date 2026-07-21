@@ -320,3 +320,80 @@ def test_list_coaches_tolerates_missing_user() -> None:
     assert len(out) == 1
     assert out[0].coach_display_name is None
     assert out[0].coach_email is None
+
+
+class _FakeCoachLinks:
+    """Minimal Supabase table double for CoachAthletesRepository.assign (SB-271).
+
+    Records whether an INSERT happened and returns a preset row for the active
+    lookup, so the test can assert the idempotent no-op path.
+    """
+
+    def __init__(self, existing: list[dict[str, Any]]):
+        self._existing = existing
+        self._mode = "select"
+        self.inserted = False
+
+    def table(self, _name: str) -> _FakeCoachLinks:
+        self._mode = "select"
+        return self
+
+    def select(self, *a: Any, **k: Any) -> _FakeCoachLinks:
+        self._mode = "select"
+        return self
+
+    def eq(self, *a: Any, **k: Any) -> _FakeCoachLinks:
+        return self
+
+    def insert(self, payload: Any) -> _FakeCoachLinks:
+        self._mode = "insert"
+        self.inserted = True
+        self._payload = payload
+        return self
+
+    def execute(self) -> Any:
+        if self._mode == "select":
+            return SimpleNamespace(data=list(self._existing))
+        row = {
+            "id": str(uuid4()),
+            "status": "active",
+            "started_at": "2026-07-13T00:00:00+00:00",
+            "ended_at": None,
+            "created_at": "2026-07-13T00:00:00+00:00",
+            **self._payload,
+        }
+        return SimpleNamespace(data=[row])
+
+
+def test_assign_returns_existing_active_link_without_insert() -> None:
+    """SB-271: re-adding an already-active coach is a no-op, not a duplicate INSERT."""
+    from src.shared.supabase_ops.athletes_repository import CoachAthletesRepository
+
+    coach, aid = uuid4(), uuid4()
+    existing = {
+        "id": str(uuid4()),
+        "coach_id": str(coach),
+        "athlete_id": str(aid),
+        "status": "active",
+        "started_at": "2026-07-02T00:00:00+00:00",
+        "ended_at": None,
+        "created_at": "2026-07-02T00:00:00+00:00",
+    }
+    fake = _FakeCoachLinks(existing=[existing])
+    out = CoachAthletesRepository(fake).assign(coach, aid)  # type: ignore[arg-type]
+
+    assert fake.inserted is False
+    assert out == existing
+
+
+def test_assign_inserts_when_no_active_link() -> None:
+    from src.shared.supabase_ops.athletes_repository import CoachAthletesRepository
+
+    coach, aid = uuid4(), uuid4()
+    fake = _FakeCoachLinks(existing=[])
+    out = CoachAthletesRepository(fake).assign(coach, aid)  # type: ignore[arg-type]
+
+    assert fake.inserted is True
+    assert out["coach_id"] == str(coach)
+    assert out["athlete_id"] == str(aid)
+    assert out["status"] == "active"

@@ -165,7 +165,23 @@ class CoachAthletesRepository:
         return bool(cast(list[dict[str, Any]], result.data))
 
     def assign(self, coach_id: UUID, athlete_id: UUID) -> dict[str, Any]:
-        """Start an active coaching link (idempotent on the active uniqueness)."""
+        """Start an active coaching link, returning the existing one if already active.
+
+        Idempotent: a coach already active on the athlete is a no-op that returns
+        the current link rather than a duplicate INSERT, which would violate the
+        ``idx_coach_athletes_active`` partial unique index and surface as a 500.
+        """
+        existing = (
+            self.supabase.table("coach_athletes")
+            .select("*")
+            .eq("coach_id", str(coach_id))
+            .eq("athlete_id", str(athlete_id))
+            .eq("status", "active")
+            .execute()
+        )
+        rows = cast(list[dict[str, Any]], existing.data)
+        if rows:
+            return rows[0]
         result = (
             self.supabase.table("coach_athletes")
             .insert({"coach_id": str(coach_id), "athlete_id": str(athlete_id)})
