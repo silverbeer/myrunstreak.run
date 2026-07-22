@@ -24,14 +24,18 @@ _RUN = {
 
 
 class _Repo:
-    def __init__(self, run: dict[str, Any] | None) -> None:
+    def __init__(self, run: dict[str, Any] | None, route: dict[str, Any] | None = None) -> None:
         self._run = run
+        self._route = route
 
     def __call__(self, _sb: Any) -> _Repo:
         return self
 
     def get_run_by_activity_id(self, _uid: Any, _aid: str) -> dict[str, Any] | None:
         return self._run
+
+    def get_route_for_run(self, *_a: Any, **_k: Any) -> dict[str, Any] | None:
+        return self._route
 
 
 class _FakeApi:
@@ -51,9 +55,14 @@ class _FakeApi:
         return self._detail
 
 
-def _track(run: dict[str, Any] | None, detail: dict[str, Any], monkeypatch: Any) -> Any:
+def _track(
+    run: dict[str, Any] | None,
+    detail: dict[str, Any],
+    monkeypatch: Any,
+    route: dict[str, Any] | None = None,
+) -> Any:
     monkeypatch.setattr(runs_module, "get_supabase_client", lambda: object())
-    monkeypatch.setattr(runs_module, "RunsRepository", _Repo(run))
+    monkeypatch.setattr(runs_module, "RunsRepository", _Repo(run, route))
     monkeypatch.setattr(runs_module, "TokenRepository", lambda _sb: object())
     monkeypatch.setattr(runs_module, "_resolve_access_token", lambda _uid, _repo: "tok")
     monkeypatch.setattr(runs_module, "SmashRunAPIClient", _FakeApi(detail))
@@ -89,6 +98,24 @@ def test_track_empty_when_no_gps(monkeypatch: Any) -> None:
     assert out["has_track"] is False
     assert out["lat"] == []
     assert out["lon"] == []
+
+
+def test_track_includes_route_count_when_run_has_coords(monkeypatch: Any) -> None:
+    run = {**_RUN, "start_latitude": "42.244", "start_longitude": "-71.651"}
+    detail = {
+        "recordingKeys": ["latitude", "longitude"],
+        "recordingValues": [[42.24, 42.25], [-71.65, -71.66]],
+    }
+    route = {"run_count": 38, "rank": 3, "total_routes": 27, "best_pace_min_per_km": 5.21}
+    out = _track(run, detail, monkeypatch, route=route)
+    assert out["route"] == route
+
+
+def test_track_route_none_without_coords(monkeypatch: Any) -> None:
+    # _RUN has no start_latitude -> the route lookup is skipped.
+    detail = {"recordingKeys": ["latitude", "longitude"], "recordingValues": [[42.2], [-71.6]]}
+    out = _track(_RUN, detail, monkeypatch, route={"run_count": 99})
+    assert out["route"] is None
 
 
 def test_track_404_when_not_owned(monkeypatch: Any) -> None:

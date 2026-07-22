@@ -700,6 +700,16 @@ def display_route_card(data: dict[str, Any]) -> None:
     if pace:
         stats.append(f"   ⚡ {format_pace(pace)}/mi", style="bold white")
 
+    route = data.get("route")
+    if route and route.get("run_count"):
+        line = f"\n🔁 {route['run_count']}× on this route"
+        if route.get("rank") and route.get("total_routes"):
+            line += f"  ·  #{route['rank']}/{route['total_routes']}"
+        best = route.get("best_pace_min_per_km")
+        if best:
+            line += f"  ·  best {format_pace(best)}/mi"
+        stats.append(line, style="yellow")
+
     console.print(
         Panel(
             Group(Text("\n".join(rows), style="bright_green"), stats),
