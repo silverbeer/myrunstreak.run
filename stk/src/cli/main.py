@@ -85,6 +85,12 @@ app.add_typer(
     rich_help_panel=_PANEL_COACHING,
 )
 app.add_typer(
+    runs.route_app,
+    name="route",
+    help="Examine a single route + its GPS map",
+    rich_help_panel=_PANEL_RUNS,
+)
+app.add_typer(
     cache.cache_app, name="cache", help="Local response cache", rich_help_panel=_PANEL_SYSTEM
 )
 
