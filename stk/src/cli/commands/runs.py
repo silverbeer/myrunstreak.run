@@ -100,6 +100,25 @@ def list_runs(
         display.display_recent_runs(data)
 
 
+route_app = typer.Typer(help="Examine a single route + its GPS map")
+
+
+@route_app.command("show")
+def route_show(
+    activity_id: str = typer.Argument(..., help="Run's activity id (from stk runs / route URL)"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+) -> None:
+    """Show a run's GPS route as a braille map + stats."""
+    data = api.request(f"runs/{activity_id}/track")
+
+    if json_output:
+        import json
+
+        print(json.dumps(data, indent=2))
+    else:
+        display.display_route_card(data)
+
+
 def routes(
     min_runs: int = typer.Option(2, "--min-runs", help="Only routes run at least this many times"),
     limit: int = typer.Option(15, "--limit", "-n", help="Max routes to show"),

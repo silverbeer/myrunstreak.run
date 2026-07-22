@@ -3,9 +3,10 @@
 from datetime import date, datetime
 from typing import Any
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 console = Console()
 
@@ -612,3 +613,99 @@ def display_route_leaderboard(data: dict[str, Any], limit: int = 15) -> None:
         )
 
     console.print(table)
+
+
+# --- braille route map (SB-293) ---
+
+# Braille dot bit layout within a 2-wide x 4-tall cell (U+2800 base).
+_BRAILLE_DOTS = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]]
+
+
+class _BrailleCanvas:
+    """Tiny drawille-style canvas. w/h are in character cells (each = 2x4 dots)."""
+
+    def __init__(self, w: int, h: int) -> None:
+        self.dots_x, self.dots_y = w * 2, h * 4
+        self.grid = [[0] * w for _ in range(h)]
+
+    def _set(self, x: int, y: int) -> None:
+        if 0 <= x < self.dots_x and 0 <= y < self.dots_y:
+            self.grid[y // 4][x // 2] |= _BRAILLE_DOTS[y % 4][x % 2]
+
+    def line(self, x0: int, y0: int, x1: int, y1: int) -> None:
+        # Bresenham — connect consecutive GPS points into a continuous trace.
+        dx, dy = abs(x1 - x0), -abs(y1 - y0)
+        sx, sy = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
+        err = dx + dy
+        while True:
+            self._set(x0, y0)
+            if x0 == x1 and y0 == y1:
+                break
+            e2 = 2 * err
+            if e2 >= dy:
+                err += dy
+                x0 += sx
+            if e2 <= dx:
+                err += dx
+                y0 += sy
+
+    def rows(self) -> list[str]:
+        return ["".join(chr(0x2800 + c) for c in row) for row in self.grid]
+
+
+def _render_track(lat: list[float], lon: list[float], w: int = 40, h: int = 16) -> list[str]:
+    """Trace a lat/lon polyline into braille rows (aspect-corrected, north up)."""
+    import math
+
+    mean_lat = sum(lat) / len(lat)
+    # Equalize distance scaling: 1 deg lon is cos(lat)x shorter than 1 deg lat.
+    xs = [lo * math.cos(math.radians(mean_lat)) for lo in lon]
+    ys = list(lat)
+    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+    spanx, spany = (maxx - minx) or 1e-9, (maxy - miny) or 1e-9
+
+    cv = _BrailleCanvas(w, h)
+    pad = 1
+    px = [int((x - minx) / spanx * (cv.dots_x - 1 - 2 * pad)) + pad for x in xs]
+    # Invert y so higher latitude (north) is higher on screen.
+    py = [(cv.dots_y - 1 - pad) - int((y - miny) / spany * (cv.dots_y - 1 - 2 * pad)) for y in ys]
+    for i in range(len(px) - 1):
+        cv.line(px[i], py[i], px[i + 1], py[i + 1])
+    return cv.rows()
+
+
+def display_route_card(data: dict[str, Any]) -> None:
+    """Braille GPS map + stats for one run (SB-293)."""
+    aid = data.get("activity_id", "")
+    lat, lon = data.get("lat") or [], data.get("lon") or []
+    if not data.get("has_track") or len(lat) < 2:
+        console.print(f"[dim]No GPS track for run {aid} (indoor/treadmill or GPS off).[/dim]")
+        return
+
+    rows = _render_track(lat, lon)
+    miles = km_to_miles(data.get("distance_km") or 0)
+    dur_s = int(data.get("duration_seconds") or 0)
+    pace = data.get("avg_pace_min_per_km")
+    temp_c = data.get("temperature_celsius")
+    place = ", ".join(p for p in (data.get("city"), data.get("state")) if p)
+    date = (data.get("date") or "")[:10]
+
+    stats = Text()
+    stats.append(f"\n📍 {place}\n" if place else "\n", style="bold cyan")
+    stats.append(f"📅 {date}   ", style="white")
+    if temp_c is not None:
+        weather = data.get("weather_type") or ""
+        stats.append(f"{weather} · {round(celsius_to_fahrenheit(temp_c))}°F", style="dim")
+    stats.append(f"\n🏃 {miles:.2f} mi   ⏱ {dur_s // 60}:{dur_s % 60:02d}", style="bold white")
+    if pace:
+        stats.append(f"   ⚡ {format_pace(pace)}/mi", style="bold white")
+
+    console.print(
+        Panel(
+            Group(Text("\n".join(rows), style="bright_green"), stats),
+            title=f"[bold]Route[/]  ·  {miles:.1f} mi",
+            subtitle=f"[dim]activity {aid}[/]",
+            border_style="green",
+            width=54,
+        )
+    )

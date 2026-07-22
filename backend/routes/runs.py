@@ -8,9 +8,11 @@ from uuid import UUID
 
 from backend.auth import authenticate_request
 from backend.cache import cached
+from backend.routes.sync import _resolve_access_token
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from src.shared.smashrun import SmashRunAPIClient
 from src.shared.supabase_client import get_supabase_client
-from src.shared.supabase_ops import RunsRepository
+from src.shared.supabase_ops import RunsRepository, TokenRepository
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -244,6 +246,54 @@ async def route_leaderboard(
     distance bucket, sorted by run count. Answers "how many times have I run
     this route". Treadmill / no-GPS runs are excluded."""
     return await _routes(user_id, min_runs)
+
+
+@cached(ttl=86400, key_prefix="runs:track")
+async def _track(user_id: UUID, activity_id: str) -> dict[str, Any]:
+    supabase = get_supabase_client()
+    run = RunsRepository(supabase).get_run_by_activity_id(user_id, activity_id)
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
+
+    # The GPS track lives only in SmashRun's per-activity detail (recordingValues),
+    # not our DB — fetch it on demand with the user's token.
+    token = _resolve_access_token(user_id, TokenRepository(supabase))
+    with SmashRunAPIClient(access_token=token) as api:
+        detail = api.get_activity_by_id(activity_id)
+
+    keys = detail.get("recordingKeys") or []
+    values = detail.get("recordingValues") or []
+    lat: list[float] = []
+    lon: list[float] = []
+    if "latitude" in keys and "longitude" in keys and values:
+        lat = [float(v) for v in values[keys.index("latitude")]]
+        lon = [float(v) for v in values[keys.index("longitude")]]
+
+    return {
+        "activity_id": activity_id,
+        "has_track": bool(lat),
+        "lat": lat,
+        "lon": lon,
+        "city": detail.get("city"),
+        "state": detail.get("state"),
+        "date": run["start_date_time_local"],
+        "distance_km": _f(run.get("distance_km")),
+        "duration_seconds": _f(run.get("duration_seconds")),
+        "avg_pace_min_per_km": _f(run.get("average_pace_min_per_km")),
+        "weather_type": run.get("weather_type"),
+        "temperature_celsius": _f(run.get("temperature_celsius")),
+    }
+
+
+@router.get("/{activity_id}/track")
+async def get_run_track(
+    activity_id: str,
+    user_id: UUID = Depends(authenticate_request),
+) -> dict[str, Any]:
+    """GPS track (lat/lon arrays) + place/stats for one run (SB-293), for the
+    `stk route show` braille map. Track is fetched on demand from SmashRun's
+    detail payload (not stored). 404 if the run isn't the caller's."""
+    return await _track(user_id, activity_id)
 
 
 # NOTE: registered after /recent, /head, /routes, and "" so the static paths keep priority.
