@@ -166,3 +166,23 @@ export interface RunDetail {
   notes: string | null
   splits: RunSplit[]
 }
+
+/** Per-point GPS track + aligned metric series for the route map (SB-298). */
+export interface RunTrack {
+  activity_id: string
+  has_track: boolean
+  lat: number[]
+  lon: number[]
+  elevation_m: number[]
+  heart_rate: number[]
+  pace_min_per_km: number[]
+  dist_km: number[]
+  city: string | null
+  state: string | null
+  date: string
+  distance_km: number | null
+  duration_seconds: number | null
+  avg_pace_min_per_km: number | null
+  weather_type: string | null
+  temperature_celsius: number | null
+}

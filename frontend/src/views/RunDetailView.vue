@@ -59,6 +59,8 @@
         </div>
       </div>
 
+      <RouteMap v-if="track && track.has_track" :track="track" :unit="unit" />
+
       <div v-if="run.splits.length > 0" class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mt-4">
         <h2 class="font-semibold text-gray-900 mb-1">{{ splitNoun }} splits</h2>
         <p class="text-xs text-gray-400 mb-3">fastest split highlighted</p>
@@ -106,14 +108,17 @@ import {
   Cloud, CloudDrizzle, CloudRain, CloudSnow, Snowflake, Sun, SunDim, Wind, Zap, Home, Thermometer,
 } from 'lucide-vue-next'
 import { useRunDetail } from '@/composables/useRunDetail'
+import { useRunTrack } from '@/composables/useRunTrack'
 import { useUserPreferences } from '@/composables/useUserPreferences'
 import { formatDate, formatDistance, formatDuration, formatPace, distanceLabel } from '@/utils/format'
+import RouteMap from '@/components/RouteMap.vue'
 
 const KM_PER_MI = 1.609344
 
 const route = useRoute()
 const { unit } = useUserPreferences()
 const { run, loading, error, load } = useRunDetail(String(route.params.activityId))
+const { track, load: loadTrack } = useRunTrack(String(route.params.activityId))
 
 // Start time (browser-local, matching formatDate) + early-bird nod (SB-270).
 const startTime = computed(() => {
@@ -254,5 +259,10 @@ const elevOptions = computed(() => ({
   tooltip: { y: { formatter: (v: number) => `${Math.round(v)} ${elevUnit.value}` } },
 }))
 
-onMounted(load)
+onMounted(() => {
+  load()
+  // The track hits SmashRun on the backend — load it lazily, never block the
+  // page, and let RouteMap render only if a GPS track came back.
+  loadTrack()
+})
 </script>
