@@ -263,17 +263,29 @@ async def _track(user_id: UUID, activity_id: str) -> dict[str, Any]:
 
     keys = detail.get("recordingKeys") or []
     values = detail.get("recordingValues") or []
-    lat: list[float] = []
-    lon: list[float] = []
-    if "latitude" in keys and "longitude" in keys and values:
-        lat = [float(v) for v in values[keys.index("latitude")]]
-        lon = [float(v) for v in values[keys.index("longitude")]]
+
+    def series(name: str) -> list[float]:
+        return [float(v) for v in values[keys.index(name)]] if name in keys and values else []
+
+    lat = series("latitude")
+    lon = series("longitude")
+    elevation = series("elevation")
+    heart_rate = series("heartRate")
+    # Per-point pace (min/km) smoothed over a short window of the cumulative
+    # distance/clock series — SmashRun gives cumulative km + seconds, not pace.
+    dist_km = series("distance")
+    clock_s = series("clock")
+    pace = _per_point_pace(dist_km, clock_s)
 
     return {
         "activity_id": activity_id,
         "has_track": bool(lat),
         "lat": lat,
         "lon": lon,
+        "elevation_m": elevation,
+        "heart_rate": heart_rate,
+        "pace_min_per_km": pace,
+        "dist_km": dist_km,
         "city": detail.get("city"),
         "state": detail.get("state"),
         "date": run["start_date_time_local"],
@@ -283,6 +295,26 @@ async def _track(user_id: UUID, activity_id: str) -> dict[str, Any]:
         "weather_type": run.get("weather_type"),
         "temperature_celsius": _f(run.get("temperature_celsius")),
     }
+
+
+def _per_point_pace(dist_km: list[float], clock_s: list[float], window: int = 5) -> list[float]:
+    """Windowed pace (min/km) per sample from cumulative distance + clock.
+
+    A lookback window smooths out GPS jitter (a single noisy sample would spike
+    an instantaneous pace). Returns [] if the series aren't both present/aligned.
+    """
+    n = len(dist_km)
+    if n == 0 or len(clock_s) != n:
+        return []
+    out: list[float] = []
+    for i in range(n):
+        j = max(0, i - window)
+        dd = dist_km[i] - dist_km[j]
+        dt = clock_s[i] - clock_s[j]
+        out.append(round(dt / 60 / dd, 2) if dd > 0.005 and dt > 0 else 0.0)
+    # Seed the first samples (no lookback) with the first real pace.
+    first = next((p for p in out if p > 0), 0.0)
+    return [p if p > 0 else first for p in out]
 
 
 @router.get("/{activity_id}/track")

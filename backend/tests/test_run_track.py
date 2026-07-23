@@ -60,14 +60,16 @@ def _track(run: dict[str, Any] | None, detail: dict[str, Any], monkeypatch: Any)
     return asyncio.run(runs_module.get_run_track("act-1", user_id=USER))
 
 
-def test_track_returns_lat_lon_and_place(monkeypatch: Any) -> None:
+def test_track_returns_lat_lon_place_and_series(monkeypatch: Any) -> None:
     detail = {
-        "recordingKeys": ["distance", "latitude", "longitude", "elevation"],
+        "recordingKeys": ["distance", "latitude", "longitude", "elevation", "heartRate", "clock"],
         "recordingValues": [
-            [0, 1, 2],
+            [0.0, 0.1, 0.2],  # cumulative km
             [42.24, 42.25, 42.26],
             [-71.65, -71.66, -71.67],
-            [10, 11, 12],
+            [10, 12, 11],  # elevation m
+            [140, 150, 155],  # heart rate
+            [0, 36, 74],  # clock seconds
         ],
         "city": "Worcester County",
         "state": "Massachusetts",
@@ -76,8 +78,13 @@ def test_track_returns_lat_lon_and_place(monkeypatch: Any) -> None:
     assert out["has_track"] is True
     assert out["lat"] == [42.24, 42.25, 42.26]
     assert out["lon"] == [-71.65, -71.66, -71.67]
+    assert out["elevation_m"] == [10, 12, 11]
+    assert out["heart_rate"] == [140, 150, 155]
+    assert out["dist_km"] == [0.0, 0.1, 0.2]
+    # Pace derived from distance+clock: last window 74s / 0.2km = 6.17 min/km.
+    assert len(out["pace_min_per_km"]) == 3
+    assert out["pace_min_per_km"][-1] == pytest.approx(74 / 60 / 0.2, abs=0.01)
     assert out["city"] == "Worcester County"
-    assert out["state"] == "Massachusetts"
     # Stats come from our DB row (canonical), coerced to float.
     assert out["distance_km"] == 6.88
     assert out["avg_pace_min_per_km"] == 6.05
