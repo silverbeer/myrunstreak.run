@@ -2,6 +2,7 @@
 
 import logging
 from datetime import date
+from statistics import median
 from typing import Any, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -471,6 +472,66 @@ class RunsRepository:
                     "best_pace_min_per_km": route["best_pace_min_per_km"],
                 }
         return None
+
+    def get_conditions_penalty(
+        self,
+        user_id: UUID,
+        temp_c: float = 24.0,
+        humidity_pct: float = 70.0,
+        min_steamy: int = 5,
+    ) -> dict[str, Any] | None:
+        """How much slower the user runs in hot + humid conditions (SB-304).
+
+        Compares median pace on "steamy" runs (temp ≥ temp_c AND humidity ≥
+        humidity_pct — the SB-269 flag's zone) against every other run. The
+        spike found this is the only condition that meaningfully moves this
+        runner's pace, so it's reported per-user rather than modeled.
+
+        Returns the penalty in seconds/mile plus the run counts, or None if
+        there aren't enough steamy runs to be meaningful.
+        """
+        result = (
+            self.supabase.table("runs")
+            .select("average_pace_min_per_km, temperature_celsius, humidity_percent")
+            .eq("user_id", str(user_id))
+            .not_.is_("average_pace_min_per_km", "null")
+            .limit(10000)
+            .execute()
+        )
+        rows = cast(list[dict[str, Any]], result.data)
+
+        steamy: list[float] = []
+        baseline: list[float] = []
+        for r in rows:
+            pace = r.get("average_pace_min_per_km")
+            if pace is None:
+                continue
+            pace = float(pace)
+            temp = r.get("temperature_celsius")
+            humidity = r.get("humidity_percent")
+            is_steamy = (
+                temp is not None
+                and humidity is not None
+                and float(temp) >= temp_c
+                and float(humidity) >= humidity_pct
+            )
+            (steamy if is_steamy else baseline).append(pace)
+
+        if len(steamy) < min_steamy or not baseline:
+            return None
+
+        steamy_med = median(steamy)
+        baseline_med = median(baseline)
+        penalty_min_per_km = steamy_med - baseline_med
+        return {
+            "steamy_run_count": len(steamy),
+            "baseline_run_count": len(baseline),
+            "penalty_sec_per_mi": round(penalty_min_per_km * 1.609344 * 60),
+            "steamy_median_pace_min_per_km": round(steamy_med, 3),
+            "baseline_median_pace_min_per_km": round(baseline_med, 3),
+            "temp_c": temp_c,
+            "humidity_pct": humidity_pct,
+        }
 
     def get_monthly_stats(self, user_id: UUID, limit: int = 12) -> list[dict[str, Any]]:
         """
