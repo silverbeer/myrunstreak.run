@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from backend.auth import authenticate_request
-from backend.cache import cached
+from backend.cache import cached, invalidate_user
 from backend.routes.sync import _resolve_access_token
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from src.shared.smashrun import SmashRunAPIClient
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import RunsRepository, TokenRepository
@@ -405,8 +406,37 @@ async def get_run_detail(
         },
         "how_felt": run.get("how_felt"),
         "notes": run.get("notes"),
+        "audio_type": run.get("audio_type"),
+        "audio_note": run.get("audio_note"),
         "splits": splits,
     }
+
+
+AUDIO_TYPES = ("podcast", "music", "audiobook", "other", "none")
+
+
+class AudioLogRequest(BaseModel):
+    """What was playing on a run (SB-302). audio_type null clears it."""
+
+    audio_type: Literal["podcast", "music", "audiobook", "other", "none"] | None = None
+    audio_note: str | None = Field(default=None, max_length=500)
+
+
+@router.patch("/{activity_id}/audio")
+async def set_run_audio(
+    activity_id: str,
+    body: AudioLogRequest,
+    user_id: UUID = Depends(authenticate_request),
+) -> dict[str, Any]:
+    """Record what you listened to on a run — podcast/music/audiobook/other/none
+    plus an optional note (SB-302). Annotation layer over the SmashRun import;
+    404 if the run isn't the caller's."""
+    repo = RunsRepository(get_supabase_client())
+    updated = repo.set_run_audio(user_id, activity_id, body.audio_type, body.audio_note)
+    if updated is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
+    await invalidate_user(user_id)
+    return {"audio_type": updated.get("audio_type"), "audio_note": updated.get("audio_note")}
 
 
 def _f(value: Any) -> float | None:

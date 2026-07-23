@@ -94,6 +94,12 @@
         </div>
       </div>
 
+      <AudioLog
+        :activity-id="run.activity_id"
+        :audio-type="run.audio_type"
+        :audio-note="run.audio_note"
+      />
+
       <p v-if="run.notes" class="text-sm text-gray-500 mt-4">{{ run.notes }}</p>
     </template>
   </div>
@@ -112,6 +118,7 @@ import { useRunTrack } from '@/composables/useRunTrack'
 import { useUserPreferences } from '@/composables/useUserPreferences'
 import { formatDate, formatDistance, formatDuration, formatPace, distanceLabel } from '@/utils/format'
 import RouteMap from '@/components/RouteMap.vue'
+import AudioLog from '@/components/AudioLog.vue'
 
 const KM_PER_MI = 1.609344
 

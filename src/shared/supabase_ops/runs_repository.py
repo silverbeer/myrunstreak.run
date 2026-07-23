@@ -94,6 +94,26 @@ class RunsRepository:
         data_list = cast(list[dict[str, Any]], result.data)
         return data_list[0] if data_list else None
 
+    def set_run_audio(
+        self,
+        user_id: UUID,
+        activity_id: str,
+        audio_type: str | None,
+        audio_note: str | None,
+    ) -> dict[str, Any] | None:
+        """Set a run's audio log (what was playing) — SB-302. User-scoped so a
+        caller can only annotate their own run. Returns the updated row, or None
+        if no run matched (not found / not owned)."""
+        result = (
+            self.supabase.table("runs")
+            .update({"audio_type": audio_type, "audio_note": audio_note})
+            .eq("user_id", str(user_id))
+            .eq("source_activity_id", activity_id)
+            .execute()
+        )
+        data = cast(list[dict[str, Any]], result.data)
+        return data[0] if data else None
+
     def _apply_run_filters(
         self,
         query: Any,
