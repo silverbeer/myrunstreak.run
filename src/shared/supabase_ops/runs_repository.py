@@ -364,7 +364,7 @@ class RunsRepository:
         self,
         user_id: UUID,
         min_runs: int = 2,
-        precision: int = 3,
+        precision: int = 2,
         dist_bucket_km: float = 0.5,
     ) -> list[dict[str, Any]]:
         """Group a user's GPS runs into repeated routes (SB-291).
@@ -374,10 +374,16 @@ class RunsRepository:
         without any polyline. Treadmill / no-GPS runs are excluded (they have
         no start coordinates).
 
+        precision=2 (~1.1 km cell) instead of 3: at 3 decimals the same physical
+        route split across a rounding boundary into two rows (SB-289 — e.g. one
+        home route counted as 20 + 18). A home-based runner starts most routes
+        from one spot, so the distance bucket does the real separating; the
+        coarser cell folds the boundary jitter back together.
+
         Args:
             user_id: User UUID
             min_runs: Only return routes run at least this many times
-            precision: Decimal places to round start lat/lon (3 ≈ 110 m cell)
+            precision: Decimal places to round start lat/lon (2 ≈ 1.1 km cell)
             dist_bucket_km: Distance bucket width in km
 
         Returns:
@@ -433,6 +439,38 @@ class RunsRepository:
 
         routes.sort(key=lambda x: x["run_count"], reverse=True)
         return routes
+
+    def get_route_for_run(
+        self,
+        user_id: UUID,
+        start_latitude: float,
+        start_longitude: float,
+        distance_km: float,
+        precision: int = 2,
+        dist_bucket_km: float = 0.5,
+    ) -> dict[str, Any] | None:
+        """The route a given run belongs to, with its count + rank (SB-296).
+
+        Reuses the leaderboard grouping so the route-card can show "run N times,
+        #k of M" for a single activity. Returns None if the run has no GPS start
+        (nothing to group on).
+        """
+        board = self.get_route_leaderboard(
+            user_id, min_runs=1, precision=precision, dist_bucket_km=dist_bucket_km
+        )
+        lat = round(float(start_latitude), precision)
+        lon = round(float(start_longitude), precision)
+        bucket = round(round(float(distance_km) / dist_bucket_km) * dist_bucket_km, 3)
+        key = f"{lat},{lon},{bucket}"
+        for rank, route in enumerate(board, start=1):
+            if route["route_key"] == key:
+                return {
+                    "run_count": route["run_count"],
+                    "rank": rank,
+                    "total_routes": len(board),
+                    "best_pace_min_per_km": route["best_pace_min_per_km"],
+                }
+        return None
 
     def get_monthly_stats(self, user_id: UUID, limit: int = 12) -> list[dict[str, Any]]:
         """

@@ -269,6 +269,19 @@ async def _track(user_id: UUID, activity_id: str) -> dict[str, Any]:
         lat = [float(v) for v in values[keys.index("latitude")]]
         lon = [float(v) for v in values[keys.index("longitude")]]
 
+    # How many times this route has been run (count + rank), so the card can say
+    # "run N times, #k of M" (SB-296). Needs the run's own start coords.
+    route = None
+    run_lat, run_lon, run_dist = (
+        run.get("start_latitude"),
+        run.get("start_longitude"),
+        run.get("distance_km"),
+    )
+    if run_lat is not None and run_lon is not None and run_dist is not None:
+        route = RunsRepository(supabase).get_route_for_run(
+            user_id, float(run_lat), float(run_lon), float(run_dist)
+        )
+
     return {
         "activity_id": activity_id,
         "has_track": bool(lat),
@@ -282,6 +295,7 @@ async def _track(user_id: UUID, activity_id: str) -> dict[str, Any]:
         "avg_pace_min_per_km": _f(run.get("average_pace_min_per_km")),
         "weather_type": run.get("weather_type"),
         "temperature_celsius": _f(run.get("temperature_celsius")),
+        "route": route,
     }
 
 

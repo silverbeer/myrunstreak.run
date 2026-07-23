@@ -89,6 +89,28 @@ def test_distance_separates_routes_from_same_start() -> None:
     assert {round(r["distance_km"], 1) for r in routes} == {4.0, 8.0}
 
 
+def test_get_route_for_run_returns_count_and_rank() -> None:
+    # Two routes; the queried run belongs to the busier one.
+    rows = [
+        _run(42.244, -71.651, 4.0, 6.0, "2026-01-01"),
+        _run(42.244, -71.650, 4.0, 5.9, "2026-02-01"),  # precision=2 folds these together
+        _run(42.244, -71.651, 4.0, 6.1, "2026-03-01"),
+        _run(41.893, -87.624, 5.0, 5.5, "2026-01-01"),
+        _run(41.893, -87.624, 5.0, 5.6, "2026-02-01"),
+    ]
+    got = _repo(rows).get_route_for_run(USER, 42.2441, -71.6509, 4.05)
+    assert got is not None
+    assert got["run_count"] == 3  # all three home runs, split cells folded by precision=2
+    assert got["rank"] == 1  # busiest route
+    assert got["total_routes"] == 2
+    assert got["best_pace_min_per_km"] == 5.9
+
+
+def test_get_route_for_run_none_for_unseen_start() -> None:
+    rows = [_run(42.244, -71.651, 4.0, 6.0, "2026-01-01")]
+    assert _repo(rows).get_route_for_run(USER, 10.0, 10.0, 4.0) is None
+
+
 # ---- endpoint wiring ----
 
 
