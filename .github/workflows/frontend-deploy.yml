@@ -59,14 +59,13 @@ jobs:
             VITE_API_BASE=${{ secrets.VITE_API_BASE }}
 
       - name: Update Helm values image tag
+        # Pull latest main FIRST (clean fast-forward — no local edits yet), THEN
+        # edit the tag, so the auto-commit below always fast-forwards even when a
+        # prior deploy changed this same line (SB-300 v2).
         run: |
+          git pull --ff-only origin main
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           sed -i "s|tag: \".*\" # frontend-tag|tag: \"${SHORT_SHA}\" # frontend-tag|" helm/myrunstreak/values.yaml
-
-      - name: Rebase onto latest main
-        # Pick up any commit that landed on main since checkout so the tag
-        # commit fast-forwards instead of getting rejected (SB-300).
-        run: git pull --rebase --autostash origin main
 
       - name: Commit updated Helm values
         uses: stefanzweifel/git-auto-commit-action@v7
