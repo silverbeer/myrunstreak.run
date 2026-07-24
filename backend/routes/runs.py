@@ -11,6 +11,7 @@ from backend.cache import cached, invalidate_user
 from backend.routes.sync import _resolve_access_token
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from src.shared.geo import simplify_and_encode
 from src.shared.smashrun import SmashRunAPIClient
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import RunsRepository, TokenRepository
@@ -264,6 +265,23 @@ async def route_leaderboard(
     return await _routes(user_id, min_runs)
 
 
+@cached(ttl=300, key_prefix="runs:tracks")
+async def _tracks(user_id: UUID) -> dict[str, Any]:
+    repo = RunsRepository(get_supabase_client())
+    tracks = repo.get_all_track_polylines(user_id)
+    return {"count": len(tracks), "tracks": tracks}
+
+
+@router.get("/tracks")
+async def all_tracks(
+    user_id: UUID = Depends(authenticate_request),
+) -> dict[str, Any]:
+    """Every stored GPS polyline for the caller — the territory-heatmap data
+    source (SB-309). Populated by store-on-read + backfill; runs whose map has
+    never been opened won't appear until backfilled."""
+    return await _tracks(user_id)
+
+
 @cached(ttl=86400, key_prefix="runs:track")
 async def _track(user_id: UUID, activity_id: str) -> dict[str, Any]:
     supabase = get_supabase_client()
@@ -292,6 +310,17 @@ async def _track(user_id: UUID, activity_id: str) -> dict[str, Any]:
     dist_km = series("distance")
     clock_s = series("clock")
     pace = _per_point_pace(dist_km, clock_s)
+
+    # Persist the simplified polyline for the heatmap + route-matching (SB-309).
+    # Best-effort store-on-read: never fail the request over it; the batched
+    # backfill covers runs whose map is never opened.
+    if lat and lon:
+        try:
+            polyline, n_pts = simplify_and_encode(lat, lon)
+            if polyline:
+                RunsRepository(supabase).upsert_track(UUID(run["id"]), polyline, n_pts)
+        except Exception:  # noqa: BLE001 — storage is a side effect, not the response
+            pass
 
     # How many times this route has been run (count + rank), so the card can say
     # "run N times, #k of M" (SB-296). Needs the run's own start coords.
