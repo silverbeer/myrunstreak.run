@@ -685,14 +685,13 @@ def _render_track(lat: list[float], lon: list[float], w: int = 40, h: int = 16) 
 
 
 def display_route_card(data: dict[str, Any]) -> None:
-    """Braille GPS map + stats for one run (SB-293)."""
+    """A run's braille GPS map + stats (SB-293). Degrades to stats-only when the
+    run has no GPS track (treadmill / GPS off), so it's useful for `stk last`
+    (SB-307) on any run, not just outdoor ones."""
     aid = data.get("activity_id", "")
     lat, lon = data.get("lat") or [], data.get("lon") or []
-    if not data.get("has_track") or len(lat) < 2:
-        console.print(f"[dim]No GPS track for run {aid} (indoor/treadmill or GPS off).[/dim]")
-        return
+    has_track = bool(data.get("has_track")) and len(lat) >= 2
 
-    rows = _render_track(lat, lon)
     miles = km_to_miles(data.get("distance_km") or 0)
     dur_s = int(data.get("duration_seconds") or 0)
     pace = data.get("avg_pace_min_per_km")
@@ -709,6 +708,8 @@ def display_route_card(data: dict[str, Any]) -> None:
     stats.append(f"\n🏃 {miles:.2f} mi   ⏱ {dur_s // 60}:{dur_s % 60:02d}", style="bold white")
     if pace:
         stats.append(f"   ⚡ {format_pace(pace)}/mi", style="bold white")
+    if not has_track:
+        stats.append("\n🏠 no GPS track (indoor / treadmill)", style="dim")
 
     route = data.get("route")
     if route and route.get("run_count"):
@@ -720,9 +721,14 @@ def display_route_card(data: dict[str, Any]) -> None:
             line += f"  ·  best {format_pace(best)}/mi"
         stats.append(line, style="yellow")
 
+    body = (
+        Group(Text("\n".join(_render_track(lat, lon)), style="bright_green"), stats)
+        if has_track
+        else stats
+    )
     console.print(
         Panel(
-            Group(Text("\n".join(rows), style="bright_green"), stats),
+            body,
             title=f"[bold]Route[/]  ·  {miles:.1f} mi",
             subtitle=f"[dim]activity {aid}[/]",
             border_style="green",

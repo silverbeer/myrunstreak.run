@@ -133,6 +133,26 @@ def audio(
         display.display_success(f"🎧 {activity_id}: {label}{extra}")
 
 
+def last(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+) -> None:
+    """Your most recent run — route map + stats in one shot (SB-307)."""
+    recent = api.request("runs/recent", {"limit": 1})
+    runs = recent.get("runs", [])
+    if not runs:
+        display.display_info("No runs yet — go log one.")
+        return
+
+    data = api.request(f"runs/{runs[0]['activity_id']}/track")
+
+    if json_output:
+        import json
+
+        print(json.dumps(data, indent=2))
+    else:
+        display.display_route_card(data)
+
+
 route_app = typer.Typer(help="Examine a single route + its GPS map")
 
 
