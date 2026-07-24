@@ -133,6 +133,20 @@ def audio(
         display.display_success(f"🎧 {activity_id}: {label}{extra}")
 
 
+def territory_map(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+) -> None:
+    """Your territory heatmap — every route overlaid, hot where you run most."""
+    data = api.request("runs/tracks")
+
+    if json_output:
+        import json
+
+        print(json.dumps(data, indent=2))
+    else:
+        display.display_territory_heatmap(data)
+
+
 def last(
     json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
 ) -> None:

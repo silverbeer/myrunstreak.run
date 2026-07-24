@@ -735,3 +735,136 @@ def display_route_card(data: dict[str, Any]) -> None:
             width=54,
         )
     )
+
+
+# --- territory heatmap (SB-311 payoff) ---
+
+
+def _decode_polyline(encoded: str, precision: int = 5) -> list[tuple[float, float]]:
+    """Decode a Google-encoded polyline to (lat, lon) points (stk-local, since
+    the CLI can't import src.shared)."""
+    factor = 10**precision
+    points: list[tuple[float, float]] = []
+    i = lat = lon = 0
+    n = len(encoded)
+    while i < n:
+        for is_lon in (False, True):
+            shift = result = 0
+            while True:
+                b = ord(encoded[i]) - 63
+                i += 1
+                result |= (b & 0x1F) << shift
+                shift += 5
+                if b < 0x20:
+                    break
+            delta = ~(result >> 1) if result & 1 else (result >> 1)
+            if is_lon:
+                lon += delta
+            else:
+                lat += delta
+        points.append((lat / factor, lon / factor))
+    return points
+
+
+# Heat ramp low->high frequency: cool blue -> cyan -> yellow -> orange -> red.
+_HEAT = ["#3b4cc0", "#4fb0c6", "#e8d63a", "#f0930f", "#e0571f"]
+
+
+def _heat_color(t: float) -> str:
+    t = max(0.0, min(1.0, t))
+    seg = t * (len(_HEAT) - 1)
+    i = min(len(_HEAT) - 2, int(seg))
+    f = seg - i
+    a = tuple(int(_HEAT[i][k : k + 2], 16) for k in (1, 3, 5))
+    b = tuple(int(_HEAT[i + 1][k : k + 2], 16) for k in (1, 3, 5))
+    return "#" + "".join(f"{round(a[j] + (b[j] - a[j]) * f):02x}" for j in range(3))
+
+
+def display_territory_heatmap(data: dict[str, Any], w: int = 46, h: int = 22) -> None:
+    """Every stored route overlaid into one braille map, each cell colored by how
+    often you've run through it — your personal Strava heatmap (SB-311)."""
+    import math
+
+    tracks = data.get("tracks", [])
+    decoded = [_decode_polyline(t["polyline"], t.get("encoded_precision", 5)) for t in tracks]
+    all_pts = [p for track in decoded for p in track]
+
+    if len(all_pts) < 2:
+        console.print(
+            "[dim]No route data yet — polylines are still backfilling. "
+            "Open some route maps ([bold]stk route show[/bold]) or wait for the "
+            "nightly trickle, then try again.[/dim]"
+        )
+        return
+
+    lats = [p[0] for p in all_pts]
+    xs_all = [p[1] for p in all_pts]
+    mean_lat = sum(lats) / len(lats)
+    k = math.cos(math.radians(mean_lat)) or 1e-9
+    xs = [lo * k for lo in xs_all]
+    minx, maxx, miny, maxy = min(xs), max(xs), min(lats), max(lats)
+    spanx, spany = (maxx - minx) or 1e-9, (maxy - miny) or 1e-9
+    s = max(spanx / (w * 2 - 2), spany / (h * 4 - 2))
+
+    def to_dot(la: float, lo: float) -> tuple[int, int]:
+        px = int((lo * k - minx) / s) + 1
+        py = (h * 4 - 2) - int((la - miny) / s)  # north up
+        return px, py
+
+    # Draw each route's connected path; count DISTINCT runs per char-cell (the
+    # real heat: how many separate runs pass through here, not raw point density).
+    cv = _BrailleCanvas(w, h)
+    counts = [[0] * w for _ in range(h)]
+    for track in decoded:
+        if len(track) < 2:
+            continue
+        touched: set[tuple[int, int]] = set()
+        prev = to_dot(*track[0])
+        for la, lo in track[1:]:
+            cur = to_dot(la, lo)
+            cv.line(prev[0], prev[1], cur[0], cur[1])
+            # sample the segment at dot resolution to record covered cells
+            steps = max(abs(cur[0] - prev[0]), abs(cur[1] - prev[1]), 1)
+            for i in range(steps + 1):
+                dx = prev[0] + (cur[0] - prev[0]) * i // steps
+                dy = prev[1] + (cur[1] - prev[1]) * i // steps
+                cy, cx = dy // 4, dx // 2
+                if 0 <= cy < h and 0 <= cx < w:
+                    touched.add((cy, cx))
+            prev = cur
+        for cy, cx in touched:
+            counts[cy][cx] += 1
+
+    hottest = max((c for row in counts for c in row), default=1) or 1
+    # log scale — a few very-hot cells shouldn't wash out the rest.
+    log_hot = math.log1p(hottest)
+    lines = []
+    for r in range(h):
+        cells = []
+        for c in range(w):
+            ch = chr(0x2800 + cv.grid[r][c])
+            if counts[r][c]:
+                color = _heat_color(math.log1p(counts[r][c]) / log_hot)
+                cells.append(f"[{color}]{ch}[/]")
+            else:
+                cells.append(" ")
+        lines.append("".join(cells))
+
+    from rich.text import Text as _T
+
+    body = _T.from_markup("\n".join(lines))
+    legend = _T()
+    legend.append("\nless ", style="dim")
+    for hc in _HEAT:
+        legend.append("█", style=hc)
+    legend.append(" more   ", style="dim")
+    legend.append(f"{len(tracks)} routes · {len(all_pts):,} points", style="dim")
+
+    console.print(
+        Panel(
+            Group(body, legend),
+            title="[bold]Your territory[/]",
+            border_style="green",
+            width=w + 4,
+        )
+    )
