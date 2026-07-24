@@ -1,0 +1,51 @@
+name: Notify on failure
+
+# Central failure alarm: fires when any of the deploy / migration / image
+# workflows conclude with failure, and pings Telegram. Catches the silent case
+# where a post-merge deploy fails behind a green PR (SB-305).
+#
+# workflow_run only triggers from the copy of this file on the DEFAULT branch,
+# so it activates once merged to main. Needs two repo secrets:
+#   TELEGRAM_BOT_TOKEN  — from @BotFather
+#   TELEGRAM_CHAT_ID    — your chat id (see @userinfobot)
+
+on:
+  workflow_run:
+    workflows:
+      - Backend Deploy
+      - Frontend Deploy
+      - Supabase Migrations
+      - stk image
+    types:
+      - completed
+
+jobs:
+  telegram:
+    # Only when the watched run actually failed.
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Telegram
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WF: ${{ github.event.workflow_run.name }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          URL: ${{ github.event.workflow_run.html_url }}
+          TITLE: ${{ github.event.workflow_run.display_title }}
+        run: |
+          # Skip (with a visible warning) only when the alarm isn't wired up yet
+          # — never silently on a real send error below.
+          if [ -z "$TOKEN" ] || [ -z "$CHAT" ]; then
+            echo "::warning::TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set — cannot notify"
+            exit 0
+          fi
+          TEXT=$(printf '🔴 %s FAILED\n%s\nbranch: %s @ %s\n%s' \
+            "$WF" "$TITLE" "$BRANCH" "${SHA:0:7}" "$URL")
+          # --fail so a bad token / bad chat id turns THIS job red instead of
+          # failing quietly (the whole point is not to miss failures).
+          curl -sS --fail -X POST \
+            "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" \
+            --data-urlencode "text=${TEXT}"
