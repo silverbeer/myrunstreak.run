@@ -1,6 +1,7 @@
 """Repository for runs/activities data operations in Supabase."""
 
 import logging
+from collections.abc import Callable
 from datetime import date
 from statistics import median
 from typing import Any, cast
@@ -121,16 +122,42 @@ class RunsRepository:
             on_conflict="run_id",
         ).execute()
 
+    @staticmethod
+    def _paginate(
+        fetch_page: Callable[[int, int], list[dict[str, Any]]], page_size: int = 1000
+    ) -> list[dict[str, Any]]:
+        """Fetch every row across PostgREST's 1000-row response cap.
+
+        Supabase caps a single response at ~1000 rows regardless of .limit(), so
+        anything scanning a user's full history (thousands of runs) must page or
+        it silently truncates. fetch_page(offset, size) runs one .range() query.
+        """
+        out: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            batch = fetch_page(offset, page_size)
+            out.extend(batch)
+            if len(batch) < page_size:
+                return out
+            offset += page_size
+
     def get_all_track_polylines(self, user_id: UUID) -> list[dict[str, Any]]:
         """Every stored polyline for a user's runs — the territory-heatmap data
-        source (SB-309). Joins run_tracks to runs so it's user-scoped."""
-        result = (
-            self.supabase.table("run_tracks")
-            .select("polyline, encoded_precision, runs!inner(user_id)")
-            .eq("runs.user_id", str(user_id))
-            .execute()
-        )
-        rows = cast(list[dict[str, Any]], result.data)
+        source (SB-309). Joins run_tracks to runs so it's user-scoped. Paged so
+        it returns all of a multi-thousand-run history, not just the first 1000."""
+
+        def page(off: int, size: int) -> list[dict[str, Any]]:
+            return cast(
+                list[dict[str, Any]],
+                self.supabase.table("run_tracks")
+                .select("polyline, encoded_precision, runs!inner(user_id)")
+                .eq("runs.user_id", str(user_id))
+                .range(off, off + size - 1)
+                .execute()
+                .data,
+            )
+
+        rows = self._paginate(page)
         return [
             {"polyline": r["polyline"], "encoded_precision": r["encoded_precision"]} for r in rows
         ]
@@ -756,20 +783,34 @@ class RunsRepository:
         thousand ids — and PostgREST has no clean anti-join). Returns id +
         source_activity_id for a bounded batch.
         """
-        gps = (
-            self.supabase.table("runs")
-            .select("id, source_activity_id, start_date")
-            .eq("user_id", str(user_id))
-            .eq("has_gps_data", True)
-            .not_.is_("start_latitude", "null")
-            .order("start_date", desc=False)  # oldest first — fill history from the start
-            .limit(10000)
-            .execute()
-        )
-        gps_runs = cast(list[dict[str, Any]], gps.data)
 
-        have = self.supabase.table("run_tracks").select("run_id").limit(10000).execute()
-        have_ids = {r["run_id"] for r in cast(list[dict[str, Any]], have.data)}
+        def gps_page(off: int, size: int) -> list[dict[str, Any]]:
+            return cast(
+                list[dict[str, Any]],
+                self.supabase.table("runs")
+                .select("id, source_activity_id, start_date")
+                .eq("user_id", str(user_id))
+                .eq("has_gps_data", True)
+                .not_.is_("start_latitude", "null")
+                .order("start_date", desc=False)  # oldest first — fill history from the start
+                .range(off, off + size - 1)
+                .execute()
+                .data,
+            )
+
+        def tracks_page(off: int, size: int) -> list[dict[str, Any]]:
+            return cast(
+                list[dict[str, Any]],
+                self.supabase.table("run_tracks")
+                .select("run_id, runs!inner(user_id)")
+                .eq("runs.user_id", str(user_id))
+                .range(off, off + size - 1)
+                .execute()
+                .data,
+            )
+
+        gps_runs = self._paginate(gps_page)
+        have_ids = {r["run_id"] for r in self._paginate(tracks_page)}
 
         pending = [r for r in gps_runs if r["id"] not in have_ids]
         return pending[:limit]
