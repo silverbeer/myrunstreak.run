@@ -230,6 +230,9 @@ def display_recent_runs(data: dict[str, Any]) -> None:
     table.add_column("Pace", justify="right", style="yellow")
     table.add_column("HR", justify="right", style="red")
     table.add_column("Temp", justify="right", style="blue")
+    # The id you pass to `stk route show <id>` / `stk audio <id> ...` — dim so it
+    # stays out of the way but is there to copy (SB-306).
+    table.add_column("ID", style="dim", no_wrap=True)
 
     max_km = max((r.get("distance_km") or 0 for r in runs), default=0)
     paces = [r["avg_pace_min_per_km"] for r in runs if r.get("avg_pace_min_per_km")]
@@ -272,6 +275,7 @@ def display_recent_runs(data: dict[str, Any]) -> None:
             pace,
             hr_str,
             temp_str,
+            str(run.get("activity_id", "")),
         )
 
     # Totals footer for the shown window (display-layer arithmetic only)
@@ -284,6 +288,7 @@ def display_recent_runs(data: dict[str, Any]) -> None:
             f"[bold]{km_to_miles(total_km):.1f} mi[/bold]",
             "",
             f"[bold]{hours}h {mins}m[/bold]" if hours else f"[bold]{mins}m[/bold]",
+            "",
             "",
             "",
             "",
