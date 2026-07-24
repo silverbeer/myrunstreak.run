@@ -36,12 +36,28 @@ def get_last_sync_date() -> date:
 
 
 def update_sync_state(sync_date: date, runs_synced: int) -> None:
-    """Update sync state file."""
+    """Advance the incremental-sync watermark — never regress it (SB-308).
+
+    ``last_sync_date`` is the point a bare ``stk sync`` picks up from. A
+    targeted/historical sync (``--year 2022``, ``--since 2019-…``) covers an
+    *older* window, so writing its ``until`` here would drag the watermark
+    backward and make the next bare sync re-pull years of runs. Only ever move
+    it forward.
+    """
     from datetime import UTC, datetime
+
+    watermark = sync_date
+    if SYNC_STATE_FILE.exists():
+        try:
+            with open(SYNC_STATE_FILE) as f:
+                prev = date.fromisoformat(json.load(f).get("last_sync_date", ""))
+            watermark = max(watermark, prev)
+        except (ValueError, json.JSONDecodeError, KeyError, OSError):
+            pass  # unreadable/legacy state -> just use this sync's date
 
     ensure_config_dir()
     state = {
-        "last_sync_date": sync_date.isoformat(),
+        "last_sync_date": watermark.isoformat(),
         "last_sync_timestamp": datetime.now(UTC).isoformat(),
         "runs_synced": runs_synced,
     }
