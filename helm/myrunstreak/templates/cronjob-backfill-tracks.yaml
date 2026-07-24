@@ -1,0 +1,78 @@
+{{- if and .Values.backend.enabled .Values.backend.cronjobs.backfillTracks.enabled }}
+# Daily gentle trickle-backfill of GPS polylines (SB-310). One bounded,
+# rate-limited pass/user/day fills the long tail of never-viewed runs so the
+# territory heatmap grows toward full history without flooding SmashRun
+# (250 req/hr). Resumable — advances oldest-first until nothing remains.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "myrunstreak.fullname" . }}-backfill-tracks
+  labels:
+    {{- include "myrunstreak.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backfill-tracks-cron
+spec:
+  schedule: {{ .Values.backend.cronjobs.backfillTracks.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            {{- include "myrunstreak.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backfill-tracks-cron
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backfill-tracks
+              image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+              imagePullPolicy: {{ .Values.backend.image.pullPolicy | default "IfNotPresent" }}
+              command: ["python", "-m", "backend.jobs.backfill_tracks"]
+              env:
+                - name: ENVIRONMENT
+                  value: {{ .Values.backend.env.environment | default "dev" | quote }}
+                - name: LOG_LEVEL
+                  value: {{ .Values.backend.env.logLevel | default "INFO" | quote }}
+                - name: BACKFILL_TRACKS_DAILY_LIMIT
+                  value: {{ .Values.backend.cronjobs.backfillTracks.dailyLimit | default 100 | quote }}
+                - name: SUPABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-url
+                - name: SUPABASE_ANON_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-anon-key
+                - name: SUPABASE_SERVICE_ROLE_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-service-key
+                - name: SUPABASE_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-service-key
+                - name: SUPABASE_JWT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: supabase-jwt-secret
+                - name: SMASHRUN_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: smashrun-client-id
+                - name: SMASHRUN_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.externalSecret.targetName | default "myrunstreak-secrets" }}
+                      key: smashrun-client-secret
+              resources:
+                {{- toYaml (.Values.backend.cronjobs.backfillTracks.resources | default dict) | nindent 16 }}
+{{- end }}

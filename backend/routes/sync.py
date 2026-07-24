@@ -16,6 +16,7 @@ from backend.auth import authenticate_request
 from backend.cache import invalidate_user
 from backend.config import Settings, get_settings
 from fastapi import APIRouter, Body, Depends
+from src.shared.geo import simplify_and_encode
 from src.shared.secrets import get_smashrun_oauth_credentials
 from src.shared.smashrun import SmashRunAPIClient, SmashRunOAuthClient
 from src.shared.supabase_client import get_supabase_client
@@ -217,6 +218,64 @@ def backfill_user_splits(
     return {
         "runs_processed": runs_processed,
         "splits_synced": splits_synced,
+        "remaining": remaining,  # >0 means call again to continue
+    }
+
+
+def backfill_user_tracks(
+    user_id: UUID,
+    limit: int = 100,
+    sleep_seconds: float = 0.4,
+) -> dict[str, Any]:
+    """Fetch + store simplified polylines for GPS runs that lack one (SB-310).
+
+    Store-on-read handles viewed runs; this trickles through the rest. Batched +
+    rate-limited (SmashRun allows 250 req/hr) and resumable — call until
+    ``remaining`` is 0. Oldest runs first so the map fills history-forward.
+    """
+    supabase = get_supabase_client()
+    runs_repo = RunsRepository(supabase)
+    token_repo = TokenRepository(supabase)
+
+    pending = runs_repo.get_runs_missing_tracks(user_id, limit=limit)
+    if not pending:
+        return {"runs_processed": 0, "tracks_stored": 0, "remaining": 0}
+
+    access_token = _resolve_access_token(user_id, token_repo)
+    runs_processed = 0
+    tracks_stored = 0
+    with SmashRunAPIClient(access_token=access_token) as api:
+        for row in pending:
+            activity_id = row.get("source_activity_id")
+            if not activity_id:
+                continue
+            try:
+                detail = api.get_activity_by_id(activity_id)
+                keys = detail.get("recordingKeys") or []
+                values = detail.get("recordingValues") or []
+                lat = (
+                    [float(v) for v in values[keys.index("latitude")]]
+                    if "latitude" in keys and values
+                    else []
+                )
+                lon = (
+                    [float(v) for v in values[keys.index("longitude")]]
+                    if "longitude" in keys and values
+                    else []
+                )
+                polyline, n_pts = simplify_and_encode(lat, lon)
+                if polyline:
+                    runs_repo.upsert_track(UUID(row["id"]), polyline, n_pts)
+                    tracks_stored += 1
+                runs_processed += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Backfill track failed for activity {activity_id}: {exc}")
+            time.sleep(sleep_seconds)  # be gentle with the SmashRun API
+
+    remaining = runs_repo.count_runs_missing_tracks(user_id)
+    return {
+        "runs_processed": runs_processed,
+        "tracks_stored": tracks_stored,
         "remaining": remaining,  # >0 means call again to continue
     }
 

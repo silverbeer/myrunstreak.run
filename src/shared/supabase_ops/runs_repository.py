@@ -748,6 +748,36 @@ class RunsRepository:
         """Flag a run as having (or not having) stored splits."""
         self.supabase.table("runs").update({"has_splits": value}).eq("id", str(run_id)).execute()
 
+    def get_runs_missing_tracks(self, user_id: UUID, limit: int = 100) -> list[dict[str, Any]]:
+        """GPS runs with no stored polyline yet (SB-310 backfill), oldest first.
+
+        Store-on-read covers viewed runs; this finds the rest. Diffs the GPS-run
+        set against the stored-track set client-side (both are small — a few
+        thousand ids — and PostgREST has no clean anti-join). Returns id +
+        source_activity_id for a bounded batch.
+        """
+        gps = (
+            self.supabase.table("runs")
+            .select("id, source_activity_id, start_date")
+            .eq("user_id", str(user_id))
+            .eq("has_gps_data", True)
+            .not_.is_("start_latitude", "null")
+            .order("start_date", desc=False)  # oldest first — fill history from the start
+            .limit(10000)
+            .execute()
+        )
+        gps_runs = cast(list[dict[str, Any]], gps.data)
+
+        have = self.supabase.table("run_tracks").select("run_id").limit(10000).execute()
+        have_ids = {r["run_id"] for r in cast(list[dict[str, Any]], have.data)}
+
+        pending = [r for r in gps_runs if r["id"] not in have_ids]
+        return pending[:limit]
+
+    def count_runs_missing_tracks(self, user_id: UUID) -> int:
+        """How many GPS runs still lack a stored polyline (backfill progress)."""
+        return len(self.get_runs_missing_tracks(user_id, limit=10000))
+
     def get_runs_missing_splits(
         self,
         user_id: UUID,
