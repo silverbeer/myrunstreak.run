@@ -95,6 +95,56 @@ class RunsRepository:
         data_list = cast(list[dict[str, Any]], result.data)
         return data_list[0] if data_list else None
 
+    def get_track_polyline(self, run_id: UUID) -> dict[str, Any] | None:
+        """A run's stored simplified polyline, or None if not backfilled (SB-309)."""
+        result = (
+            self.supabase.table("run_tracks")
+            .select("polyline, point_count, encoded_precision")
+            .eq("run_id", str(run_id))
+            .limit(1)
+            .execute()
+        )
+        data = cast(list[dict[str, Any]], result.data)
+        return data[0] if data else None
+
+    def upsert_track(
+        self, run_id: UUID, polyline: str, point_count: int, precision: int = 5
+    ) -> None:
+        """Store/refresh a run's simplified encoded polyline (SB-309)."""
+        self.supabase.table("run_tracks").upsert(
+            {
+                "run_id": str(run_id),
+                "polyline": polyline,
+                "point_count": point_count,
+                "encoded_precision": precision,
+            },
+            on_conflict="run_id",
+        ).execute()
+
+    def get_all_track_polylines(self, user_id: UUID) -> list[dict[str, Any]]:
+        """Every stored polyline for a user's runs — the territory-heatmap data
+        source (SB-309). Joins run_tracks to runs so it's user-scoped."""
+        result = (
+            self.supabase.table("run_tracks")
+            .select("polyline, encoded_precision, runs!inner(user_id)")
+            .eq("runs.user_id", str(user_id))
+            .execute()
+        )
+        rows = cast(list[dict[str, Any]], result.data)
+        return [
+            {"polyline": r["polyline"], "encoded_precision": r["encoded_precision"]} for r in rows
+        ]
+
+    def count_tracks(self, user_id: UUID) -> int:
+        """How many of a user's runs have a stored polyline (backfill progress)."""
+        result = (
+            self.supabase.table("run_tracks")
+            .select("run_id, runs!inner(user_id)", count="exact")
+            .eq("runs.user_id", str(user_id))
+            .execute()
+        )
+        return cast(int, result.count or 0)
+
     def set_run_audio(
         self,
         user_id: UUID,
