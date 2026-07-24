@@ -100,6 +100,39 @@ def list_runs(
         display.display_recent_runs(data)
 
 
+_AUDIO_TYPES = ("podcast", "music", "audiobook", "other", "none")
+
+
+def audio(
+    activity_id: str = typer.Argument(..., help="Run's activity id (from stk runs)"),
+    audio_type: str = typer.Argument(
+        ..., help="What you listened to: podcast | music | audiobook | other | none"
+    ),
+    note: str | None = typer.Option(
+        None, "--note", "-m", help='Optional context, e.g. "Noah Kahan playlist today"'
+    ),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+) -> None:
+    """Record what you listened to on a run (SB-302)."""
+    if audio_type not in _AUDIO_TYPES:
+        display.display_error(f"audio type must be one of: {', '.join(_AUDIO_TYPES)}")
+        raise typer.Exit(1)
+
+    data = api.patch_request(
+        f"runs/{activity_id}/audio",
+        {"audio_type": audio_type, "audio_note": note},
+    )
+
+    if json_output:
+        import json
+
+        print(json.dumps(data, indent=2))
+    else:
+        label = data.get("audio_type") or "cleared"
+        extra = f' — "{data["audio_note"]}"' if data.get("audio_note") else ""
+        display.display_success(f"🎧 {activity_id}: {label}{extra}")
+
+
 route_app = typer.Typer(help="Examine a single route + its GPS map")
 
 

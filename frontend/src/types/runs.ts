@@ -164,8 +164,12 @@ export interface RunDetail {
   vitals: RunVitals
   how_felt: string | null
   notes: string | null
+  audio_type: AudioType | null
+  audio_note: string | null
   splits: RunSplit[]
 }
+
+export type AudioType = 'podcast' | 'music' | 'audiobook' | 'other' | 'none'
 
 /** Per-point GPS track + aligned metric series for the route map (SB-298). */
 export interface RunTrack {

@@ -551,6 +551,11 @@ def display_error(message: str) -> None:
     console.print(f"[red]✗[/red] {message}")
 
 
+def display_success(message: str) -> None:
+    """Display success message."""
+    console.print(f"[green]✓[/green] {message}")
+
+
 def display_warning(message: str) -> None:
     """Display warning message."""
     console.print(f"[yellow]![/yellow] {message}")
