@@ -214,6 +214,21 @@ async def runs_summary(
     )
 
 
+@cached(ttl=300, key_prefix="runs:conditions-penalty")
+async def _conditions_penalty(user_id: UUID) -> dict[str, Any]:
+    penalty = RunsRepository(get_supabase_client()).get_conditions_penalty(user_id)
+    return {"available": penalty is not None, **(penalty or {})}
+
+
+@router.get("/conditions-penalty")
+async def conditions_penalty(
+    user_id: UUID = Depends(authenticate_request),
+) -> dict[str, Any]:
+    """How much slower the caller runs in hot + humid conditions, from their own
+    history (SB-304). Powers the quantified steamy flag on the run detail."""
+    return await _conditions_penalty(user_id)
+
+
 @cached(ttl=60, key_prefix="runs:head")
 async def _head(user_id: UUID) -> dict[str, Any]:
     return RunsRepository(get_supabase_client()).get_runs_head(user_id)

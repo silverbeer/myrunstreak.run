@@ -190,3 +190,11 @@ export interface RunTrack {
   weather_type: string | null
   temperature_celsius: number | null
 }
+
+/** Hot+humid pace penalty from the user's own history (SB-304). */
+export interface ConditionsPenalty {
+  available: boolean
+  penalty_sec_per_mi?: number
+  steamy_run_count?: number
+  baseline_run_count?: number
+}

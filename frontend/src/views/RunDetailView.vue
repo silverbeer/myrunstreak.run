@@ -33,7 +33,9 @@
         </div>
 
         <p v-if="isSteamy" class="text-xs text-amber-700 mt-3">
-          Hot + humid — expect pace to run slower than the effort feels.
+          Hot + humid — expect pace to run slower than the effort feels.<template v-if="heatPenalty">
+            Your history runs about <strong>{{ heatPenalty }}s/mi</strong> slower in these
+            conditions.</template>
         </p>
 
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
@@ -115,6 +117,7 @@ import {
 } from 'lucide-vue-next'
 import { useRunDetail } from '@/composables/useRunDetail'
 import { useRunTrack } from '@/composables/useRunTrack'
+import { useConditionsPenalty } from '@/composables/useConditionsPenalty'
 import { useUserPreferences } from '@/composables/useUserPreferences'
 import { formatDate, formatDistance, formatDuration, formatPace, distanceLabel } from '@/utils/format'
 import RouteMap from '@/components/RouteMap.vue'
@@ -126,6 +129,14 @@ const route = useRoute()
 const { unit } = useUserPreferences()
 const { run, loading, error, load } = useRunDetail(String(route.params.activityId))
 const { track, load: loadTrack } = useRunTrack(String(route.params.activityId))
+const { penalty, load: loadPenalty } = useConditionsPenalty()
+
+// Quantified steamy penalty (SB-304): the user's own hot+humid pace hit, shown
+// only when meaningful (positive) — otherwise the flag keeps its generic line.
+const heatPenalty = computed(() => {
+  const p = penalty.value
+  return p?.available && (p.penalty_sec_per_mi ?? 0) > 0 ? p.penalty_sec_per_mi : null
+})
 
 // Start time (browser-local, matching formatDate) + early-bird nod (SB-270).
 const startTime = computed(() => {
@@ -271,5 +282,7 @@ onMounted(() => {
   // The track hits SmashRun on the backend — load it lazily, never block the
   // page, and let RouteMap render only if a GPS track came back.
   loadTrack()
+  // Cached history stat; only surfaced when the run is steamy (SB-304).
+  loadPenalty()
 })
 </script>
