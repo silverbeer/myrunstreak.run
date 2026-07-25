@@ -37,6 +37,24 @@ const MONTHS = [
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ]
 
+/**
+ * Format a monthly-summary month string (date-only, e.g. "2026-07-01") as a
+ * short label like "Jul 26".
+ *
+ * Parses the year/month straight from the string rather than via `new Date()`.
+ * `new Date("2026-07-01")` treats date-only ISO as UTC midnight, and formatting
+ * it then renders in the browser's local zone — in any negative-offset zone
+ * (e.g. US) that rolls back to the previous day, shifting every label a month
+ * early (July's bar labeled "Jun 26"). String parsing keeps each label on its
+ * own month in every timezone.
+ */
+export const formatMonthLabel = (month: string): string => {
+  const [year, monthNum] = month.split('-').map(Number)
+  const name = MONTHS[monthNum - 1]
+  if (!name || Number.isNaN(year)) return month
+  return `${name} ${String(year).slice(-2)}`
+}
+
 export const formatDate = (iso: string): string => {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso

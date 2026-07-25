@@ -18,7 +18,7 @@
 import { computed } from 'vue'
 import ApexChart from 'vue3-apexcharts'
 import type { MonthlyStats, Unit } from '@/types/runs'
-import { distanceLabel } from '@/utils/format'
+import { distanceLabel, formatMonthLabel } from '@/utils/format'
 
 const KM_PER_MI = 1.609344
 
@@ -36,12 +36,7 @@ const series = computed(() => [
   },
 ])
 
-const monthLabels = computed(() =>
-  props.months.map((m) => {
-    const d = new Date(m.month)
-    return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-  }),
-)
+const monthLabels = computed(() => props.months.map((m) => formatMonthLabel(m.month)))
 
 const chartOptions = computed(() => ({
   chart: {

@@ -5,6 +5,7 @@ import {
   formatPace,
   formatDuration,
   formatDate,
+  formatMonthLabel,
   formatRelativeTime,
   distanceLabel,
 } from '../format'
@@ -128,5 +129,29 @@ describe('formatRelativeTime', () => {
   })
   it('falls back to absolute date past a week', () => {
     expect(formatRelativeTime('2026-04-20T12:00:00Z')).toMatch(/\w{3} Apr 20/)
+  })
+})
+
+describe('formatMonthLabel', () => {
+  it('labels a month on its own month, not the previous one', () => {
+    // Regression: date-only strings were parsed as UTC midnight and rendered in
+    // the local zone, rolling back a day in negative-offset zones so July's bar
+    // showed as "Jun 26". The label must stay on the month it represents.
+    expect(formatMonthLabel('2026-07-01')).toBe('Jul 26')
+  })
+
+  it('formats each month correctly', () => {
+    expect(formatMonthLabel('2025-09-01')).toBe('Sep 25')
+    expect(formatMonthLabel('2025-12-01')).toBe('Dec 25')
+    expect(formatMonthLabel('2026-01-01')).toBe('Jan 26')
+    expect(formatMonthLabel('2026-06-01')).toBe('Jun 26')
+  })
+
+  it('does not shift January back into the prior December', () => {
+    expect(formatMonthLabel('2026-01-01')).not.toBe('Dec 25')
+  })
+
+  it('falls back to the raw string when unparseable', () => {
+    expect(formatMonthLabel('garbage')).toBe('garbage')
   })
 })
