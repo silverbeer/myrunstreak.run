@@ -83,7 +83,16 @@ are gitignored; create them once:
   `CACHE_ENABLED=false`). **Also set `SUPABASE_KEY` to the service-role key** —
   the backend requires it or every DB route 500s. Seed dev users with
   `scripts/seed_local_users.py` (see below) instead of hand-setting admin IDs.
-- **`.env.prod`** — copy from `.env.example` and fill with the real cloud keys.
+- **`.env.prod`** — cloud Supabase. Copy `.env.prod.example` (has the prod URL)
+  and fill `SUPABASE_KEY` with the service-role key from 1Password. `switch-env.sh
+  prod` fails until this file exists. Quick create:
+
+  ```bash
+  printf 'SUPABASE_URL=https://dnwllbukmvdddwhlsmqb.supabase.co\nSUPABASE_KEY=%s\n' \
+    "$(op read 'op://Personal/stk-prod/service_role_key')" > .env.prod
+  ```
+
+  ⚠️ Never commit `.env.prod` — it holds a live service-role key (bypasses RLS).
 
 Or do it by hand:
 
