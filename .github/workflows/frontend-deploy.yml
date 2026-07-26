@@ -58,17 +58,30 @@ jobs:
             VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
             VITE_API_BASE=${{ secrets.VITE_API_BASE }}
 
-      - name: Update Helm values image tag
-        # Pull latest main FIRST (clean fast-forward — no local edits yet), THEN
-        # edit the tag, so the auto-commit below always fast-forwards even when a
-        # prior deploy changed this same line (SB-300 v2).
+      - name: Bump image tag on main (rebase + retry)
+        # Re-derive from the LATEST main each attempt and retry the push, so a
+        # concurrent push landing in the window can't reject us non-fast-forward
+        # (SB-194). Idempotent: skip the commit if the tag already matches.
         run: |
-          git pull --ff-only origin main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          sed -i "s|tag: \".*\" # frontend-tag|tag: \"${SHORT_SHA}\" # frontend-tag|" helm/myrunstreak/values.yaml
-
-      - name: Commit updated Helm values
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: "ci: update myrunstreak-frontend image tag to ${{ github.sha }} [skip ci]"
-          file_pattern: helm/myrunstreak/values.yaml
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            sed -i "s|tag: \".*\" # frontend-tag|tag: \"${SHORT_SHA}\" # frontend-tag|" helm/myrunstreak/values.yaml
+            if git diff --quiet -- helm/myrunstreak/values.yaml; then
+              echo "image tag already ${SHORT_SHA} on main — nothing to commit"
+              exit 0
+            fi
+            git add helm/myrunstreak/values.yaml
+            git commit -m "ci: update myrunstreak-frontend image tag to ${SHORT_SHA} [skip ci]"
+            if git push origin HEAD:main; then
+              echo "pushed tag bump on attempt ${attempt}"
+              exit 0
+            fi
+            echo "push rejected (main moved) — retrying (${attempt}/5)"
+            sleep $((attempt * 3))
+          done
+          echo "::error::could not push image-tag bump after 5 attempts"
+          exit 1
