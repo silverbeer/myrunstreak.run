@@ -126,7 +126,7 @@ describe('useCoach roster', () => {
     const { useCoach } = await freshModule()
     const { athletes, createAthlete } = useCoach()
     const result = await createAthlete({ display_name: 'New' })
-    expect(result).toEqual(created)
+    expect(result).toEqual({ status: 'created', athlete: created })
     expect(athletes.value).toContainEqual(created)
     const [path, opts] = apiCallMock.mock.calls[0]
     expect(path).toBe('/athletes')
@@ -134,14 +134,39 @@ describe('useCoach roster', () => {
     expect(JSON.parse(opts.body)).toEqual({ display_name: 'New' })
   })
 
-  it('createAthlete surfaces an error and returns null on failure', async () => {
+  it('createAthlete surfaces an error on failure', async () => {
     apiCallMock.mockRejectedValue(new Error('nope'))
     const { useCoach } = await freshModule()
     const { athletes, error, createAthlete } = useCoach()
     const result = await createAthlete({ display_name: 'X' })
-    expect(result).toBeNull()
+    expect(result).toEqual({ status: 'error', message: 'nope' })
     expect(error.value).toBe('nope')
     expect(athletes.value).toHaveLength(0)
+  })
+
+  it('createAthlete returns duplicate candidates on a 409 (SB-349)', async () => {
+    const err = Object.assign(new Error('dup'), {
+      status: 409,
+      body: { detail: { candidates: [{ id: 'a1', display_name: 'Gabe', birth_year: 2012 }] } },
+    })
+    apiCallMock.mockRejectedValue(err)
+    const { useCoach } = await freshModule()
+    const { athletes, createAthlete } = useCoach()
+    const result = await createAthlete({ display_name: 'Gabe Drake', birth_year: 2012 })
+    expect(result).toEqual({
+      status: 'duplicate',
+      candidates: [{ id: 'a1', display_name: 'Gabe', birth_year: 2012 }],
+    })
+    expect(athletes.value).toHaveLength(0) // not added
+  })
+
+  it('createAthlete(force) posts to the force endpoint', async () => {
+    const created = { id: 'a9', display_name: 'Gabe Drake', birth_year: 2012, linked_user_id: null, created_by: 'c1', notes: null, created_at: 'x' }
+    apiCallMock.mockResolvedValue(created)
+    const { useCoach } = await freshModule()
+    const { createAthlete } = useCoach()
+    await createAthlete({ display_name: 'Gabe Drake', birth_year: 2012 }, true)
+    expect(apiCallMock.mock.calls[0][0]).toBe('/athletes?force=true')
   })
 })
 

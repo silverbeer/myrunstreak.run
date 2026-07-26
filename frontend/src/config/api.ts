@@ -26,8 +26,19 @@ export const apiCall = async <T>(
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Request failed' }))
-    throw new Error(error.detail || error.message || `HTTP ${response.status}`)
+    const body = await response.json().catch(() => ({ message: 'Request failed' }))
+    // `detail` may be a string (most 4xx) or a structured object (e.g. the
+    // dup-athlete 409, SB-349). Keep the human message on .message, and attach
+    // status + parsed body so callers can act on structured errors.
+    const detail = body?.detail
+    const message =
+      (detail && typeof detail === 'object' ? detail.message : detail) ||
+      body?.message ||
+      `HTTP ${response.status}`
+    const err = new Error(message) as Error & { status?: number; body?: unknown }
+    err.status = response.status
+    err.body = body
+    throw err
   }
 
   if (response.status === 204 || response.headers.get('content-length') === '0') {

@@ -132,6 +132,7 @@ def test_create_athlete_creates_and_self_assigns() -> None:
     coach = uuid4()
     aid = uuid4()
     athletes_repo = MagicMock()
+    athletes_repo.find_possible_duplicates.return_value = []
     athletes_repo.create.return_value = {
         "id": str(aid),
         "display_name": "Gabe",
@@ -153,6 +154,82 @@ def test_create_athlete_creates_and_self_assigns() -> None:
 
     assert out.display_name == "Gabe"
     links_repo.assign.assert_called_once_with(coach, aid)
+
+
+def test_create_athlete_blocks_possible_duplicate() -> None:
+    """A similar athlete (name-ish + same birth year) → 409 with candidates, no
+    create/assign (SB-349)."""
+    from backend.routes.athletes import create_athlete
+    from src.shared.models import AthleteCreate
+
+    coach = uuid4()
+    athletes_repo = MagicMock()
+    athletes_repo.find_possible_duplicates.return_value = [
+        {"id": str(uuid4()), "display_name": "Gabe", "birth_year": 2012}
+    ]
+    links_repo = MagicMock()
+
+    with (
+        _admin_env(roles={"coach"}),
+        patch("backend.routes.athletes.get_supabase_client", return_value=MagicMock()),
+        patch("backend.routes.athletes.AthletesRepository", return_value=athletes_repo),
+        patch("backend.routes.athletes.CoachAthletesRepository", return_value=links_repo),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            create_athlete(AthleteCreate(display_name="Gabe Drake", birth_year=2012), user_id=coach)
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["candidates"][0]["display_name"] == "Gabe"
+    athletes_repo.create.assert_not_called()
+    links_repo.assign.assert_not_called()
+
+
+def test_create_athlete_force_bypasses_duplicate_guard() -> None:
+    """force=true skips the dup check and creates anyway (SB-349)."""
+    from backend.routes.athletes import create_athlete
+    from src.shared.models import AthleteCreate
+
+    coach, aid = uuid4(), uuid4()
+    athletes_repo = MagicMock()
+    athletes_repo.create.return_value = {
+        "id": str(aid),
+        "display_name": "Gabe Drake",
+        "birth_year": 2012,
+        "linked_user_id": None,
+        "created_by": str(coach),
+        "notes": None,
+        "created_at": "2026-07-26T00:00:00+00:00",
+    }
+    links_repo = MagicMock()
+
+    with (
+        _admin_env(roles={"coach"}),
+        patch("backend.routes.athletes.get_supabase_client", return_value=MagicMock()),
+        patch("backend.routes.athletes.AthletesRepository", return_value=athletes_repo),
+        patch("backend.routes.athletes.CoachAthletesRepository", return_value=links_repo),
+    ):
+        out = create_athlete(
+            AthleteCreate(display_name="Gabe Drake", birth_year=2012), force=True, user_id=coach
+        )
+
+    assert out.display_name == "Gabe Drake"
+    athletes_repo.find_possible_duplicates.assert_not_called()
+    links_repo.assign.assert_called_once_with(coach, aid)
+
+
+def test_is_possible_duplicate_matcher() -> None:
+    from src.shared.supabase_ops.athletes_repository import is_possible_duplicate
+
+    # first-name subset + same birth year → the Gabe/Gabe Drake case
+    assert is_possible_duplicate("Gabe Drake", 2012, "Gabe", 2012)
+    assert is_possible_duplicate("Gabe", 2012, "Gabe Drake", 2012)
+    # same name tokens, different year → not a dup
+    assert not is_possible_duplicate("Gabe", 2012, "Gabe", 2010)
+    # unrelated names → not a dup
+    assert not is_possible_duplicate("Gabe Drake", 2012, "Maya Lin", 2012)
+    # year unknown on one side → require identical token sets
+    assert is_possible_duplicate("Gabe Drake", None, "gabe  drake", 2012)
+    assert not is_possible_duplicate("Gabe", None, "Gabe Drake", 2012)
 
 
 def test_assign_coach_grants_role_and_links() -> None:
