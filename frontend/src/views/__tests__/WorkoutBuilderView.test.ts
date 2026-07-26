@@ -104,6 +104,20 @@ describe('WorkoutBuilderView', () => {
     expect(h.push).toHaveBeenCalledWith('/coach/ath1')
   })
 
+  it('includes scheduled_for in the saved payload (SB-335)', async () => {
+    h.createTemplate.mockResolvedValue({ id: 't1' })
+    const w = await mountBuilder()
+    await w.find('[data-testid="tpl-name"]').setValue('Sched')
+    await w.find('[data-testid="add-main"]').trigger('click')
+    await w.find('[data-testid="ex-farmers_carry"]').trigger('click')
+    await w.find('[data-testid="tpl-scheduled-for"]').setValue('2026-07-28')
+    await w.find('[data-testid="save"]').trigger('click')
+    await flushPromises()
+
+    const [payload] = h.createTemplate.mock.calls[0]
+    expect(payload.scheduled_for).toBe('2026-07-28')
+  })
+
   it('edit mode: prefills from the template and saves via updateTemplate', async () => {
     h.params = { athleteId: 'ath1', templateId: 't9' }
     h.getTemplate.mockResolvedValue({

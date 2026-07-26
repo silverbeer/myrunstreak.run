@@ -12,6 +12,12 @@
             <Repeat class="w-3 h-3" /> {{ template.type }} · {{ template.rounds }} {{ template.rounds === 1 ? 'round' : 'rounds' }}
           </span>
           <span
+            v-if="template.scheduled_for"
+            class="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700"
+          >
+            <Calendar class="w-3 h-3" /> {{ formatDayMonth(template.scheduled_for) }}
+          </span>
+          <span
             v-if="template.has_session"
             class="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700"
           >
@@ -98,7 +104,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Check, ClipboardCheck, Pencil, Printer, Repeat, Trash2 } from 'lucide-vue-next'
+import { Calendar, Check, ClipboardCheck, Pencil, Printer, Repeat, Trash2 } from 'lucide-vue-next'
 import type { Exercise, TemplateItem, WorkoutSectionKey, WorkoutTemplate } from '@/types/workout'
 import { SECTIONS, fmtDuration, kgToLb, prettifyKey } from '@/utils/workoutPayload'
 import { formatDayMonth, formatRelativeTime } from '@/utils/format'

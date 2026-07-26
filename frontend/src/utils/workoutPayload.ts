@@ -49,6 +49,7 @@ export function buildTemplatePayload(
   type: WorkoutType,
   rounds: number,
   items: BuilderItem[],
+  scheduledFor?: string | null,
 ): WorkoutTemplateInput {
   const ordered = SECTION_ORDER.flatMap((section) =>
     items.filter((it) => it.section === section),
@@ -65,5 +66,5 @@ export function buildTemplatePayload(
     variant: it.variant?.trim() || null,
     notes: it.notes?.trim() || null,
   }))
-  return { name: name.trim(), type, rounds, items: apiItems }
+  return { name: name.trim(), type, rounds, scheduled_for: scheduledFor || null, items: apiItems }
 }

@@ -86,6 +86,7 @@ export interface WorkoutTemplateInput {
   name: string
   type: WorkoutType
   rounds: number
+  scheduled_for?: string | null
   items: TemplateItemInput[]
 }
 
@@ -122,6 +123,8 @@ export interface WorkoutTemplate {
   notes: string | null
   items: TemplateItem[]
   created_at: string | null
+  // Optional date the workout is scheduled for (SB-335).
+  scheduled_for?: string | null
   // Completion (SB-334): a logged session references this template.
   has_session?: boolean
   last_session_date?: string | null

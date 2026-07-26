@@ -186,6 +186,7 @@ class WorkoutTemplateCreate(BaseModel):
     rounds: int = Field(default=1, ge=1)
     source: str | None = None
     notes: str | None = None
+    scheduled_for: date | None = None  # optional date the workout is for (SB-335)
     items: list[TemplateItemCreate] = Field(default_factory=list)
 
 
@@ -201,6 +202,7 @@ class WorkoutTemplate(BaseModel):
     rounds: int
     source: str | None = None
     notes: str | None = None
+    scheduled_for: date | None = None  # optional date the workout is for (SB-335)
     items: list[TemplateItem] = Field(default_factory=list)
     created_at: datetime | None = None
     # Completion (SB-334), populated by the list query: a template is "done"
