@@ -5,6 +5,7 @@ import {
   formatPace,
   formatDuration,
   formatDate,
+  formatDayMonth,
   formatMonthLabel,
   formatRelativeTime,
   distanceLabel,
@@ -153,5 +154,22 @@ describe('formatMonthLabel', () => {
 
   it('falls back to the raw string when unparseable', () => {
     expect(formatMonthLabel('garbage')).toBe('garbage')
+  })
+})
+
+describe('formatDayMonth', () => {
+  it('formats a date-only string as day + month', () => {
+    expect(formatDayMonth('2026-07-20')).toBe('Jul 20')
+    expect(formatDayMonth('2026-01-01')).toBe('Jan 1')
+    expect(formatDayMonth('2026-12-31')).toBe('Dec 31')
+  })
+
+  it('does not shift a day in negative-offset zones (timezone-safe)', () => {
+    // new Date('2026-07-01') would be UTC midnight → Jun 30 locally in the US.
+    expect(formatDayMonth('2026-07-01')).toBe('Jul 1')
+  })
+
+  it('falls back to the raw string when unparseable', () => {
+    expect(formatDayMonth('nope')).toBe('nope')
   })
 })

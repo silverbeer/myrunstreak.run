@@ -221,6 +221,25 @@ class WorkoutTemplatesRepository:
             by_template.setdefault(it["template_id"], []).append(it)
         for t in templates:
             t["items"] = by_template.get(t["id"], [])
+
+        # Attach completion state (SB-334): a template is "done" when a logged
+        # session references it. One batched query; keep the latest session_date
+        # per template (session_date is 'YYYY-MM-DD', so string max = latest).
+        sessions = (
+            self.supabase.table("workout_sessions")
+            .select("template_id, session_date")
+            .in_("template_id", ids)
+            .execute()
+        )
+        last_by_template: dict[str, str] = {}
+        for s in cast(list[dict[str, Any]], sessions.data):
+            tid, d = s.get("template_id"), s.get("session_date")
+            if tid and d and (tid not in last_by_template or d > last_by_template[tid]):
+                last_by_template[tid] = d
+        for t in templates:
+            last = last_by_template.get(t["id"])
+            t["has_session"] = last is not None
+            t["last_session_date"] = last
         return templates
 
     def list_for_athletes(self, athlete_ids: Sequence[UUID]) -> list[dict[str, Any]]:

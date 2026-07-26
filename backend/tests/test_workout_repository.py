@@ -177,6 +177,29 @@ def test_template_update_replaces_items_and_fields():
     assert upd["items"][0]["exercise_key"] == "plank"
 
 
+def test_list_attaches_completion_state():
+    """list() marks a template done when a session references it, keeping the
+    latest session_date; untouched templates report has_session False (SB-334)."""
+    supa = _FakeSupabase()
+    user = uuid4()
+    t1, t2 = str(uuid4()), str(uuid4())
+    supa.store["workout_templates"] = [
+        {"id": t1, "user_id": str(user), "name": "A", "type": "circuit", "rounds": 1},
+        {"id": t2, "user_id": str(user), "name": "B", "type": "circuit", "rounds": 1},
+    ]
+    supa.store["workout_sessions"] = [
+        {"template_id": t1, "session_date": "2026-07-21"},
+        {"template_id": t1, "session_date": "2026-07-23"},  # latest wins
+    ]
+    repo = WorkoutTemplatesRepository(supa)
+    by_id = {r["id"]: r for r in repo.list(user)}
+
+    assert by_id[t1]["has_session"] is True
+    assert by_id[t1]["last_session_date"] == "2026-07-23"
+    assert by_id[t2]["has_session"] is False
+    assert by_id[t2]["last_session_date"] is None
+
+
 def test_session_create_round_trips_with_sets():
     supa = _FakeSupabase()
     repo = WorkoutSessionsRepository(supa)

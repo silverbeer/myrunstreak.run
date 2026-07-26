@@ -122,6 +122,9 @@ export interface WorkoutTemplate {
   notes: string | null
   items: TemplateItem[]
   created_at: string | null
+  // Completion (SB-334): a logged session references this template.
+  has_session?: boolean
+  last_session_date?: string | null
 }
 
 /** One row while building — loads are entered in lb (US coach), stored as kg. */
