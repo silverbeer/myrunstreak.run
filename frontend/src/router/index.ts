@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { resolveLanding } from '@/composables/useLanding'
+import { useRoles } from '@/composables/useCoach'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -59,7 +60,7 @@ const router = createRouter({
       path: '/coach',
       name: 'coach',
       component: () => import('@/views/CoachView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, requiresCoach: true },
     },
     {
       path: '/admin',
@@ -71,37 +72,37 @@ const router = createRouter({
       path: '/coach/:athleteId',
       name: 'athlete-detail',
       component: () => import('@/views/AthleteDetailView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, requiresCoach: true },
     },
     {
       path: '/coach/:athleteId/print/:templateId',
       name: 'workout-print',
       component: () => import('@/views/WorkoutPrintView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, requiresCoach: true },
     },
     {
       path: '/coach/:athleteId/build',
       name: 'workout-builder',
       component: () => import('@/views/WorkoutBuilderView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, requiresCoach: true },
     },
     {
       path: '/coach/:athleteId/build/:templateId',
       name: 'workout-editor',
       component: () => import('@/views/WorkoutBuilderView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, requiresCoach: true },
     },
     {
       path: '/coach/:athleteId/log',
       name: 'workout-logger',
       component: () => import('@/views/WorkoutSessionLoggerView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, requiresCoach: true },
     },
     {
       path: '/coach/:athleteId/log/:templateId',
       name: 'workout-logger-template',
       component: () => import('@/views/WorkoutSessionLoggerView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, requiresCoach: true },
     },
     {
       path: '/exercises',
@@ -134,6 +135,17 @@ router.beforeEach(async (to) => {
 
   if (to.meta.requiresGuest && auth.isAuthenticated) {
     return resolveLanding()
+  }
+
+  // Coach-only surfaces: a non-coach hitting /coach* would only see the
+  // server's "Coach privileges required" error, a dead end. Send them to their
+  // real landing instead (SB-331). Server-side require_coach still enforces.
+  if (to.meta.requiresCoach && auth.isAuthenticated) {
+    const { roles, loadRoles } = useRoles()
+    await loadRoles()
+    const coachish =
+      !!roles.value && (roles.value.roles.includes('coach') || roles.value.is_admin)
+    if (!coachish) return await resolveLanding()
   }
 
   // '/' is the only implicit entry (its redirect targets the dashboard);
