@@ -26,11 +26,20 @@ const PREFERENCE_PATHS: Record<string, string> = {
 export async function resolveLanding(): Promise<string> {
   if (resolved) return resolved
 
-  // 1. Explicit preference wins (SB-267). 'auto' or absent falls through.
+  // Roles gate both the preference and the heuristic below. loadRoles() is
+  // module-cached and swallows its own errors (defaults to no roles).
+  const { roles, loadRoles } = useRoles()
+  await loadRoles()
+  const coachish = !!roles.value && (roles.value.roles.includes('coach') || roles.value.is_admin)
+
+  // 1. Explicit preference wins (SB-267). 'auto' or absent falls through. A
+  //    'coach' preference is honored ONLY for coaches/admins — otherwise a stale
+  //    preference dead-ends a non-coach on /coach ("Coach privileges required"),
+  //    so it falls through to the heuristic instead (SB-331).
   try {
     const { data } = await supabase.auth.getUser()
     const pref = data.user?.user_metadata?.default_view as string | undefined
-    if (pref && PREFERENCE_PATHS[pref]) {
+    if (pref && PREFERENCE_PATHS[pref] && (pref !== 'coach' || coachish)) {
       resolved = PREFERENCE_PATHS[pref]
       return resolved
     }
@@ -39,9 +48,6 @@ export async function resolveLanding(): Promise<string> {
   }
 
   // 2. Role heuristic (SB-265).
-  const { roles, loadRoles } = useRoles()
-  await loadRoles()
-  const coachish = !!roles.value && (roles.value.roles.includes('coach') || roles.value.is_admin)
   if (!coachish) {
     resolved = '/dashboard'
     return resolved

@@ -91,16 +91,34 @@ describe('resolveLanding (SB-265 heuristic)', () => {
 })
 
 describe('resolveLanding (SB-267 preference override)', () => {
-  it('an explicit preference beats the heuristic — no API calls needed', async () => {
+  it('an explicit preference beats the heuristic — skips the stats call', async () => {
     mockPreference('runs')
+    mockApi({ roles: [], is_admin: false }, 999)
     const { resolveLanding } = await freshModule()
     expect(await resolveLanding()).toBe('/runs')
-    expect(apiCallMock).not.toHaveBeenCalled()
+    // Roles are loaded (they gate a 'coach' preference), but the expensive
+    // heuristic stats call is still short-circuited.
+    expect(apiCallMock).not.toHaveBeenCalledWith('/stats/overall')
   })
 
   it('a coach preference sends even a running coach to Coach', async () => {
     mockPreference('coach')
     mockApi({ roles: ['coach'], is_admin: false }, 500)
+    const { resolveLanding } = await freshModule()
+    expect(await resolveLanding()).toBe('/coach')
+  })
+
+  it('a coach preference on a non-coach falls through to the heuristic (SB-331)', async () => {
+    // A stale default_view='coach' must NOT dead-end a plain runner on /coach.
+    mockPreference('coach')
+    mockApi({ roles: [], is_admin: false }, 10)
+    const { resolveLanding } = await freshModule()
+    expect(await resolveLanding()).toBe('/dashboard')
+  })
+
+  it('a coach preference on an admin is honored (SB-331)', async () => {
+    mockPreference('coach')
+    mockApi({ roles: [], is_admin: true }, 500)
     const { resolveLanding } = await freshModule()
     expect(await resolveLanding()).toBe('/coach')
   })
