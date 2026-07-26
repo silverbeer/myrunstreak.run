@@ -116,6 +116,12 @@ const router = createRouter({
       component: () => import('@/views/MyProfileView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/my/workouts',
+      name: 'my-workouts',
+      component: () => import('@/views/MyWorkoutsView.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
   scrollBehavior(_to, _from, savedPosition) {
     return savedPosition ?? { top: 0 }

@@ -14,7 +14,7 @@
           <span v-if="template.source" class="text-xs text-gray-400">Coached by {{ template.source }}</span>
         </div>
       </div>
-      <div class="flex items-center gap-1 shrink-0 print:hidden">
+      <div v-if="!readonly" class="flex items-center gap-1 shrink-0 print:hidden">
         <button
           type="button"
           class="act hover:text-brand-600 hover:bg-brand-50"
@@ -90,6 +90,8 @@ import { SECTIONS, fmtDuration, kgToLb, prettifyKey } from '@/utils/workoutPaylo
 const props = defineProps<{
   template: WorkoutTemplate
   exercises?: Exercise[]
+  // Athlete-facing view (SB-332): hide the coach action buttons.
+  readonly?: boolean
 }>()
 
 defineEmits<{ (e: 'edit'): void; (e: 'delete'): void; (e: 'log'): void; (e: 'print'): void }>()

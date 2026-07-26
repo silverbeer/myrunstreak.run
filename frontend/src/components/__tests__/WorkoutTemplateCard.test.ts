@@ -87,4 +87,12 @@ describe('WorkoutTemplateCard', () => {
     expect(w.emitted('edit')).toHaveLength(1)
     expect(w.emitted('delete')).toHaveLength(1)
   })
+
+  it('hides the coach action buttons in readonly mode (SB-332)', () => {
+    const w = mount(WorkoutTemplateCard, { props: { template, readonly: true } })
+    expect(w.find('button[aria-label="Edit workout"]').exists()).toBe(false)
+    expect(w.find('button[aria-label="Delete workout"]').exists()).toBe(false)
+    // content still renders
+    expect(w.text()).toContain('Monday - Circuit')
+  })
 })

@@ -85,6 +85,7 @@ const navLinks = computed(() => [
   ...(isCoach.value ? [{ name: 'Coach', path: '/coach' }] : []),
   ...(isCoach.value ? [{ name: 'Catalog', path: '/exercises' }] : []),
   ...(isAdmin.value ? [{ name: 'Admin', path: '/admin' }] : []),
+  ...(myAthlete.value ? [{ name: 'My Workouts', path: '/my/workouts' }] : []),
   ...(myAthlete.value ? [{ name: 'My Profile', path: '/profile' }] : []),
   { name: 'Settings', path: '/settings' },
 ])
