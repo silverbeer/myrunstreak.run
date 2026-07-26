@@ -23,12 +23,14 @@ from src.shared.models import (
     AthleteProfileUpdate,
     CoachAthlete,
 )
+from src.shared.models.workout import WorkoutTemplate
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import (
     AthletesRepository,
     CoachAthletesRepository,
     UserRolesRepository,
     UsersRepository,
+    WorkoutTemplatesRepository,
 )
 
 
@@ -88,6 +90,19 @@ def my_athlete(user_id: UUID = Depends(authenticate_request)) -> Athlete | None:
         return None
     # Linked-athlete view: coaching_notes redacted.
     return _athlete_with_profile(repo, row, coach_view=False)
+
+
+@me_router.get("/workouts", response_model=list[WorkoutTemplate])
+def my_workouts(user_id: UUID = Depends(authenticate_request)) -> list[WorkoutTemplate]:
+    """The workout templates assigned to the athlete this user IS (via
+    linked_user_id). Empty when the user isn't a linked athlete. Lets an athlete
+    see their coach-assigned workouts without the coach act-as header (SB-332)."""
+    sb = get_supabase_client()
+    athlete = AthletesRepository(sb).get_by_linked_user(user_id)
+    if athlete is None:
+        return []
+    rows = WorkoutTemplatesRepository(sb).list(user_id, athlete_id=UUID(athlete["id"]))
+    return [WorkoutTemplate(**r) for r in rows]
 
 
 @router.post("", response_model=Athlete, status_code=status.HTTP_201_CREATED)
