@@ -1,27 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-
-// Navigating loads view components that pull useSync → window.localStorage,
-// which this test env doesn't provide. Shim it so navigation doesn't crash.
-beforeAll(() => {
-  if (!window.localStorage) {
-    const store: Record<string, string> = {}
-    Object.defineProperty(window, 'localStorage', {
-      configurable: true,
-      value: {
-        getItem: (k: string) => store[k] ?? null,
-        setItem: (k: string, v: string) => {
-          store[k] = String(v)
-        },
-        removeItem: (k: string) => {
-          delete store[k]
-        },
-        clear: () => {
-          for (const k of Object.keys(store)) delete store[k]
-        },
-      },
-    })
-  }
-})
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Auth store: always authenticated with a session so the guard skips init.
 const authState = {
