@@ -203,6 +203,10 @@ class WorkoutTemplate(BaseModel):
     notes: str | None = None
     items: list[TemplateItem] = Field(default_factory=list)
     created_at: datetime | None = None
+    # Completion (SB-334), populated by the list query: a template is "done"
+    # when a logged session references it. False/None on single-template reads.
+    has_session: bool = False
+    last_session_date: date | None = None
 
 
 # --------------------------------------------------------------------------- #

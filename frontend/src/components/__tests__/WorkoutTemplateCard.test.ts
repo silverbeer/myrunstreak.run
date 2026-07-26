@@ -95,4 +95,27 @@ describe('WorkoutTemplateCard', () => {
     // content still renders
     expect(w.text()).toContain('Monday - Circuit')
   })
+
+  it('shows the created date when present (SB-333)', () => {
+    const w = mount(WorkoutTemplateCard, {
+      props: { template: { ...template, created_at: '2026-07-20T12:00:00Z' } },
+    })
+    expect(w.text()).toContain('Added')
+  })
+
+  it('shows a completed badge with the last session date (SB-334)', () => {
+    const w = mount(WorkoutTemplateCard, {
+      props: { template: { ...template, has_session: true, last_session_date: '2026-07-23' } },
+    })
+    expect(w.text()).toContain('Completed')
+    expect(w.text()).toContain('Jul 23')
+    expect(w.text()).not.toContain('Not logged')
+  })
+
+  it('shows "Not logged" when no session exists (SB-334)', () => {
+    const w = mount(WorkoutTemplateCard, {
+      props: { template: { ...template, has_session: false } },
+    })
+    expect(w.text()).toContain('Not logged')
+  })
 })

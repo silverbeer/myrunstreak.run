@@ -55,6 +55,19 @@ export const formatMonthLabel = (month: string): string => {
   return `${name} ${String(year).slice(-2)}`
 }
 
+/**
+ * Format a date-only string ('YYYY-MM-DD') as 'Jul 20'. Parses the parts
+ * directly rather than via `new Date()`, which treats date-only ISO as UTC
+ * midnight and shifts a day in negative-offset zones (same trap as
+ * [[format-month-label]] / the SB monthly-distance fix).
+ */
+export const formatDayMonth = (dateOnly: string): string => {
+  const [, month, day] = dateOnly.split('-').map(Number)
+  const name = MONTHS[month - 1]
+  if (!name || Number.isNaN(day)) return dateOnly
+  return `${name} ${day}`
+}
+
 export const formatDate = (iso: string): string => {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso

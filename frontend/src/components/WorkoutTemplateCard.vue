@@ -11,8 +11,23 @@
           <span class="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700 capitalize">
             <Repeat class="w-3 h-3" /> {{ template.type }} · {{ template.rounds }} {{ template.rounds === 1 ? 'round' : 'rounds' }}
           </span>
+          <span
+            v-if="template.has_session"
+            class="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700"
+          >
+            <Check class="w-3 h-3" /> Completed<template v-if="template.last_session_date"> · {{ formatDayMonth(template.last_session_date) }}</template>
+          </span>
+          <span
+            v-else
+            class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500"
+          >
+            Not logged
+          </span>
           <span v-if="template.source" class="text-xs text-gray-400">Coached by {{ template.source }}</span>
         </div>
+        <p v-if="template.created_at" class="mt-1 text-xs text-gray-400">
+          Added {{ formatRelativeTime(template.created_at) }}
+        </p>
       </div>
       <div v-if="!readonly" class="flex items-center gap-1 shrink-0 print:hidden">
         <button
@@ -83,9 +98,10 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ClipboardCheck, Pencil, Printer, Repeat, Trash2 } from 'lucide-vue-next'
+import { Check, ClipboardCheck, Pencil, Printer, Repeat, Trash2 } from 'lucide-vue-next'
 import type { Exercise, TemplateItem, WorkoutSectionKey, WorkoutTemplate } from '@/types/workout'
 import { SECTIONS, fmtDuration, kgToLb, prettifyKey } from '@/utils/workoutPayload'
+import { formatDayMonth, formatRelativeTime } from '@/utils/format'
 
 const props = defineProps<{
   template: WorkoutTemplate
