@@ -60,18 +60,32 @@ jobs:
           # Same architecture as the frontend / cluster nodes (linux/amd64).
           platforms: linux/amd64
 
-      - name: Update Helm values image tag
-        # Pull latest main FIRST (clean fast-forward — no local edits yet), THEN
-        # edit the tag. Order matters: sed-then-rebase conflicts when a prior
-        # deploy already changed this same line (SB-300 v2). Pull-then-sed never
-        # conflicts, so the auto-commit below always fast-forwards.
+      - name: Bump image tag on main (rebase + retry)
+        # Even with the concurrency queue, another push to main can land between
+        # our read of main and our push, rejecting it non-fast-forward (SB-194).
+        # Re-derive from the LATEST main each attempt and retry the push, so two
+        # back-to-back merges both deploy cleanly. Idempotent: if the tag already
+        # matches (e.g. a rerun), exit without an empty commit.
         run: |
-          git pull --ff-only origin main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          sed -i "s|tag: \".*\" # backend-tag|tag: \"${SHORT_SHA}\" # backend-tag|" helm/myrunstreak/values.yaml
-
-      - name: Commit updated Helm values
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: "ci: update myrunstreak-backend image tag to ${{ github.sha }} [skip ci]"
-          file_pattern: helm/myrunstreak/values.yaml
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            sed -i "s|tag: \".*\" # backend-tag|tag: \"${SHORT_SHA}\" # backend-tag|" helm/myrunstreak/values.yaml
+            if git diff --quiet -- helm/myrunstreak/values.yaml; then
+              echo "image tag already ${SHORT_SHA} on main — nothing to commit"
+              exit 0
+            fi
+            git add helm/myrunstreak/values.yaml
+            git commit -m "ci: update myrunstreak-backend image tag to ${SHORT_SHA} [skip ci]"
+            if git push origin HEAD:main; then
+              echo "pushed tag bump on attempt ${attempt}"
+              exit 0
+            fi
+            echo "push rejected (main moved) — retrying (${attempt}/5)"
+            sleep $((attempt * 3))
+          done
+          echo "::error::could not push image-tag bump after 5 attempts"
+          exit 1
