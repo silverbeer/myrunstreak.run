@@ -108,12 +108,40 @@ def my_workouts(user_id: UUID = Depends(authenticate_request)) -> list[WorkoutTe
 @router.post("", response_model=Athlete, status_code=status.HTTP_201_CREATED)
 def create_athlete(
     body: AthleteCreate,
+    force: bool = False,
     user_id: UUID = Depends(authenticate_request),
 ) -> Athlete:
-    """Create a managed athlete and make the caller their (first) coach."""
+    """Create a managed athlete and make the caller their (first) coach.
+
+    Guards against duplicates (SB-349): if a similar athlete already exists
+    (same name-ish + birth year), returns 409 with the candidates instead of
+    silently creating another. Pass ?force=true to create anyway (genuinely a
+    different person)."""
     require_coach(user_id)
     supabase = get_supabase_client()
-    row = AthletesRepository(supabase).create(
+    repo = AthletesRepository(supabase)
+    if not force:
+        dups = repo.find_possible_duplicates(body.display_name, body.birth_year)
+        if dups:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail={
+                    "message": (
+                        "A similar athlete already exists. If this is the same "
+                        "person, ask an admin to add you as their coach; if it's a "
+                        "different person, resubmit with force=true."
+                    ),
+                    "candidates": [
+                        {
+                            "id": d["id"],
+                            "display_name": d["display_name"],
+                            "birth_year": d.get("birth_year"),
+                        }
+                        for d in dups
+                    ],
+                },
+            )
+    row = repo.create(
         created_by=user_id,
         display_name=body.display_name,
         birth_year=body.birth_year,

@@ -107,6 +107,18 @@ export async function removeCoach(athleteId: string, coachId: string): Promise<v
   await apiCall(`/athletes/${athleteId}/coaches/${coachId}`, { method: 'DELETE' })
 }
 
+/** A possible-duplicate athlete surfaced by the create guard (SB-349). */
+export interface DuplicateAthlete {
+  id: string
+  display_name: string
+  birth_year: number | null
+}
+
+export type CreateAthleteResult =
+  | { status: 'created'; athlete: Athlete }
+  | { status: 'duplicate'; candidates: DuplicateAthlete[] }
+  | { status: 'error'; message: string }
+
 export function useCoach() {
   const athletes = ref<Athlete[]>([])
   const loading = ref(false)
@@ -124,18 +136,29 @@ export function useCoach() {
     }
   }
 
-  const createAthlete = async (body: AthleteCreate): Promise<Athlete | null> => {
+  const createAthlete = async (
+    body: AthleteCreate,
+    force = false,
+  ): Promise<CreateAthleteResult> => {
     error.value = null
     try {
-      const created = await apiCall<Athlete>('/athletes', {
+      const created = await apiCall<Athlete>(force ? '/athletes?force=true' : '/athletes', {
         method: 'POST',
         body: JSON.stringify(body),
       })
       athletes.value = [...athletes.value, created]
-      return created
+      return { status: 'created', athlete: created }
     } catch (e) {
+      const err = e as Error & {
+        status?: number
+        body?: { detail?: { candidates?: DuplicateAthlete[] } }
+      }
+      // Possible-duplicate guard (SB-349): let the caller offer "create anyway".
+      if (err.status === 409 && err.body?.detail?.candidates) {
+        return { status: 'duplicate', candidates: err.body.detail.candidates }
+      }
       error.value = e instanceof Error ? e.message : 'Failed to create athlete'
-      return null
+      return { status: 'error', message: error.value }
     }
   }
 

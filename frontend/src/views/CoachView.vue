@@ -42,6 +42,31 @@
         placeholder="Notes (optional)"
         class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
       />
+
+      <div
+        v-if="duplicates.length"
+        class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
+      >
+        <p class="font-semibold">A similar athlete already exists:</p>
+        <ul class="mt-1 list-disc pl-5">
+          <li v-for="d in duplicates" :key="d.id">
+            {{ d.display_name }}<span v-if="d.birth_year"> ({{ d.birth_year }})</span>
+          </li>
+        </ul>
+        <p class="mt-2">
+          If it's the same person, ask an admin to add you as their coach. If it's a different
+          person, create anyway.
+        </p>
+        <button
+          type="button"
+          :disabled="saving"
+          class="btn-secondary text-xs mt-2"
+          @click="createAnyway"
+        >
+          {{ saving ? 'Creating…' : 'Create anyway' }}
+        </button>
+      </div>
+
       <button type="submit" :disabled="saving" class="btn-primary text-sm">
         {{ saving ? 'Saving…' : 'Create athlete' }}
       </button>
@@ -117,7 +142,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { useCoach } from '@/composables/useCoach'
+import { useCoach, type DuplicateAthlete } from '@/composables/useCoach'
 import { useCoachHome } from '@/composables/useCoachHome'
 import type { AthleteCreate } from '@/types/coach'
 
@@ -129,6 +154,7 @@ const cards = computed(() => home.value?.athletes ?? [])
 const showForm = ref(false)
 const saving = ref(false)
 const form = reactive<AthleteCreate>({ display_name: '', birth_year: null, notes: null })
+const duplicates = ref<DuplicateAthlete[]>([])
 
 const formatDay = (iso: string): string => {
   const d = new Date(`${iso}T00:00:00`)
@@ -140,22 +166,34 @@ const formatDay = (iso: string): string => {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-const submit = async () => {
+const doCreate = async (force: boolean) => {
   saving.value = true
-  const created = await createAthlete({
-    display_name: form.display_name,
-    birth_year: form.birth_year || null,
-    notes: form.notes || null,
-  })
+  const res = await createAthlete(
+    {
+      display_name: form.display_name,
+      birth_year: form.birth_year || null,
+      notes: form.notes || null,
+    },
+    force,
+  )
   saving.value = false
-  if (created) {
+  if (res.status === 'duplicate') {
+    duplicates.value = res.candidates
+    return
+  }
+  if (res.status === 'created') {
     form.display_name = ''
     form.birth_year = null
     form.notes = null
+    duplicates.value = []
     showForm.value = false
     await load()
   }
+  // 'error' → error surfaced by the composable; keep the form open.
 }
+
+const submit = () => doCreate(false)
+const createAnyway = () => doCreate(true)
 
 onMounted(load)
 </script>

@@ -7,11 +7,37 @@ can_access_athlete; these repos are the plain data layer.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
 
 from supabase import Client
+
+
+def _name_tokens(name: str) -> set[str]:
+    return set(re.sub(r"[^a-z0-9]+", " ", name.lower()).split())
+
+
+def is_possible_duplicate(
+    new_name: str,
+    new_birth_year: int | None,
+    existing_name: str,
+    existing_birth_year: int | None,
+) -> bool:
+    """Heuristic athlete-duplicate match (SB-349): one name's tokens are a subset
+    of the other's AND — when both birth years are known — they match; if either
+    year is unknown, require identical token sets. Catches 'Gabe' vs 'Gabe Drake'
+    born the same year, without flagging unrelated same-first-name people of
+    different ages."""
+    nt, et = _name_tokens(new_name), _name_tokens(existing_name)
+    if not nt or not et:
+        return False
+    if not (nt <= et or et <= nt):
+        return False
+    if new_birth_year is not None and existing_birth_year is not None:
+        return new_birth_year == existing_birth_year
+    return nt == et
 
 
 class UserRolesRepository:
@@ -60,6 +86,23 @@ class AthletesRepository:
         result = self.supabase.table("athletes").select("*").eq("id", str(athlete_id)).execute()
         data = cast(list[dict[str, Any]], result.data)
         return data[0] if data else None
+
+    def find_possible_duplicates(
+        self, display_name: str, birth_year: int | None
+    ) -> list[dict[str, Any]]:
+        """Existing athletes that look like the same person (SB-349). Scans the
+        athletes table (small) and filters with is_possible_duplicate."""
+        rows = cast(
+            list[dict[str, Any]],
+            self.supabase.table("athletes").select("id,display_name,birth_year").execute().data,
+        )
+        return [
+            r
+            for r in rows
+            if is_possible_duplicate(
+                display_name, birth_year, r["display_name"], r.get("birth_year")
+            )
+        ]
 
     def get_by_linked_user(self, user_id: UUID) -> dict[str, Any] | None:
         """The athlete this user IS (via linked_user_id), or None."""
