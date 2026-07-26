@@ -118,4 +118,11 @@ describe('WorkoutTemplateCard', () => {
     })
     expect(w.text()).toContain('Not logged')
   })
+
+  it('shows the scheduled date when set (SB-335)', () => {
+    const w = mount(WorkoutTemplateCard, {
+      props: { template: { ...template, scheduled_for: '2026-07-28' } },
+    })
+    expect(w.text()).toContain('Jul 28')
+  })
 })

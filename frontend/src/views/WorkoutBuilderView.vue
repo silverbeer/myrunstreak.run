@@ -26,6 +26,11 @@
           <input v-model.number="rounds" type="number" min="1" class="form-input w-20" data-testid="tpl-rounds" />
         </label>
       </div>
+      <label class="flex items-center gap-2 text-sm text-gray-600">
+        Scheduled for
+        <input v-model="scheduledFor" type="date" class="form-input" data-testid="tpl-scheduled-for" />
+        <span class="text-xs text-gray-400">(optional)</span>
+      </label>
     </div>
 
     <!-- Sections -->
@@ -135,6 +140,7 @@ const { exercises, load } = useExercises()
 const name = ref('')
 const type = ref<WorkoutType>('circuit')
 const rounds = ref(2)
+const scheduledFor = ref('')
 const items = ref<BuilderItem[]>([])
 const openSection = ref<WorkoutSectionKey | null>(null)
 const saving = ref(false)
@@ -190,7 +196,13 @@ const save = async (): Promise<void> => {
   saving.value = true
   error.value = null
   try {
-    const payload = buildTemplatePayload(name.value, type.value, rounds.value, items.value)
+    const payload = buildTemplatePayload(
+      name.value,
+      type.value,
+      rounds.value,
+      items.value,
+      scheduledFor.value,
+    )
     if (editingId) await updateTemplate(editingId, payload, athleteId)
     else await createTemplate(payload, athleteId)
     router.push(`/coach/${athleteId}`)
@@ -207,6 +219,7 @@ const prefillFrom = (templateId: string): Promise<void> =>
     name.value = tpl.name
     type.value = tpl.type
     rounds.value = tpl.rounds
+    scheduledFor.value = tpl.scheduled_for ?? ''
     const byKey = new Map(exercises.value.map((e) => [e.key, e]))
     items.value = tpl.items
       .slice()

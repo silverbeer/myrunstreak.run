@@ -177,6 +177,17 @@ def test_template_update_replaces_items_and_fields():
     assert upd["items"][0]["exercise_key"] == "plank"
 
 
+def test_template_create_round_trips_scheduled_for():
+    """An optional scheduled_for date survives create -> read (SB-335)."""
+    supa = _FakeSupabase()
+    repo = WorkoutTemplatesRepository(supa)
+    out = repo.create(
+        uuid4(),
+        {"name": "Monday", "type": "circuit", "rounds": 1, "scheduled_for": "2026-07-28"},
+    )
+    assert out["scheduled_for"] == "2026-07-28"
+
+
 def test_list_attaches_completion_state():
     """list() marks a template done when a session references it, keeping the
     latest session_date; untouched templates report has_session False (SB-334)."""
