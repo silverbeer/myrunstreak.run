@@ -149,6 +149,25 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // Set a new password using the CURRENT session. On a recovery link Supabase
+  // (detectSessionInUrl) establishes a short-lived recovery session and fires
+  // PASSWORD_RECOVERY; updateUser then applies the change — no need to read the
+  // access_token from the URL hash (which Supabase strips on load). SB-171.
+  const updatePassword = async (newPassword: string) => {
+    loading.value = true
+    clearError()
+    try {
+      const { error: err } = await supabase.auth.updateUser({ password: newPassword })
+      if (err) throw err
+      return { success: true }
+    } catch (err: any) {
+      setError(err.message)
+      return { success: false, error: err.message }
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     session,
     user,
@@ -162,6 +181,7 @@ export const useAuthStore = defineStore('auth', () => {
     signOut,
     requestPasswordReset,
     applyPasswordReset,
+    updatePassword,
     clearError,
   }
 })
