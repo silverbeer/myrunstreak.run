@@ -77,14 +77,21 @@ def test_dry_run_needs_no_confirmation() -> None:
     seed_mod.assert_confirmed(False, True)  # no raise
 
 
-@pytest.mark.parametrize("password", ["", "short"])
-def test_refuses_missing_or_weak_password(password: str) -> None:
+@pytest.mark.parametrize("password", ["", "abc", "12345"])
+def test_refuses_missing_or_too_short_password(password: str) -> None:
     with pytest.raises(GuardError):
         seed_mod.assert_password(password)
 
 
-def test_accepts_a_long_enough_password() -> None:
-    seed_mod.assert_password("a-long-enough-password")  # no raise
+@pytest.mark.parametrize("password", ["a12345", "coach123", "a-long-enough-password"])
+def test_accepts_anything_supabase_would_accept(password: str) -> None:
+    """The floor is Supabase Auth's minimum, not a stricter house rule — these
+    are hand-typed test logins, and seed_local_users.py already uses 6-8."""
+    seed_mod.assert_password(password)  # no raise
+
+
+def test_password_floor_matches_supabase_minimum() -> None:
+    assert seed_mod.MIN_PASSWORD_LEN == 6
 
 
 # --------------------------------------------------------------------------- #
