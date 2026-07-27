@@ -1,8 +1,9 @@
 {{- if and .Values.backend.enabled .Values.backend.cronjobs.backfillTracks.enabled }}
-# Daily gentle trickle-backfill of GPS polylines (SB-310). One bounded,
-# rate-limited pass/user/day fills the long tail of never-viewed runs so the
-# territory heatmap grows toward full history without flooding SmashRun
-# (250 req/hr). Resumable — advances oldest-first until nothing remains.
+# Trickle-backfill of GPS polylines (SB-310). Bounded, rate-limited passes fill
+# the long tail of never-viewed runs so the territory heatmap grows toward full
+# history without flooding SmashRun (250 req/hr) — hence several small passes a
+# day rather than one big one. Resumable — advances oldest-first until nothing
+# remains.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -36,8 +37,8 @@ spec:
                   value: {{ .Values.backend.env.environment | default "dev" | quote }}
                 - name: LOG_LEVEL
                   value: {{ .Values.backend.env.logLevel | default "INFO" | quote }}
-                - name: BACKFILL_TRACKS_DAILY_LIMIT
-                  value: {{ .Values.backend.cronjobs.backfillTracks.dailyLimit | default 100 | quote }}
+                - name: BACKFILL_TRACKS_BATCH_LIMIT
+                  value: {{ .Values.backend.cronjobs.backfillTracks.batchLimit | default 100 | quote }}
                 - name: SUPABASE_URL
                   valueFrom:
                     secretKeyRef:
