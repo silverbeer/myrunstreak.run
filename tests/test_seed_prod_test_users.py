@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 
@@ -87,6 +88,93 @@ def test_accepts_a_long_enough_password() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Dry-run mode on the real Client
+#
+# These exercise the real Client, not the fake — the dry-run defect that shipped
+# in SB-368 lived entirely in the branches the fake never reached.
+# --------------------------------------------------------------------------- #
+def _dry_client() -> Any:
+    return seed_mod.Client(PROD_URL, "service-key", dry_run=True)
+
+
+def test_dry_run_placeholder_ids_are_valid_uuids() -> None:
+    """They land in PostgREST filters; Postgres rejects anything else (22P02)."""
+    client = _dry_client()
+
+    for _ in range(3):
+        UUID(client.next_placeholder_id())  # raises if malformed
+
+
+def test_dry_run_placeholder_ids_are_unique() -> None:
+    client = _dry_client()
+
+    ids = [client.next_placeholder_id() for _ in range(5)]
+
+    assert len(set(ids)) == 5
+
+
+def test_dry_run_created_auth_user_id_is_a_valid_uuid() -> None:
+    """The SB-376 regression: this used to return '<new:email>' and 400 downstream."""
+    client = _dry_client()
+
+    uid = client.create_auth_user(seed_mod.COACH_EMAIL, "a-long-password")
+
+    UUID(uid)
+
+
+def test_dry_run_placeholders_cannot_collide_with_real_rows() -> None:
+    """Zero-heavy, so a dry run's conflict checks still report truthfully."""
+    client = _dry_client()
+
+    assert client.next_placeholder_id().startswith("000000")
+
+
+def test_dry_run_placeholders_differ_in_their_abbreviated_form() -> None:
+    """The plan prints id[:8]; identical prefixes would make it unreadable."""
+    client = _dry_client()
+
+    shorts = [client.next_placeholder_id()[:8] for _ in range(3)]
+
+    assert len(set(shorts)) == 3
+
+
+def test_dry_run_redacts_the_password_from_printed_bodies(capsys: Any) -> None:
+    """--dry-run takes no password but doesn't reject one; it must not echo it."""
+    client = _dry_client()
+
+    client.create_auth_user(seed_mod.COACH_EMAIL, "hunter2-hunter2")
+
+    out = capsys.readouterr().out
+    assert "hunter2-hunter2" not in out
+    assert '"password": "***"' in out
+
+
+def test_redact_leaves_ordinary_fields_alone() -> None:
+    assert seed_mod._redact({"email": "a@b.c", "password": "s3cret"}) == {
+        "email": "a@b.c",
+        "password": "***",
+    }
+
+
+def test_redact_handles_list_payloads() -> None:
+    assert seed_mod._redact([{"password": "s3cret"}]) == [{"password": "***"}]
+
+
+def test_dry_run_performs_no_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Any non-GET reaching urlopen in dry-run mode is a bug."""
+
+    def _explode(*args: Any, **kwargs: Any):
+        raise AssertionError("dry run attempted a network call")
+
+    monkeypatch.setattr(seed_mod.urllib.request, "urlopen", _explode)
+    client = _dry_client()
+
+    client.rest("POST", "users", {"user_id": "x"})  # no raise
+    client.create_auth_user(seed_mod.COACH_EMAIL, "a-long-password")
+    client.set_password("00000000-0000-0000-0000-000000000001", "a-long-password")
+
+
+# --------------------------------------------------------------------------- #
 # Fake client
 # --------------------------------------------------------------------------- #
 class _FakeClient:
@@ -101,6 +189,8 @@ class _FakeClient:
         self.auth_users: dict[str, dict[str, Any]] = {}
         self.created: list[str] = []
         self.passwords_set: list[str] = []
+        self.placeholders = 0
+        self.representation: list[dict[str, Any]] | None = None
 
     def rest(self, method: str, table: str, body: Any = None, params: str = "", prefer: str = ""):
         if table == "users" and "is_test_account" in params and not self.users_ok:
@@ -111,7 +201,12 @@ class _FakeClient:
         if method == "GET":
             return list(self.gets.get(table, []))
         if prefer == "return=representation":
-            return [{"id": "11111111-1111-1111-1111-111111111111"}]
+            # None models a dry run: the insert is skipped, so nothing comes back.
+            return (
+                self.representation
+                if self.representation is not None
+                else [{"id": "11111111-1111-1111-1111-111111111111"}]
+            )
         return []
 
     def auth_by_email(self, email: str):
@@ -125,6 +220,10 @@ class _FakeClient:
 
     def set_password(self, uid: str, password: str) -> None:
         self.passwords_set.append(uid)
+
+    def next_placeholder_id(self) -> str:
+        self.placeholders += 1
+        return f"00000000-0000-0000-0000-{self.placeholders:012d}"
 
     # -- helpers ------------------------------------------------------------
     def writes_to(self, table: str) -> list[Any]:
@@ -217,6 +316,19 @@ def test_ensure_athlete_creates_flagged_row_and_coach_link() -> None:
     assert client.writes_to("coach_athletes") == [
         {"coach_id": "coach-uid", "athlete_id": "11111111-1111-1111-1111-111111111111"}
     ]
+
+
+def test_ensure_athlete_falls_back_to_a_valid_uuid_when_the_insert_returns_nothing() -> None:
+    """Dry run: the athlete id still has to survive the coach_athletes filter."""
+    client = _FakeClient()
+    client.representation = []  # insert skipped, nothing echoed back
+
+    seed_mod.ensure_athlete(
+        client, coach_id="coach-uid", linked_uid="a1-uid", display_name="Test Athlete One"
+    )
+
+    athlete_id = client.writes_to("coach_athletes")[0]["athlete_id"]
+    UUID(athlete_id)
 
 
 def test_ensure_athlete_is_idempotent_on_rerun() -> None:
