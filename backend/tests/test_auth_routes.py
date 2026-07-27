@@ -5,6 +5,7 @@ We mock httpx.post so the endpoints can be exercised without a real Supabase.
 
 from typing import Any
 from unittest.mock import MagicMock, patch
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
@@ -206,12 +207,34 @@ def test_forgot_password_returns_generic_success(client: TestClient) -> None:
 
     assert r.status_code == 200
     assert "reset link" in r.json()["message"].lower()
-    # Verify we forwarded the email + the default redirect_to to Supabase /recover
     args, kwargs = mock_req.call_args
     assert args[0] == "POST"
-    assert args[1].endswith("/auth/v1/recover")
     assert kwargs["json"]["email"] == "u@example.com"
-    assert kwargs["json"]["redirect_to"] == "https://myrunstreak.run/auth/reset-password"
+
+
+def _recover_redirect(mock_req: MagicMock) -> str | None:
+    """The redirect_to GoTrue will actually honour: the query-string one."""
+    url = mock_req.call_args.args[1]
+    path, _, query = url.partition("?")
+    assert path.endswith("/auth/v1/recover")
+    return parse_qs(query).get("redirect_to", [None])[0]
+
+
+def test_forgot_password_sends_redirect_to_in_the_query_string(client: TestClient) -> None:
+    """SB-380: GoTrue reads redirect_to from the query string for /recover and
+    ignores it in the JSON body — silently. Sent in the body it falls back to
+    Site URL, so the recovery link drops the user at / already signed in and
+    they never see the reset form."""
+    with patch(
+        "backend.routes.auth_routes.httpx.request",
+        return_value=_mock_response(200, ""),
+    ) as mock_req:
+        r = client.post("/auth/forgot-password", json={"email": "u@example.com"})
+
+    assert r.status_code == 200
+    assert _recover_redirect(mock_req) == "https://myrunstreak.run/auth/reset-password"
+    # Body-only would be silently dropped, so it must not be the sole carrier.
+    assert "redirect_to" not in mock_req.call_args.kwargs["json"]
 
 
 def test_forgot_password_accepts_explicit_redirect(client: TestClient) -> None:
@@ -229,8 +252,26 @@ def test_forgot_password_accepts_explicit_redirect(client: TestClient) -> None:
         )
 
     assert r.status_code == 200
-    _, kwargs = mock_req.call_args
-    assert kwargs["json"]["redirect_to"] == "http://localhost:5174/auth/reset-password"
+    assert _recover_redirect(mock_req) == "http://localhost:5174/auth/reset-password"
+
+
+def test_forgot_password_url_encodes_the_redirect(client: TestClient) -> None:
+    """A raw '://' or '?' in the query would truncate the target."""
+    with patch(
+        "backend.routes.auth_routes.httpx.request",
+        return_value=_mock_response(200, ""),
+    ) as mock_req:
+        client.post(
+            "/auth/forgot-password",
+            json={
+                "email": "u@example.com",
+                "redirect_to": "https://myrunstreak.run/auth/reset-password?next=/plan",
+            },
+        )
+
+    raw_query = mock_req.call_args.args[1].partition("?")[2]
+    assert "%3A%2F%2F" in raw_query  # the scheme separator survived encoding
+    assert _recover_redirect(mock_req) == ("https://myrunstreak.run/auth/reset-password?next=/plan")
 
 
 def test_forgot_password_rejects_invalid_email(client: TestClient) -> None:

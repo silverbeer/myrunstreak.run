@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlencode
 from uuid import UUID
 
 import httpx
@@ -191,10 +192,15 @@ async def forgot_password(body: ForgotPasswordRequest) -> dict[str, str]:
     Always returns success-shape, even when the email doesn't exist —
     standard practice to avoid leaking which addresses are registered.
     Supabase itself does this; we just forward.
+
+    ``redirect_to`` MUST go in the query string: GoTrue reads it from there for
+    ``/recover`` and ignores it in the JSON body — silently, with no error. Sent
+    in the body it falls back to Site URL, so the recovery link drops the user
+    at ``/`` already signed in and they never see the reset form (SB-380).
     """
     _proxy_supabase_auth(
-        "/recover",
-        {"email": body.email, "redirect_to": body.redirect_to},
+        f"/recover?{urlencode({'redirect_to': body.redirect_to})}",
+        {"email": body.email},
     )
     return {"message": "If an account exists for that email, a reset link has been sent."}
 
