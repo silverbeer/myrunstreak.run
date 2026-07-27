@@ -75,8 +75,18 @@ class AssignCoachRequest(BaseModel):
 
 @me_router.get("/roles")
 def my_roles(user_id: UUID = Depends(authenticate_request)) -> dict[str, Any]:
-    """The caller's platform roles."""
-    roles = UserRolesRepository(get_supabase_client()).list_roles(user_id)
+    """The caller's platform roles.
+
+    Granted roles (admin/coach/runner) come from ``user_roles``. "athlete" is
+    *derived* from an ``athletes`` row linking back to this user rather than
+    stored as a role — that keeps one source of truth, and a managed athlete
+    has no user row to hold a role anyway. Having a coach is irrelevant: an
+    athlete without one is still an athlete.
+    """
+    supabase = get_supabase_client()
+    roles = set(UserRolesRepository(supabase).list_roles(user_id))
+    if AthletesRepository(supabase).get_by_linked_user(user_id) is not None:
+        roles.add("athlete")
     return {"roles": sorted(roles), "is_admin": "admin" in roles}
 
 

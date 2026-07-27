@@ -41,7 +41,12 @@ def is_possible_duplicate(
 
 
 class UserRolesRepository:
-    """Who is an admin / coach."""
+    """Granted platform roles: admin / coach / runner (the ``user_role`` enum).
+
+    A user may hold any combination — the table's PK is ``(user_id, role)``, so
+    a coach who also runs is two rows, not a conflict. "athlete" is NOT a role
+    here; it is derived from ``athletes.linked_user_id`` (see ``/me/roles``).
+    """
 
     def __init__(self, supabase: Client):
         self.supabase = supabase
