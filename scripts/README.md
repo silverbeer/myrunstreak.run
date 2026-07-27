@@ -79,7 +79,7 @@ Requires migration `20260727000000_runner_role_and_test_accounts` — the script
 ```bash
 export SUPABASE_URL=https://<prod-ref>.supabase.co
 export SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-export STK_TEST_PASSWORD=<shared password, 12+ chars>
+export STK_TEST_PASSWORD=<shared password, 6+ chars — Supabase Auth's minimum>
 
 # preview every write, touching nothing
 uv run python scripts/seed_prod_test_users.py --dry-run

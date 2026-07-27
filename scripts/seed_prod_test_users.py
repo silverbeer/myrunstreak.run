@@ -23,7 +23,7 @@ Requires migration 20260727000000 (runner role + is_test_account).
 Run:
     export SUPABASE_URL=https://<prod-ref>.supabase.co
     export SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-    export STK_TEST_PASSWORD=<password for all three logins>
+    export STK_TEST_PASSWORD=<password for all three logins; 6+ chars>
     uv run python scripts/seed_prod_test_users.py --confirm-prod
 
     # see what it would do, touching nothing:
@@ -55,6 +55,10 @@ ACCOUNTS: dict[str, tuple[str, tuple[str, ...]]] = {
 }
 
 _LOCAL_HOSTS = ("127.0.0.1", "localhost", "0.0.0.0", "::1", "host.docker.internal")
+
+# Supabase Auth's default minimum. Matching it keeps these hand-typed test
+# logins as short as the platform allows (seed_local_users.py uses 6-8 too).
+MIN_PASSWORD_LEN = 6
 
 
 # --------------------------------------------------------------------------- #
@@ -92,11 +96,20 @@ def assert_confirmed(confirmed: bool, dry_run: bool) -> None:
 
 
 def assert_password(password: str) -> None:
-    """Passwords come from the environment; nothing is ever hardcoded here."""
+    """Passwords come from the environment; nothing is ever hardcoded here.
+
+    The floor is Supabase Auth's own default minimum, not a stricter house rule:
+    these accounts are typed by hand during manual testing, they hold no data,
+    and they carry ``is_test_account``. Anything shorter fails at the admin API
+    anyway, so checking here just turns a 422 into a readable message.
+    """
     if not password:
         raise GuardError("STK_TEST_PASSWORD is not set.")
-    if len(password) < 12:
-        raise GuardError("STK_TEST_PASSWORD must be at least 12 characters.")
+    if len(password) < MIN_PASSWORD_LEN:
+        raise GuardError(
+            f"STK_TEST_PASSWORD must be at least {MIN_PASSWORD_LEN} characters "
+            "(Supabase Auth's minimum)."
+        )
 
 
 # --------------------------------------------------------------------------- #
