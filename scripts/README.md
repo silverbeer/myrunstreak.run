@@ -48,6 +48,48 @@ python scripts/query_runs.py
 
 **All distances in miles!**
 
+## 👥 Seed Scripts
+
+Two mirror-image seeders. Each refuses to run against the environment the other one owns, so neither can be pointed at the wrong database by accident.
+
+### seed_local_users.py
+
+Local-only (refuses anything but `127.0.0.1`/`localhost`). Free to delete rows and repoint orphans. Seeds `admin@test.local`, `coach@test.local`, `a1@test.local`, `a2@test.local`.
+
+```bash
+eval "$(supabase status -o env | sed 's/^/export SB_/')"
+SUPABASE_URL=$SB_API_URL SERVICE_KEY=$SB_SERVICE_ROLE_KEY \
+  uv run python scripts/seed_local_users.py
+```
+
+### seed_prod_test_users.py
+
+Prod-only (refuses localhost) and **non-destructive** — never deletes an auth user, never touches a row outside `@test.myrunstreak.run`, and refuses to repoint a conflicting `users` row rather than guessing. Re-running is a no-op.
+
+| account | roles | notes |
+|---|---|---|
+| `coach@test.myrunstreak.run` | `coach` + `runner` | the working proof that multi-role works |
+| `runner@test.myrunstreak.run` | `runner` | |
+| `a1@test.myrunstreak.run` | `runner` | linked athlete "Test Athlete One", coached by `coach@` |
+
+All rows get `is_test_account = TRUE` so a future follow/social feature can exclude them. `test.myrunstreak.run` has no MX record and accounts are created with `email_confirm: true`, so no mail ever reaches these addresses.
+
+Requires migration `20260727000000_runner_role_and_test_accounts` — the script checks and fails with instructions if it hasn't been applied.
+
+```bash
+export SUPABASE_URL=https://<prod-ref>.supabase.co
+export SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+export STK_TEST_PASSWORD=<shared password, 12+ chars>
+
+# preview every write, touching nothing
+uv run python scripts/seed_prod_test_users.py --dry-run
+
+# actually seed
+uv run python scripts/seed_prod_test_users.py --confirm-prod
+```
+
+To find the test accounts later: `SELECT * FROM users WHERE is_test_account;`
+
 ## 🔐 AWS Setup Scripts
 
 ### setup_smashrun_tokens.py
