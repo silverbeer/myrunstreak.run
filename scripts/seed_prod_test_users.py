@@ -102,16 +102,48 @@ def assert_password(password: str) -> None:
 # --------------------------------------------------------------------------- #
 # Supabase REST / admin API
 # --------------------------------------------------------------------------- #
+_SECRET_KEYS = frozenset({"password", "access_token", "refresh_token"})
+
+
+def _redact(body: Any) -> Any:
+    """Mask secrets before a dry run prints a request body to the terminal.
+
+    ``--dry-run`` needs no password, but it does not *reject* one either — so
+    without this, previewing with STK_TEST_PASSWORD exported would echo it into
+    the scrollback and any CI log.
+    """
+    if isinstance(body, dict):
+        return {k: ("***" if k in _SECRET_KEYS else v) for k, v in body.items()}
+    if isinstance(body, list):
+        return [_redact(item) for item in body]
+    return body
+
+
 class Client:
     def __init__(self, url: str, key: str, *, dry_run: bool = False):
         self.url = url.rstrip("/")
         self.key = key
         self.dry_run = dry_run
+        self._placeholders = 0
         self.headers = {
             "apikey": key,
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
         }
+
+    def next_placeholder_id(self) -> str:
+        """A stand-in id for a row a dry run did not actually insert.
+
+        It must be a syntactically valid UUID: these ids flow straight into
+        PostgREST filters (`user_id=neq.…`, `athlete_id=eq.…`) and Postgres
+        rejects anything else with a 22P02 before the query runs. The zero
+        prefix guarantees no real row collides, so the conflict checks a dry
+        run performs still report truthfully.
+        """
+        self._placeholders += 1
+        # The counter is repeated in the first group so the abbreviated `id[:8]`
+        # the plan prints stays distinguishable between accounts.
+        return f"000000{self._placeholders:02d}-0000-0000-0000-{self._placeholders:012d}"
 
     def _req(
         self,
@@ -121,7 +153,8 @@ class Client:
         headers: dict[str, str] | None = None,
     ) -> Any:
         if self.dry_run and method != "GET":
-            print(f"  [dry-run] {method} {path} {json.dumps(body) if body else ''}".rstrip())
+            shown = json.dumps(_redact(body)) if body else ""
+            print(f"  [dry-run] {method} {path} {shown}".rstrip())
             return None
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(
@@ -152,8 +185,8 @@ class Client:
             "/auth/v1/admin/users",
             {"email": email, "password": password, "email_confirm": True},
         )
-        # dry-run returns None; surface a placeholder so the plan keeps printing.
-        return out["id"] if out else f"<new:{email}>"
+        # dry-run skips the POST, so there is no id to read back.
+        return out["id"] if out else self.next_placeholder_id()
 
     def set_password(self, uid: str, password: str) -> None:
         self._req("PUT", f"/auth/v1/admin/users/{uid}", {"password": password})
@@ -189,7 +222,7 @@ def ensure_login(client: Client, email: str, display_name: str, password: str) -
         print(f"  login {email} -> {uid[:8]} (existing, password reset)")
     else:
         uid = client.create_auth_user(email, password)
-        print(f"  login {email} -> {uid[:8] if len(uid) > 8 else uid} (created)")
+        print(f"  login {email} -> {uid[:8]} (created)")
 
     conflicting = [
         row["user_id"]
@@ -251,7 +284,7 @@ def ensure_athlete(client: Client, *, coach_id: str, linked_uid: str, display_na
             },
             prefer="return=representation",
         )
-        athlete_id = created[0]["id"] if created else f"<new:{display_name}>"
+        athlete_id = created[0]["id"] if created else client.next_placeholder_id()
         print(f"  athlete {display_name!r} -> {athlete_id[:8]} (created)")
 
     link = client.rest(
