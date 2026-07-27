@@ -35,6 +35,8 @@ class Athlete(BaseModel):
     created_by: UUID | None = None
     notes: str | None = None
     created_at: datetime
+    # Seeded test athlete (SB-367) — excluded from future social/discovery surfaces.
+    is_test_account: bool = False
     profile: AthleteProfile | None = None
 
 
