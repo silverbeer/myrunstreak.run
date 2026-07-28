@@ -171,6 +171,22 @@ export interface RunDetail {
 
 export type AudioType = 'podcast' | 'music' | 'audiobook' | 'other' | 'none'
 
+/** How often this run's route has been run, and where it ranks (SB-395).
+ *
+ * variant_* only appear once the backend groups by track shape (SB-396) — with
+ * the coarse start-cell grouping, run_count counts every run of that distance
+ * from that area, which is not a route. The UI keys off their presence.
+ */
+export interface RunRoute {
+  run_count: number
+  rank: number
+  total_routes: number
+  best_pace_min_per_km: number | null
+  /** Runs of this exact version of the route (the family holds several). */
+  variant_run_count?: number
+  variant_best_pace_min_per_km?: number | null
+}
+
 /** Per-point GPS track + aligned metric series for the route map (SB-298). */
 export interface RunTrack {
   activity_id: string
@@ -189,6 +205,7 @@ export interface RunTrack {
   avg_pace_min_per_km: number | null
   weather_type: string | null
   temperature_celsius: number | null
+  route?: RunRoute | null
 }
 
 /** Hot+humid pace penalty from the user's own history (SB-304). */

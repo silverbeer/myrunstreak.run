@@ -42,6 +42,12 @@ VARIANT_OVERLAP = 0.8
 # rather than burning seconds on a request. No real route hits this.
 MAX_CLUSTER_MEMBERS = 2000
 
+# The single switch for shape-based route identity. Off until the SB-310
+# polyline backfill drains — a run with no stored track can't be matched and
+# would stand alone, understating every count. Flipping this to True is SB-396;
+# consumers read it rather than hard-coding a default, so it's a one-line change.
+SHAPE_GROUPING_ENABLED = False
+
 Cell = tuple[int, int]
 Fingerprint = frozenset[Cell]
 
