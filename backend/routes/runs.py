@@ -12,6 +12,7 @@ from backend.routes.sync import _resolve_access_token
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from src.shared.geo import simplify_and_encode
+from src.shared.route_shape import SHAPE_GROUPING_ENABLED
 from src.shared.smashrun import SmashRunAPIClient
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import RunsRepository, TokenRepository
@@ -264,7 +265,9 @@ async def _routes(user_id: UUID, min_runs: int, shape: bool) -> dict[str, Any]:
 async def route_leaderboard(
     user_id: UUID = Depends(authenticate_request),
     min_runs: int = Query(2, ge=1, le=100, description="Only routes run at least this many times"),
-    shape: bool = Query(False, description="Group by GPS track shape instead of start cell"),
+    shape: bool = Query(
+        SHAPE_GROUPING_ENABLED, description="Group by GPS track shape instead of start cell"
+    ),
 ) -> dict[str, Any]:
     """Repeated-route leaderboard (SB-291): GPS runs grouped by start cell +
     distance bucket, sorted by run count. Answers "how many times have I run
@@ -336,7 +339,11 @@ async def _track(user_id: UUID, activity_id: str) -> dict[str, Any]:
             pass
 
     # How many times this route has been run (count + rank), so the card can say
-    # "run N times, #k of M" (SB-296). Needs the run's own start coords.
+    # "run N times, #k of M" (SB-297). Needs the run's own start coords.
+    #
+    # The polyline was just stored above, so a run whose map is being opened for
+    # the first time is shape-matchable by the time we group (SB-395) — no
+    # "1 run of this route" on a freshly synced run.
     route = None
     run_lat, run_lon, run_dist = (
         run.get("start_latitude"),
@@ -345,7 +352,12 @@ async def _track(user_id: UUID, activity_id: str) -> dict[str, Any]:
     )
     if run_lat is not None and run_lon is not None and run_dist is not None:
         route = RunsRepository(supabase).get_route_for_run(
-            user_id, float(run_lat), float(run_lon), float(run_dist)
+            user_id,
+            float(run_lat),
+            float(run_lon),
+            float(run_dist),
+            run_id=run["id"],
+            use_shape=SHAPE_GROUPING_ENABLED,
         )
 
     return {

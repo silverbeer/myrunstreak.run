@@ -63,6 +63,8 @@
 
       <RouteMap v-if="track && track.has_track" :track="track" :unit="unit" />
 
+      <RouteFrequency :route="track?.route" :unit="unit" />
+
       <div v-if="run.splits.length > 0" class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mt-4">
         <h2 class="font-semibold text-gray-900 mb-1">{{ splitNoun }} splits</h2>
         <p class="text-xs text-gray-400 mb-3">fastest split highlighted</p>
@@ -121,6 +123,7 @@ import { useConditionsPenalty } from '@/composables/useConditionsPenalty'
 import { useUserPreferences } from '@/composables/useUserPreferences'
 import { formatDate, formatDistance, formatDuration, formatPace, distanceLabel } from '@/utils/format'
 import RouteMap from '@/components/RouteMap.vue'
+import RouteFrequency from '@/components/RouteFrequency.vue'
 import AudioLog from '@/components/AudioLog.vue'
 
 const KM_PER_MI = 1.609344
