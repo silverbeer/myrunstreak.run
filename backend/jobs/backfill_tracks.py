@@ -2,13 +2,14 @@
 
 Store-on-read (the /track endpoint) already stores a run's polyline whenever its
 map is viewed. This job fills the long tail of never-viewed runs a gentle batch
-at a time — one bounded, rate-limited pass per user per day — so the territory
+at a time — one bounded, rate-limited pass per user per firing — so the territory
 heatmap grows toward full history without ever flooding SmashRun (250 req/hr).
 
 Resumable by construction: each run picks up the oldest runs that still lack a
 polyline, so re-running (daily) advances until nothing remains.
 
-Batch size is BACKFILL_TRACKS_DAILY_LIMIT (default 100).
+Batch size is BACKFILL_TRACKS_BATCH_LIMIT (default 100). The CronJob fires
+several times a day, so the daily total is that limit times the schedule.
 """
 
 from __future__ import annotations
@@ -28,7 +29,13 @@ def main() -> int:
     logging.basicConfig(level=settings.log_level)
     logger = logging.getLogger("backfill-tracks-cron")
 
-    daily_limit = int(os.environ.get("BACKFILL_TRACKS_DAILY_LIMIT", "100"))
+    # DAILY_LIMIT is the old name — still honoured so a chart/image rollout in
+    # either order keeps the configured batch size.
+    batch_limit = int(
+        os.environ.get("BACKFILL_TRACKS_BATCH_LIMIT")
+        or os.environ.get("BACKFILL_TRACKS_DAILY_LIMIT")
+        or "100"
+    )
 
     supabase = get_supabase_client()
     rows = supabase.table("user_sources").select("user_id").eq("source_type", "smashrun").execute()
@@ -41,7 +48,7 @@ def main() -> int:
     failures = 0
     for user_id in user_ids:
         try:
-            result = backfill_user_tracks(user_id, limit=daily_limit)
+            result = backfill_user_tracks(user_id, limit=batch_limit)
             logger.info(
                 "Backfilled %s tracks for %s (%s processed, %s remaining)",
                 result["tracks_stored"],

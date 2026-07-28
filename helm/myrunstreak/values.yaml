@@ -130,12 +130,13 @@ backend:
           memory: 256Mi
     backfillTracks:
       enabled: true
-      # 09:00 UTC — after the morning sync + recompute, off-peak. One gentle
-      # batch/user/day trickles GPS polylines for the heatmap without flooding
-      # SmashRun (250 req/hr). dailyLimit runs/day -> full history in weeks; no
-      # rush (SB-310). Store-on-read fills viewed runs in the meantime.
-      schedule: "0 9 * * *"
-      dailyLimit: 100
+      # Every 6h at 00/06/12/18 UTC — clear of the syncs (14:00, 17:00) and the
+      # plan recompute (08:00). batchLimit runs per pass x 4 passes = 500/day,
+      # and each pass stays well under SmashRun's 250 req/hr: one 500-run burst
+      # would finish in ~6 min and get rate-limited halfway (SB-310).
+      # Store-on-read fills viewed runs in the meantime.
+      schedule: "0 0,6,12,18 * * *"
+      batchLimit: 125
       resources:
         requests:
           cpu: 50m
