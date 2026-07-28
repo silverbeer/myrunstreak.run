@@ -355,20 +355,34 @@ class RunsRepository:
     def summarize_runs(self, user_id: UUID, **filters: Any) -> dict[str, Any]:
         """Aggregate the FULL filtered set (SB-269 conditions impact): count,
         total km, and distance-weighted avg pace. Fetches only two columns."""
-        query = (
-            self.supabase.table("runs")
-            .select("distance_km,average_pace_min_per_km")
-            .eq("user_id", str(user_id))
-        )
-        query = self._apply_run_filters(
-            query,
-            filters.pop("date_from", None),
-            filters.pop("date_to", None),
-            filters.pop("distance_min", None),
-            filters.pop("distance_max", None),
-            **filters,
-        )
-        rows = cast(list[dict[str, Any]], query.limit(10000).execute().data)
+
+        def page(off: int, size: int) -> list[dict[str, Any]]:
+            query = (
+                self.supabase.table("runs")
+                .select("distance_km,average_pace_min_per_km")
+                .eq("user_id", str(user_id))
+            )
+            query = self._apply_run_filters(
+                query,
+                filters.get("date_from"),
+                filters.get("date_to"),
+                filters.get("distance_min"),
+                filters.get("distance_max"),
+                **{
+                    k: v
+                    for k, v in filters.items()
+                    if k not in ("date_from", "date_to", "distance_min", "distance_max")
+                },
+            )
+            return cast(
+                list[dict[str, Any]],
+                query.order("start_date", desc=False)  # stable paging needs a total order
+                .range(off, off + size - 1)
+                .execute()
+                .data,
+            )
+
+        rows = self._paginate(page)
         total_km = 0.0
         weighted = 0.0
         paced_km = 0.0
@@ -546,19 +560,25 @@ class RunsRepository:
             pace_series (chronological avg pace per run, for a sparkline), and
             with use_shape also variants (the same shape, one level down).
         """
-        result = (
-            self.supabase.table("runs")
-            .select(
-                "id, start_latitude, start_longitude, distance_km, "
-                "average_pace_min_per_km, start_date"
+
+        def page(off: int, size: int) -> list[dict[str, Any]]:
+            return cast(
+                list[dict[str, Any]],
+                self.supabase.table("runs")
+                .select(
+                    "id, start_latitude, start_longitude, distance_km, "
+                    "average_pace_min_per_km, start_date"
+                )
+                .eq("user_id", str(user_id))
+                .not_.is_("start_latitude", "null")
+                .not_.is_("start_longitude", "null")
+                .order("start_date", desc=False)  # stable paging needs a total order
+                .range(off, off + size - 1)
+                .execute()
+                .data,
             )
-            .eq("user_id", str(user_id))
-            .not_.is_("start_latitude", "null")
-            .not_.is_("start_longitude", "null")
-            .limit(10000)
-            .execute()
-        )
-        rows = cast(list[dict[str, Any]], result.data)
+
+        rows = self._paginate(page)
 
         groups: dict[tuple[float, float, float], list[dict[str, Any]]] = {}
         for r in rows:
@@ -701,15 +721,21 @@ class RunsRepository:
         Returns the penalty in seconds/mile plus the run counts, or None if
         there aren't enough steamy runs to be meaningful.
         """
-        result = (
-            self.supabase.table("runs")
-            .select("average_pace_min_per_km, temperature_celsius, humidity_percent")
-            .eq("user_id", str(user_id))
-            .not_.is_("average_pace_min_per_km", "null")
-            .limit(10000)
-            .execute()
-        )
-        rows = cast(list[dict[str, Any]], result.data)
+
+        def page(off: int, size: int) -> list[dict[str, Any]]:
+            return cast(
+                list[dict[str, Any]],
+                self.supabase.table("runs")
+                .select("average_pace_min_per_km, temperature_celsius, humidity_percent")
+                .eq("user_id", str(user_id))
+                .not_.is_("average_pace_min_per_km", "null")
+                .order("start_date", desc=False)  # stable paging needs a total order
+                .range(off, off + size - 1)
+                .execute()
+                .data,
+            )
+
+        rows = self._paginate(page)
 
         steamy: list[float] = []
         baseline: list[float] = []

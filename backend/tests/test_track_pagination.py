@@ -41,6 +41,12 @@ class _RangeCappedTable:
     def order(self, *_a: Any, **_k: Any) -> _RangeCappedTable:
         return self
 
+    def gte(self, *_a: Any, **_k: Any) -> _RangeCappedTable:
+        return self
+
+    def lte(self, *_a: Any, **_k: Any) -> _RangeCappedTable:
+        return self
+
     def range(self, lo: int, hi: int) -> _RangeCappedTable:
         self._lo, self._hi = lo, min(hi, lo + PAGE - 1)  # server caps span at 1000
         return self
@@ -67,6 +73,71 @@ def test_get_all_track_polylines_returns_more_than_one_page() -> None:
     assert len(out) == 2500  # not truncated to 1000
     assert out[0]["polyline"] == "p0"
     assert out[-1]["polyline"] == "p2499"
+
+
+def test_route_leaderboard_counts_the_whole_history() -> None:
+    """SB-397: the leaderboard grouped only the first 1000 runs.
+
+    Live symptom: `stk routes` reported 204 runs for a route with 1009, because
+    4,209 GPS runs were silently truncated to a PostgREST page.
+    """
+    same_route = [
+        {
+            "id": f"r{i}",
+            "start_latitude": 42.244,
+            "start_longitude": -71.651,
+            "distance_km": 5.5,
+            "average_pace_min_per_km": 5.5,
+            "start_date": "2020-01-01",
+        }
+        for i in range(2400)
+    ]
+    repo = RunsRepository(_Supabase({"runs": same_route}))  # type: ignore[arg-type]
+
+    routes = repo.get_route_leaderboard(USER, min_runs=2)
+    assert len(routes) == 1
+    assert routes[0]["run_count"] == 2400  # not 1000
+
+
+def test_conditions_penalty_sees_the_whole_history() -> None:
+    """SB-397: the steamy-pace comparison also stopped at 1000 runs."""
+    # 1200 cool runs first, so a truncated scan would never reach the steamy ones.
+    rows = [
+        {
+            "average_pace_min_per_km": 6.0,
+            "temperature_celsius": 10.0,
+            "humidity_percent": 40.0,
+            "start_date": "2020-01-01",
+        }
+        for _ in range(1200)
+    ] + [
+        {
+            "average_pace_min_per_km": 7.0,
+            "temperature_celsius": 30.0,
+            "humidity_percent": 85.0,
+            "start_date": "2021-01-01",
+        }
+        for _ in range(50)
+    ]
+    repo = RunsRepository(_Supabase({"runs": rows}))  # type: ignore[arg-type]
+
+    got = repo.get_conditions_penalty(USER)
+    assert got is not None
+    assert got["steamy_run_count"] == 50  # invisible to a capped scan
+    assert got["baseline_run_count"] == 1200
+
+
+def test_summarize_runs_aggregates_past_one_page() -> None:
+    """SB-397: 'aggregate the FULL filtered set' stopped at 1000 rows."""
+    rows = [
+        {"distance_km": 5.0, "average_pace_min_per_km": 6.0, "start_date": "2020-01-01"}
+        for _ in range(1500)
+    ]
+    repo = RunsRepository(_Supabase({"runs": rows}))  # type: ignore[arg-type]
+
+    out = repo.summarize_runs(USER)
+    assert out["count"] == 1500  # not 1000
+    assert out["total_km"] == 7500.0
 
 
 def test_missing_tracks_count_spans_full_history() -> None:
