@@ -130,13 +130,23 @@ backend:
           memory: 256Mi
     backfillTracks:
       enabled: true
-      # Every 6h at 00/06/12/18 UTC — clear of the syncs (14:00, 17:00) and the
-      # plan recompute (08:00). batchLimit runs per pass x 4 passes = 500/day,
-      # and each pass stays well under SmashRun's 250 req/hr: one 500-run burst
-      # would finish in ~6 min and get rate-limited halfway (SB-310).
-      # Store-on-read fills viewed runs in the meantime.
-      schedule: "0 0,6,12,18 * * *"
-      batchLimit: 125
+      # Every 2h — batchLimit per pass x 12 passes = 2400/day, draining the
+      # ~3,700-run backlog in ~1.5 days instead of a week (SB-310).
+      #
+      # SmashRun's ~250 req/hr is a *rolling hour*, so exposure is the pass size,
+      # not the daily total: 200 in one ~2.5 min pass, then nothing for 2h. That
+      # leaves more headroom than 250-per-pass would while running 2.4x faster.
+      # Keep passes <= 200 and >= 2h apart if this is tuned again.
+      #
+      # 14:00 and 17:00 collide with the sync, the only other SmashRun caller.
+      # A sync is a handful of requests plus inline splits for the day's run, so
+      # the worst rolling hour is ~210 — still inside the cap.
+      #
+      # This cadence is for draining the backlog. Once it's done, one new run a
+      # day needs nothing like this — drop back to a single small daily pass
+      # (SB-396). Store-on-read fills viewed runs in the meantime.
+      schedule: "0 */2 * * *"
+      batchLimit: 200
       resources:
         requests:
           cpu: 50m
