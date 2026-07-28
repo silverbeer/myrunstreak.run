@@ -8,6 +8,8 @@ from typing import Any, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from src.shared.geo import decode_polyline
+from src.shared.route_shape import MAX_CLUSTER_MEMBERS, families_and_variants, fingerprint
 from supabase import Client
 
 logger = logging.getLogger(__name__)
@@ -161,6 +163,26 @@ class RunsRepository:
         return [
             {"polyline": r["polyline"], "encoded_precision": r["encoded_precision"]} for r in rows
         ]
+
+    def get_polylines_by_run_id(self, user_id: UUID) -> dict[str, str]:
+        """``{run_id: polyline}`` for every stored track (SB-394 shape grouping).
+
+        Same rows as :meth:`get_all_track_polylines`, keyed so the leaderboard
+        can attach a track to the run it belongs to.
+        """
+
+        def page(off: int, size: int) -> list[dict[str, Any]]:
+            return cast(
+                list[dict[str, Any]],
+                self.supabase.table("run_tracks")
+                .select("run_id, polyline, runs!inner(user_id)")
+                .eq("runs.user_id", str(user_id))
+                .range(off, off + size - 1)
+                .execute()
+                .data,
+            )
+
+        return {r["run_id"]: r["polyline"] for r in self._paginate(page) if r.get("polyline")}
 
     def count_tracks(self, user_id: UUID) -> int:
         """How many of a user's runs have a stored polyline (backfill progress)."""
@@ -458,12 +480,37 @@ class RunsRepository:
             "avg_pace_min_per_km": round(sum(paces) / len(paces), 2) if paces else 0,
         }
 
+    @staticmethod
+    def _summarize_route(
+        members: list[dict[str, Any]], route_key: str, lat: float, lon: float, bucket: float
+    ) -> dict[str, Any]:
+        """One leaderboard row from the runs that belong to it."""
+        chron = sorted(members, key=lambda m: m["start_date"])
+        paces = [
+            float(m["average_pace_min_per_km"])
+            for m in chron
+            if m["average_pace_min_per_km"] is not None
+        ]
+        return {
+            "route_key": route_key,
+            "start_latitude": lat,
+            "start_longitude": lon,
+            "distance_km": bucket,
+            "run_count": len(members),
+            "first_date": chron[0]["start_date"],
+            "last_date": chron[-1]["start_date"],
+            "best_pace_min_per_km": round(min(paces), 2) if paces else None,
+            "avg_pace_min_per_km": round(sum(paces) / len(paces), 2) if paces else None,
+            "pace_series": [round(p, 2) for p in paces],
+        }
+
     def get_route_leaderboard(
         self,
         user_id: UUID,
         min_runs: int = 2,
         precision: int = 2,
         dist_bucket_km: float = 0.5,
+        use_shape: bool = False,
     ) -> list[dict[str, Any]]:
         """Group a user's GPS runs into repeated routes (SB-291).
 
@@ -478,22 +525,32 @@ class RunsRepository:
         from one spot, so the distance bucket does the real separating; the
         coarser cell folds the boundary jitter back together.
 
+        ``use_shape=True`` (SB-394) subdivides each coarse group by the actual
+        path the runs traced, which is the only thing that separates two routes
+        leaving the same house at the same distance. Each returned row is then a
+        route *family* (slight variations counted together) carrying a
+        ``variants`` list. Off by default until the SB-310 polyline backfill
+        finishes — with partial coverage the split would be arbitrary.
+
         Args:
             user_id: User UUID
             min_runs: Only return routes run at least this many times
             precision: Decimal places to round start lat/lon (2 ≈ 1.1 km cell)
             dist_bucket_km: Distance bucket width in km
+            use_shape: Subdivide groups by track shape (needs stored polylines)
 
         Returns:
             Routes sorted by run count desc. Each: route_key, start_latitude,
             start_longitude, distance_km (bucket midpoint), run_count,
             first_date, last_date, best_pace_min_per_km, avg_pace_min_per_km,
-            pace_series (chronological avg pace per run, for a sparkline).
+            pace_series (chronological avg pace per run, for a sparkline), and
+            with use_shape also variants (the same shape, one level down).
         """
         result = (
             self.supabase.table("runs")
             .select(
-                "start_latitude, start_longitude, distance_km, average_pace_min_per_km, start_date"
+                "id, start_latitude, start_longitude, distance_km, "
+                "average_pace_min_per_km, start_date"
             )
             .eq("user_id", str(user_id))
             .not_.is_("start_latitude", "null")
@@ -510,33 +567,66 @@ class RunsRepository:
             bucket = round(float(r["distance_km"]) / dist_bucket_km) * dist_bucket_km
             groups.setdefault((lat, lon, round(bucket, 3)), []).append(r)
 
+        polylines = self.get_polylines_by_run_id(user_id) if use_shape else {}
+
         routes: list[dict[str, Any]] = []
         for (lat, lon, bucket), members in groups.items():
-            if len(members) < min_runs:
-                continue
-            chron = sorted(members, key=lambda m: m["start_date"])
-            paces = [
-                float(m["average_pace_min_per_km"])
-                for m in chron
-                if m["average_pace_min_per_km"] is not None
-            ]
-            routes.append(
-                {
-                    "route_key": f"{lat},{lon},{bucket}",
-                    "start_latitude": lat,
-                    "start_longitude": lon,
-                    "distance_km": bucket,
-                    "run_count": len(members),
-                    "first_date": chron[0]["start_date"],
-                    "last_date": chron[-1]["start_date"],
-                    "best_pace_min_per_km": round(min(paces), 2) if paces else None,
-                    "avg_pace_min_per_km": round(sum(paces) / len(paces), 2) if paces else None,
-                    "pace_series": [round(p, 2) for p in paces],
-                }
-            )
+            for route in self._split_group(members, lat, lon, bucket, polylines, use_shape):
+                if route["run_count"] >= min_runs:
+                    routes.append(route)
 
         routes.sort(key=lambda x: x["run_count"], reverse=True)
         return routes
+
+    def _split_group(
+        self,
+        members: list[dict[str, Any]],
+        lat: float,
+        lon: float,
+        bucket: float,
+        polylines: dict[str, str],
+        use_shape: bool,
+    ) -> list[dict[str, Any]]:
+        """One coarse (cell, distance) group -> the route rows it really holds.
+
+        Without shape data that's the single legacy row. With it, one row per
+        family, each carrying its variants. The route_key is suffixed with the
+        family's earliest run id so it stays stable as long as that run keeps
+        anchoring the family — the row's position in the list is not stable and
+        must never be used as an identity.
+        """
+        base_key = f"{lat},{lon},{bucket}"
+        if not use_shape or len(members) > MAX_CLUSTER_MEMBERS:
+            return [self._summarize_route(members, base_key, lat, lon, bucket)]
+
+        fingerprints = [
+            fingerprint(decode_polyline(polylines[m["id"]]))
+            if m["id"] in polylines
+            else frozenset()
+            for m in members
+        ]
+        out: list[dict[str, Any]] = []
+        for family in families_and_variants(fingerprints):
+            flat = [members[i] for variant in family for i in variant]
+            anchor = min(m["id"] for m in flat)
+            route = self._summarize_route(flat, f"{base_key}#{anchor}", lat, lon, bucket)
+            route["run_ids"] = [m["id"] for m in flat]
+            route["variants"] = [
+                self._summarize_route(
+                    [members[i] for i in variant],
+                    f"{base_key}#{min(members[i]['id'] for i in variant)}",
+                    lat,
+                    lon,
+                    bucket,
+                )
+                for variant in sorted(family, key=len, reverse=True)
+            ]
+            for variant, summary in zip(
+                sorted(family, key=len, reverse=True), route["variants"], strict=True
+            ):
+                summary["run_ids"] = [members[i]["id"] for i in variant]
+            out.append(route)
+        return out
 
     def get_route_for_run(
         self,
@@ -546,28 +636,52 @@ class RunsRepository:
         distance_km: float,
         precision: int = 2,
         dist_bucket_km: float = 0.5,
+        run_id: str | None = None,
+        use_shape: bool = False,
     ) -> dict[str, Any] | None:
-        """The route a given run belongs to, with its count + rank (SB-296).
+        """The route a given run belongs to, with its count + rank (SB-297).
 
         Reuses the leaderboard grouping so the route-card can show "run N times,
         #k of M" for a single activity. Returns None if the run has no GPS start
         (nothing to group on).
+
+        With ``use_shape`` the row is a route family, so the run is located by
+        id rather than by coordinates — several families share one (cell,
+        distance) key and only membership says which one this run traced. Adds
+        ``variant_run_count`` (how many times this exact version was run) beside
+        the family's ``run_count``. Falls back to the coordinate match when no
+        ``run_id`` is given.
         """
         board = self.get_route_leaderboard(
-            user_id, min_runs=1, precision=precision, dist_bucket_km=dist_bucket_km
+            user_id,
+            min_runs=1,
+            precision=precision,
+            dist_bucket_km=dist_bucket_km,
+            use_shape=use_shape,
         )
         lat = round(float(start_latitude), precision)
         lon = round(float(start_longitude), precision)
         bucket = round(round(float(distance_km) / dist_bucket_km) * dist_bucket_km, 3)
         key = f"{lat},{lon},{bucket}"
+
         for rank, route in enumerate(board, start=1):
-            if route["route_key"] == key:
-                return {
-                    "run_count": route["run_count"],
-                    "rank": rank,
-                    "total_routes": len(board),
-                    "best_pace_min_per_km": route["best_pace_min_per_km"],
-                }
+            if run_id is not None and use_shape:
+                if run_id not in route.get("run_ids", ()):
+                    continue
+            elif route["route_key"] != key:
+                continue
+            found = {
+                "run_count": route["run_count"],
+                "rank": rank,
+                "total_routes": len(board),
+                "best_pace_min_per_km": route["best_pace_min_per_km"],
+            }
+            for variant in route.get("variants", ()):
+                if run_id is not None and run_id in variant.get("run_ids", ()):
+                    found["variant_run_count"] = variant["run_count"]
+                    found["variant_best_pace_min_per_km"] = variant["best_pace_min_per_km"]
+                    break
+            return found
         return None
 
     def get_conditions_penalty(
