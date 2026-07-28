@@ -248,9 +248,15 @@ async def runs_head(
 
 
 @cached(ttl=60, key_prefix="runs:routes")
-async def _routes(user_id: UUID, min_runs: int) -> dict[str, Any]:
+async def _routes(user_id: UUID, min_runs: int, shape: bool) -> dict[str, Any]:
     repo = RunsRepository(get_supabase_client())
-    routes = repo.get_route_leaderboard(user_id, min_runs=min_runs)
+    routes = repo.get_route_leaderboard(user_id, min_runs=min_runs, use_shape=shape)
+    # run_ids exist so a single run can be located in its family; they'd add
+    # tens of KB of UUIDs to a leaderboard nobody reads them from.
+    for route in routes:
+        route.pop("run_ids", None)
+        for variant in route.get("variants", ()):
+            variant.pop("run_ids", None)
     return {"count": len(routes), "routes": routes}
 
 
@@ -258,11 +264,18 @@ async def _routes(user_id: UUID, min_runs: int) -> dict[str, Any]:
 async def route_leaderboard(
     user_id: UUID = Depends(authenticate_request),
     min_runs: int = Query(2, ge=1, le=100, description="Only routes run at least this many times"),
+    shape: bool = Query(False, description="Group by GPS track shape instead of start cell"),
 ) -> dict[str, Any]:
     """Repeated-route leaderboard (SB-291): GPS runs grouped by start cell +
     distance bucket, sorted by run count. Answers "how many times have I run
-    this route". Treadmill / no-GPS runs are excluded."""
-    return await _routes(user_id, min_runs)
+    this route". Treadmill / no-GPS runs are excluded.
+
+    ``shape=true`` (SB-394) instead groups by the path each run traced, so two
+    routes leaving the same house at the same distance stop being one row; each
+    row is then a route family with a ``variants`` list. Opt-in until the
+    SB-310 polyline backfill finishes — runs without a stored track can't be
+    shape-matched and fall back to standing alone."""
+    return await _routes(user_id, min_runs, shape)
 
 
 @cached(ttl=300, key_prefix="runs:tracks")
