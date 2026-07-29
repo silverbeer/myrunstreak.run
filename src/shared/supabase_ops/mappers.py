@@ -1,12 +1,18 @@
 """Data mappers for converting between API models and Supabase schema."""
 
-from typing import Any
+from typing import Any, Literal, get_args
 from uuid import UUID
 
 from ..models import Activity, Split
 
-# Map SmashRun weather types to database enum values
-# Database: 'sunny', 'cloudy', 'rainy', 'snowy', 'windy', 'hot', 'cold'
+# The Postgres `weather_type` enum
+# (supabase/migrations/20251119133437_initial_schema.sql:78). PostgREST fails
+# the cast on anything else, so callers must be validated against this rather
+# than passing a bare string through (SB-275).
+WeatherType = Literal["sunny", "cloudy", "rainy", "snowy", "windy", "hot", "cold"]
+WEATHER_TYPES: tuple[str, ...] = get_args(WeatherType)
+
+# Map SmashRun weather types to database enum values.
 WEATHER_TYPE_MAP: dict[str, str | None] = {
     "clear": "sunny",
     "cloudy": "cloudy",
