@@ -16,6 +16,7 @@ from src.shared.route_shape import SHAPE_GROUPING_ENABLED
 from src.shared.smashrun import SmashRunAPIClient
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import RunsRepository, TokenRepository
+from src.shared.supabase_ops.mappers import WeatherType
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -138,7 +139,9 @@ async def list_runs(
     date_to: date | None = Query(None, description="Runs on/before this date (inclusive)"),
     distance_min: float | None = Query(None, ge=0, description="Min distance in km"),
     distance_max: float | None = Query(None, ge=0, description="Max distance in km"),
-    weather_type: str | None = Query(None, description="Exact weather condition"),
+    # Validated against the Postgres enum: an unknown value used to reach
+    # PostgREST, fail the cast and surface as a 500 (SB-275).
+    weather_type: WeatherType | None = Query(None, description="Exact weather condition"),
     temp_min: float | None = Query(None, description="Min temperature (C)"),
     temp_max: float | None = Query(None, description="Max temperature (C)"),
     pace_min: float | None = Query(None, ge=0, description="Min pace (min/km) — slower bound"),
@@ -188,7 +191,7 @@ async def runs_summary(
     date_to: date | None = Query(None),
     distance_min: float | None = Query(None, ge=0),
     distance_max: float | None = Query(None, ge=0),
-    weather_type: str | None = Query(None),
+    weather_type: WeatherType | None = Query(None),
     temp_min: float | None = Query(None),
     temp_max: float | None = Query(None),
     pace_min: float | None = Query(None, ge=0),
