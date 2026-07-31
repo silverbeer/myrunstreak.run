@@ -169,6 +169,11 @@ class TemplateItemCreate(BaseModel):
     # Per-segment goals for a broken rep (SB-264); None for ordinary items.
     segments: list[SegmentTarget] | None = None
     variant: str | None = None
+    # Alternatives (SB-448): items sharing an option_group are a "pick one of N"
+    # — the aerobic day is run OR bike OR jump rope, not all three. None =
+    # mandatory. The label is read from any member of the group.
+    option_group: str | None = None
+    option_group_label: str | None = None
     notes: str | None = None
 
 

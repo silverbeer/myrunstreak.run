@@ -231,3 +231,60 @@ def test_session_create_round_trips_with_sets():
     dash = next(s for s in out["sets"] if s["exercise_key"] == "40yd_dash")
     assert dash["time_seconds"] == 5.42
     assert all(s["session_id"] == out["id"] for s in out["sets"])
+
+
+def test_template_item_option_group_round_trips():
+    """Alternatives survive create -> read (SB-448).
+
+    Matthew's in-season aerobic day is run OR bike OR jump rope; without the
+    group the card prescribes all three.
+    """
+    supa = _FakeSupabase()
+    repo = WorkoutTemplatesRepository(supa)
+    out = repo.create(
+        uuid4(),
+        {
+            "name": "In-season aerobic day",
+            "type": "session",
+            "items": [
+                {
+                    "exercise_key": "easy_jog",
+                    "position": 0,
+                    "target_duration_seconds": 1200,
+                    "option_group": "aerobic",
+                    "option_group_label": "Aerobic engine",
+                },
+                {
+                    "exercise_key": "bike",
+                    "position": 1,
+                    "target_duration_seconds": 2400,
+                    "option_group": "aerobic",
+                },
+                {"exercise_key": "plank", "position": 2, "target_duration_seconds": 60},
+            ],
+        },
+    )
+
+    by_key = {i["exercise_key"]: i for i in out["items"]}
+    assert by_key["easy_jog"]["option_group"] == "aerobic"
+    assert by_key["easy_jog"]["option_group_label"] == "Aerobic engine"
+    assert by_key["bike"]["option_group"] == "aerobic"
+    # The label lives on one member; the renderers read it from whichever has it.
+    assert by_key["bike"].get("option_group_label") is None
+    # A mandatory item stays mandatory.
+    assert by_key["plank"].get("option_group") is None
+
+
+def test_template_items_without_option_group_are_unchanged():
+    """Every existing template has NULL groups and must behave exactly as before."""
+    supa = _FakeSupabase()
+    repo = WorkoutTemplatesRepository(supa)
+    out = repo.create(
+        uuid4(),
+        {
+            "name": "Monday Circuit",
+            "type": "circuit",
+            "items": [{"exercise_key": "pushups", "position": 0, "target_reps": 15}],
+        },
+    )
+    assert out["items"][0].get("option_group") is None

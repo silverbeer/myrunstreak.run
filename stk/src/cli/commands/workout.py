@@ -28,6 +28,40 @@ def _dump(data: Any) -> None:
     print(json.dumps(data, indent=2, default=str))
 
 
+def _group_options(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fold "pick one of N" alternatives into single rows (SB-448).
+
+    Items sharing an ``option_group`` are alternatives — the aerobic day is run
+    OR bike OR jump rope, and printed flat it read as all three. A group lands
+    at the position of its first member, so alternatives listed non-contiguously
+    still render as one block rather than repeating the heading.
+    """
+    rows: list[dict[str, Any]] = []
+    index: dict[str, int] = {}
+    for item in sorted(items, key=lambda i: i.get("position", 0)):
+        key = item.get("option_group")
+        if not key:
+            rows.append({"kind": "item", "item": item})
+            continue
+        if key not in index:
+            index[key] = len(rows)
+            rows.append(
+                {
+                    "kind": "group",
+                    "key": key,
+                    # Read from whichever member carries it — a coach writes it once.
+                    "label": item.get("option_group_label") or "Pick one",
+                    "items": [item],
+                }
+            )
+            continue
+        row = rows[index[key]]
+        row["items"].append(item)
+        if row["label"] == "Pick one" and item.get("option_group_label"):
+            row["label"] = item["option_group_label"]
+    return rows
+
+
 def exercises(
     json_output: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
 ) -> None:
@@ -119,17 +153,29 @@ def show(
     display.console.print(
         f"\n[bold]{t['name']}[/bold]  ({t['type']}, x{t['rounds']} rounds)  — {t['source']}"
     )
-    for item in sorted(t.get("items", []), key=lambda i: i["position"]):
-        display.console.print(
-            f"  {item['position'] + 1}. {item['exercise_key']:<16} {_fmt_target(item)}"
-        )
+
+    def _segments(item: dict[str, Any], indent: str) -> None:
         # Broken rep (SB-264): one rep split into segments with per-segment goals.
         for seg in item.get("segments") or []:
             label = seg.get("label") or f"{seg['distance_m']:g}m"
             display.console.print(
-                f"       [dim]{label:<10}[/dim] "
+                f"{indent}[dim]{label:<10}[/dim] "
                 f"{_fmt_goal(seg.get('target_s_min'), seg.get('target_s_max'))}"
             )
+
+    n = 0
+    for row in _group_options(t.get("items", [])):
+        if row["kind"] == "group":
+            n += 1
+            display.console.print(f"  {n}. [bold]{row['label']}[/bold] [dim]— do one[/dim]")
+            for item in row["items"]:
+                display.console.print(f"       ○ {item['exercise_key']:<14} {_fmt_target(item)}")
+                _segments(item, "           ")
+            continue
+        item = row["item"]
+        n += 1
+        display.console.print(f"  {n}. {item['exercise_key']:<16} {_fmt_target(item)}")
+        _segments(item, "       ")
     if t.get("notes"):
         display.console.print(f"  [dim]{t['notes']}[/dim]")
     display.console.print("")

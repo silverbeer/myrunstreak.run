@@ -60,8 +60,17 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in section.items" :key="item.id">
+            <template v-for="row in section.rows" :key="row.kind === 'group' ? row.key : row.item.id">
+              <tr v-if="row.kind === 'group'" class="option-head">
+                <td colspan="5">{{ row.label }} — do <strong>one</strong>, circle which</td>
+              </tr>
+              <tr
+                v-for="item in row.kind === 'group' ? row.items : [row.item]"
+                :key="item.id"
+                :class="{ 'option-item': row.kind === 'group' }"
+              >
               <td class="col-ex font-bold uppercase">
+                <span v-if="row.kind === 'group'" class="option-mark">○</span>
                 {{ exerciseName(item.exercise_key) }}
                 <span v-if="item.variant" class="variant">({{ item.variant }})</span>
               </td>
@@ -85,6 +94,7 @@
               </td>
               <td class="col-notes"></td>
             </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -107,6 +117,7 @@ import { useRoute, RouterLink } from 'vue-router'
 import { apiCall } from '@/config/api'
 import type { Exercise, TemplateItem, WorkoutTemplate } from '@/types/workout'
 import type { Athlete } from '@/types/coach'
+import { groupOptionItems } from '@/utils/optionGroups'
 
 const route = useRoute()
 const athleteId = String(route.params.athleteId)
@@ -147,6 +158,9 @@ const sections = computed(() => {
     key,
     label: SECTION_LABELS[key] ?? key.replace(/_/g, ' '),
     items: by[key],
+    // "Pick one of N" alternatives fold into a single block (SB-448) — printed
+    // flat, the aerobic day told Gabe to do all three.
+    rows: groupOptionItems(by[key]),
   }))
 })
 
@@ -318,6 +332,16 @@ onMounted(async () => {
 .col-times { width: 22%; }
 .col-notes { width: 19%; }
 .variant { font-weight: 400; text-transform: none; }
+/* "Pick one of N" (SB-448): the heading has to survive black-and-white
+   photocopying, so it leans on weight and a rule rather than colour. */
+.option-head td {
+  font-size: 0.92em;
+  font-style: italic;
+  padding-top: 0.35em;
+  border-bottom: 1px solid #000;
+}
+.option-item td { background: #f4f4f4; }
+.option-mark { font-style: normal; margin-right: 0.35em; }
 .cue { color: #444; font-size: 0.9em; margin-top: 0.15em; }
 .checkbox {
   display: inline-block;
