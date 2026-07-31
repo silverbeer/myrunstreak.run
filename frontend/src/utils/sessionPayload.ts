@@ -29,6 +29,9 @@ export function blankAttempt(): LoggerAttempt {
     load_lb: null,
     distance_m: null,
     time_seconds: null,
+    hr_bpm: null,
+    cadence: null,
+    speed_mph: null,
     rpe: null,
   }
 }
@@ -41,6 +44,9 @@ function isEmptyAttempt(a: LoggerAttempt): boolean {
     a.load_lb == null &&
     a.distance_m == null &&
     a.time_seconds == null &&
+    a.hr_bpm == null &&
+    a.cadence == null &&
+    a.speed_mph == null &&
     a.rpe == null
   )
 }
@@ -63,6 +69,22 @@ export function buildSessionPayload(meta: SessionMeta, rows: LoggerRow[]): Worko
   const sets: SessionSetInput[] = []
   for (const row of rows) {
     const filled = row.attempts.filter((a) => !isEmptyAttempt(a))
+
+    // Some movements have nothing to measure — a plank variation the coach just
+    // wants ticked off. The catalog says so by carrying no `measures`, and
+    // there is nothing for the athlete to type, so the row's presence IS the
+    // record. Without this it would be dropped as "empty" and the workout would
+    // read as half-done.
+    if (filled.length === 0 && row.exercise.measures.length === 0) {
+      sets.push({
+        exercise_key: row.exercise.key,
+        round_number: row.round_number,
+        set_index: null,
+        variant: row.variant?.trim() || null,
+        notes: row.notes?.trim() || null,
+      })
+      continue
+    }
     const multi = filled.length > 1
     filled.forEach((a, i) => {
       sets.push({
@@ -75,6 +97,9 @@ export function buildSessionPayload(meta: SessionMeta, rows: LoggerRow[]): Worko
         load_kg: lbToKg(a.load_lb),
         distance_m: a.distance_m,
         time_seconds: a.time_seconds,
+        hr_bpm_avg: a.hr_bpm,
+        cadence: a.cadence,
+        speed_kph: a.speed_mph == null ? null : Math.round(a.speed_mph * 1.609344 * 100) / 100,
         rpe: a.rpe,
         notes: i === 0 ? row.notes?.trim() || null : null,
       })

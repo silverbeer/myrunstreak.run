@@ -1,6 +1,6 @@
 <template>
   <div class="container-app py-8">
-    <RouterLink :to="`/coach/${athleteId}`" class="text-sm text-brand-600 hover:text-brand-700">
+    <RouterLink :to="homePath" class="text-sm text-brand-600 hover:text-brand-700">
       ← Back
     </RouterLink>
 
@@ -86,9 +86,19 @@
         </label>
       </div>
 
+      <!-- Nothing to measure: having it on the list is the record (SB-486). -->
+      <p
+        v-if="isCheckbox(row)"
+        class="mt-2 text-xs text-gray-400"
+        :data-testid="`checkbox-${row.exercise.key}`"
+      >
+        Nothing to measure — listing it here records that it was done.
+      </p>
+
       <!-- Attempts (sets) -->
       <div
         v-for="(a, i) in row.attempts"
+        v-else
         :key="i"
         class="mt-2 flex flex-wrap items-center gap-2 text-xs"
         :data-testid="`attempt-${row.exercise.key}-${i}`"
@@ -123,6 +133,7 @@
       </div>
 
       <button
+        v-if="!isCheckbox(row)"
         type="button"
         class="btn-secondary text-xs mt-2"
         :data-testid="`add-set-${row.exercise.key}`"
@@ -173,7 +184,6 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ExercisePicker from '@/components/ExercisePicker.vue'
 import { useExercises } from '@/composables/useExercises'
-import { useRoles } from '@/composables/useCoach'
 import { getTemplate } from '@/composables/useWorkoutTemplates'
 import { createSession } from '@/composables/useWorkoutSessions'
 import {
@@ -184,13 +194,13 @@ import {
   todayISO,
 } from '@/utils/sessionPayload'
 import type { Exercise, LoggerRow, WorkoutType } from '@/types/workout'
+import { useActingAthlete } from '@/composables/useActingAthlete'
 
 const route = useRoute()
 const router = useRouter()
-const athleteId = route.params.athleteId as string
+const { athleteId, homePath, resolveAthlete } = useActingAthlete()
 const templateId = (route.params.templateId as string | undefined) || null
 
-const { isCoach, loadRoles } = useRoles()
 const { exercises, load } = useExercises()
 
 const sessionDate = ref(todayISO())
@@ -213,7 +223,7 @@ const rowKeys = computed(() => rows.value.map((r) => r.exercise.key))
 interface FieldDef {
   measure: string
   label: string
-  model: 'reps' | 'duration_s' | 'load_lb' | 'distance_m' | 'time_seconds'
+  model: 'reps' | 'duration_s' | 'load_lb' | 'distance_m' | 'time_seconds' | 'hr_bpm' | 'cadence' | 'speed_mph'
 }
 const FIELD_DEFS: FieldDef[] = [
   { measure: 'reps', label: 'Reps', model: 'reps' },
@@ -221,13 +231,22 @@ const FIELD_DEFS: FieldDef[] = [
   { measure: 'load_kg', label: 'Load(lb)', model: 'load_lb' },
   { measure: 'distance_m', label: 'Dist(m)', model: 'distance_m' },
   { measure: 'time_s', label: 'Time(s)', model: 'time_seconds' },
+  // SB-447 added these measures to the catalog; the logger never learned them,
+  // so the bike session — which Matthew prescribes by heart rate — could not be
+  // recorded at all.
+  { measure: 'hr_bpm', label: 'HR', model: 'hr_bpm' },
+  { measure: 'cadence', label: '/min', model: 'cadence' },
+  { measure: 'speed_kph', label: 'mph', model: 'speed_mph' },
 ]
-const FALLBACK: FieldDef[] = [FIELD_DEFS[0], FIELD_DEFS[4]] // reps + time
 
-const fieldsFor = (row: LoggerRow): FieldDef[] => {
-  const shown = FIELD_DEFS.filter((f) => row.exercise.measures.includes(f.measure))
-  return shown.length ? shown : FALLBACK
-}
+const fieldsFor = (row: LoggerRow): FieldDef[] =>
+  FIELD_DEFS.filter((f) => row.exercise.measures.includes(f.measure))
+
+/**
+ * A movement with nothing to measure is a tick-box: the coach wants it done,
+ * not quantified. Logging the row at all is the record (see buildSessionPayload).
+ */
+const isCheckbox = (row: LoggerRow): boolean => row.exercise.measures.length === 0
 
 const onPick = (ex: Exercise): void => {
   const existing = rows.value.find((r) => r.exercise.key === ex.key)
@@ -274,8 +293,8 @@ const save = async (): Promise<void> => {
   saving.value = true
   error.value = null
   try {
-    await createSession(payload.value, athleteId)
-    router.push(`/coach/${athleteId}`)
+    await createSession(payload.value, athleteId.value!)
+    router.push(homePath.value)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save session'
   } finally {
@@ -284,7 +303,7 @@ const save = async (): Promise<void> => {
 }
 
 const prefillFrom = (id: string): Promise<void> =>
-  getTemplate(id, athleteId).then((tpl) => {
+  getTemplate(id, athleteId.value!).then((tpl) => {
     templateName.value = tpl.name
     sessionType.value = tpl.type
     const byKey = new Map(exercises.value.map((e) => [e.key, e]))
@@ -293,8 +312,10 @@ const prefillFrom = (id: string): Promise<void> =>
   })
 
 onMounted(async () => {
-  await loadRoles()
-  if (!isCoach.value) {
+  // Coach or athlete — the gate is having an athlete to act on, not a role.
+  // A user who is neither has nothing to log here (SB-486).
+  await resolveAthlete()
+  if (!athleteId.value) {
     router.replace('/dashboard')
     return
   }

@@ -1,6 +1,6 @@
 <template>
   <div class="container-app py-8">
-    <RouterLink :to="`/coach/${athleteId}`" class="text-sm text-brand-600 hover:text-brand-700">
+    <RouterLink :to="homePath" class="text-sm text-brand-600 hover:text-brand-700">
       ← Back
     </RouterLink>
 
@@ -124,17 +124,16 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ExercisePicker from '@/components/ExercisePicker.vue'
 import { useExercises } from '@/composables/useExercises'
-import { useRoles } from '@/composables/useCoach'
 import { createTemplate, getTemplate, updateTemplate } from '@/composables/useWorkoutTemplates'
+import { useActingAthlete } from '@/composables/useActingAthlete'
 import { SECTIONS, buildTemplatePayload, kgToLb } from '@/utils/workoutPayload'
 import type { BuilderItem, Exercise, WorkoutSectionKey, WorkoutType } from '@/types/workout'
 
 const route = useRoute()
 const router = useRouter()
-const athleteId = route.params.athleteId as string
+const { athleteId, homePath, resolveAthlete } = useActingAthlete()
 const editingId = (route.params.templateId as string | undefined) || null
 
-const { isCoach, loadRoles } = useRoles()
 const { exercises, load } = useExercises()
 
 const name = ref('')
@@ -203,9 +202,9 @@ const save = async (): Promise<void> => {
       items.value,
       scheduledFor.value,
     )
-    if (editingId) await updateTemplate(editingId, payload, athleteId)
-    else await createTemplate(payload, athleteId)
-    router.push(`/coach/${athleteId}`)
+    if (editingId) await updateTemplate(editingId, payload, athleteId.value!)
+    else await createTemplate(payload, athleteId.value!)
+    router.push(homePath.value)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save workout'
   } finally {
@@ -215,7 +214,7 @@ const save = async (): Promise<void> => {
 
 // Load an existing template into the builder state (kg → lb, key → Exercise).
 const prefillFrom = (templateId: string): Promise<void> =>
-  getTemplate(templateId, athleteId).then((tpl) => {
+  getTemplate(templateId, athleteId.value!).then((tpl) => {
     name.value = tpl.name
     type.value = tpl.type
     rounds.value = tpl.rounds
@@ -239,8 +238,10 @@ const prefillFrom = (templateId: string): Promise<void> =>
   })
 
 onMounted(async () => {
-  await loadRoles()
-  if (!isCoach.value) {
+  // Coach or athlete — the gate is having an athlete to build for, not a role.
+  // Athletes author their own workouts too (SB-486).
+  await resolveAthlete()
+  if (!athleteId.value) {
     router.replace('/dashboard')
     return
   }

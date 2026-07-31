@@ -122,6 +122,40 @@ const router = createRouter({
       component: () => import('@/views/MyWorkoutsView.vue'),
       meta: { requiresAuth: true },
     },
+    // An athlete works on their own workouts through the same three views the
+    // coach uses (SB-486). No :athleteId — they are the subject, resolved from
+    // /me/athlete. requiresAuth only: the API authorises the linked athlete
+    // exactly as it does their coach.
+    {
+      path: '/my/workouts/build',
+      name: 'my-workout-builder',
+      component: () => import('@/views/WorkoutBuilderView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/my/workouts/build/:templateId',
+      name: 'my-workout-editor',
+      component: () => import('@/views/WorkoutBuilderView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/my/workouts/log',
+      name: 'my-workout-logger',
+      component: () => import('@/views/WorkoutSessionLoggerView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/my/workouts/log/:templateId',
+      name: 'my-workout-logger-template',
+      component: () => import('@/views/WorkoutSessionLoggerView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/my/workouts/print/:templateId',
+      name: 'my-workout-print',
+      component: () => import('@/views/WorkoutPrintView.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
   scrollBehavior(_to, _from, savedPosition) {
     return savedPosition ?? { top: 0 }

@@ -17,6 +17,15 @@
           >
             <Calendar class="w-3 h-3" /> {{ formatDayMonth(template.scheduled_for) }}
           </span>
+          <!-- Who authored it (SB-486). Coaches see at a glance which workouts
+               the athlete added themselves. -->
+          <span
+            v-if="authorLabel"
+            class="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700"
+            data-testid="author-badge"
+          >
+            {{ authorLabel }}
+          </span>
           <span
             v-if="template.has_session"
             class="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700"
@@ -35,8 +44,9 @@
           Added {{ formatRelativeTime(template.created_at) }}
         </p>
       </div>
-      <div v-if="!readonly" class="flex items-center gap-1 shrink-0 print:hidden">
+      <div v-if="showActions" class="flex items-center gap-1 shrink-0 print:hidden">
         <button
+          v-if="mayLog"
           type="button"
           class="act hover:text-brand-600 hover:bg-brand-50"
           title="Log this"
@@ -46,13 +56,14 @@
         >
           <ClipboardCheck class="w-4 h-4" />
         </button>
-        <button type="button" class="act" title="Print" aria-label="Print workout" @click="$emit('print')">
+        <button v-if="mayPrint" type="button" class="act" title="Print" aria-label="Print workout" @click="$emit('print')">
           <Printer class="w-4 h-4" />
         </button>
-        <button type="button" class="act" title="Edit" aria-label="Edit workout" @click="$emit('edit')">
+        <button v-if="mayEdit" type="button" class="act" title="Edit" aria-label="Edit workout" @click="$emit('edit')">
           <Pencil class="w-4 h-4" />
         </button>
         <button
+          v-if="mayEdit"
           type="button"
           class="act hover:text-red-600 hover:bg-red-50"
           title="Delete"
@@ -127,12 +138,33 @@ import { groupOptionItems } from '@/utils/optionGroups'
 import { targetPills } from '@/utils/targets'
 import { formatDayMonth, formatRelativeTime } from '@/utils/format'
 
-const props = defineProps<{
-  template: WorkoutTemplate
-  exercises?: Exercise[]
-  // Athlete-facing view (SB-332): hide the coach action buttons.
-  readonly?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    template: WorkoutTemplate
+    exercises?: Exercise[]
+    // Athlete-facing view (SB-332): hide the coach action buttons.
+    readonly?: boolean
+    // Finer-grained rights (SB-486). An athlete may log against and print a
+    // workout their coach prescribed, but only edit one they authored — a
+    // single `readonly` boolean could not express that, and it hid Print, which
+    // the paper-first workflow depends on. Undefined = follow `readonly`, so
+    // every existing caller behaves exactly as before.
+    canLog?: boolean
+    canPrint?: boolean
+    canEdit?: boolean
+    // e.g. "Added by Gabe" — the caller knows the names, the card just shows it.
+    authoredBy?: string | null
+  }>(),
+  { canLog: undefined, canPrint: undefined, canEdit: undefined, authoredBy: null },
+)
+
+/** Shown when a caller supplies it — the coach view labels athlete-authored rows. */
+const authorLabel = computed(() => props.authoredBy ?? null)
+
+const mayLog = computed(() => props.canLog ?? !props.readonly)
+const mayPrint = computed(() => props.canPrint ?? !props.readonly)
+const mayEdit = computed(() => props.canEdit ?? !props.readonly)
+const showActions = computed(() => mayLog.value || mayPrint.value || mayEdit.value)
 
 defineEmits<{ (e: 'edit'): void; (e: 'delete'): void; (e: 'log'): void; (e: 'print'): void }>()
 
