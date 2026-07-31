@@ -118,6 +118,7 @@ import { apiCall } from '@/config/api'
 import type { Exercise, TemplateItem, WorkoutTemplate } from '@/types/workout'
 import type { Athlete } from '@/types/coach'
 import { groupOptionItems } from '@/utils/optionGroups'
+import { fmtRange, hrZoneText, restText } from '@/utils/targets'
 
 const route = useRoute()
 const athleteId = String(route.params.athleteId)
@@ -174,25 +175,6 @@ const fmtSecs = (s: number) => {
   return `${s} sec`
 }
 
-// A target may be a range (SB-446): "8-12", "5-8 lb", "60-90 sec".
-const fmtRange = (lo?: number | null, hi?: number | null, unit = ''): string => {
-  if (lo != null && hi != null && hi !== lo) return `${lo}-${hi}${unit}`
-  const value = lo ?? hi
-  return value != null ? `${value}${unit}` : ''
-}
-
-// Rest is not always a number: "full recovery" and "go off how you feel" are
-// conditions the athlete resolves, and printing an invented number would
-// misreport what the coach wrote.
-const restText = (item: TemplateItem): string => {
-  if (item.rest_mode === 'full') return 'rest: full recovery'
-  if (item.rest_seconds == null && item.rest_seconds_max == null) {
-    return item.rest_mode === 'autoregulated' ? 'rest: by feel' : ''
-  }
-  const range = fmtRange(item.rest_seconds, item.rest_seconds_max, ' sec')
-  return item.rest_mode === 'autoregulated' ? `rest ${range} (by feel)` : `rest ${range}`
-}
-
 const targetText = (item: TemplateItem): string => {
   const parts: string[] = []
   const reps = fmtRange(item.target_reps, item.target_reps_max)
@@ -218,13 +200,8 @@ const targetText = (item: TemplateItem): string => {
     )
   }
   // A prescribed heart-rate zone is the point of the in-season aerobic day.
-  if (item.target_hr_min != null || item.target_hr_max != null) {
-    const lo = item.target_hr_min
-    const hi = item.target_hr_max
-    parts.push(
-      lo != null && hi != null ? `HR ${lo}-${hi}` : lo != null ? `HR ${lo}+` : `HR ≤${hi}`,
-    )
-  }
+  const zone = hrZoneText(item)
+  if (zone) parts.push(zone)
   if (item.target_cadence != null) parts.push(`${item.target_cadence}/min`)
   if (item.target_speed_kph != null)
     parts.push(`${Math.round(item.target_speed_kph * 0.621371)} mph`)
