@@ -287,29 +287,30 @@ ALTER TABLE recording_data ENABLE ROW LEVEL SECURITY;
 ALTER TABLE laps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_sources ENABLE ROW LEVEL SECURITY;
 
--- Policy: Users can only see their own data
--- Note: auth.uid() will be NULL until proper Supabase Auth is implemented
--- For now, service role (Lambda) bypasses RLS
+-- Policy: Users can only see their own data.
+-- Owner-only, no anon escape: `OR auth.uid() IS NULL` here would be TRUE
+-- for every unauthenticated caller and leak the whole table (SB-453).
+-- The backend uses the service-role key, which bypasses RLS entirely.
 
 CREATE POLICY "Users can view their own runs"
     ON runs FOR SELECT
-    USING (user_id = auth.uid() OR auth.uid() IS NULL);
+    USING (user_id = auth.uid());
 
 CREATE POLICY "Users can insert their own runs"
     ON runs FOR INSERT
-    WITH CHECK (user_id = auth.uid() OR auth.uid() IS NULL);
+    WITH CHECK (user_id = auth.uid());
 
 CREATE POLICY "Users can update their own runs"
     ON runs FOR UPDATE
-    USING (user_id = auth.uid() OR auth.uid() IS NULL);
+    USING (user_id = auth.uid());
 
 CREATE POLICY "Users can view their own splits"
     ON splits FOR SELECT
-    USING (run_id IN (SELECT id FROM runs WHERE user_id = auth.uid() OR auth.uid() IS NULL));
+    USING (run_id IN (SELECT id FROM runs WHERE user_id = auth.uid()));
 
 CREATE POLICY "Users can view their own user_sources"
     ON user_sources FOR SELECT
-    USING (user_id = auth.uid() OR auth.uid() IS NULL);
+    USING (user_id = auth.uid());
 
 -- =====================================================
 -- FUNCTIONS & TRIGGERS

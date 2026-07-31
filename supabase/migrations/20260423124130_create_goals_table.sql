@@ -58,15 +58,15 @@ ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view their own goals"
     ON goals FOR SELECT
-    USING (user_id = auth.uid() OR auth.uid() IS NULL);
+    USING (user_id = auth.uid());
 
 CREATE POLICY "Users can insert their own goals"
     ON goals FOR INSERT
-    WITH CHECK (user_id = auth.uid() OR auth.uid() IS NULL);
+    WITH CHECK (user_id = auth.uid());
 
 CREATE POLICY "Users can update their own goals"
     ON goals FOR UPDATE
-    USING (user_id = auth.uid() OR auth.uid() IS NULL);
+    USING (user_id = auth.uid());
 
 -- Auto-update updated_at
 CREATE TRIGGER update_goals_updated_at BEFORE UPDATE ON goals

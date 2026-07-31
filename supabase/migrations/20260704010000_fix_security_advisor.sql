@@ -29,12 +29,12 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view their own profile" ON users;
 CREATE POLICY "Users can view their own profile"
     ON users FOR SELECT
-    USING (user_id = auth.uid() OR auth.uid() IS NULL);
+    USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "Users can update their own profile" ON users;
 CREATE POLICY "Users can update their own profile"
     ON users FOR UPDATE
-    USING (user_id = auth.uid() OR auth.uid() IS NULL);
+    USING (user_id = auth.uid());
 
 -- =====================================================
 -- 2. ENABLE RLS ON sync_history
@@ -48,7 +48,7 @@ CREATE POLICY "Users can view their own sync history"
     USING (
         source_id IN (
             SELECT id FROM user_sources
-            WHERE user_id = auth.uid() OR auth.uid() IS NULL
+            WHERE user_id = auth.uid()
         )
     );
 
