@@ -136,6 +136,17 @@ def _fmt_rest(item: dict[str, Any]) -> str:
     return text
 
 
+def _fmt_name(item: dict[str, Any]) -> str:
+    """Exercise key plus its variant (SB-483).
+
+    Without the variant, unilateral work is indistinguishable: Matthew's upper
+    day lists side plank twice — right then left — and both rendered as bare
+    "side_plank". The printable sheet already showed it; the card did not.
+    """
+    variant = item.get("variant")
+    return f"{item['exercise_key']} ({variant})" if variant else str(item["exercise_key"])
+
+
 def _fmt_hr_zone(lo: int | None, hi: int | None) -> str:
     """A prescribed heart-rate zone: "HR 160-175", "HR 120+", "HR ≤145" (SB-447)."""
     if lo is None and hi is None:
@@ -223,12 +234,12 @@ def show(
             n += 1
             display.console.print(f"  {n}. [bold]{row['label']}[/bold] [dim]— do one[/dim]")
             for item in row["items"]:
-                display.console.print(f"       ○ {item['exercise_key']:<14} {_fmt_target(item)}")
+                display.console.print(f"       ○ {_fmt_name(item):<14} {_fmt_target(item)}")
                 _segments(item, "           ")
             continue
         item = row["item"]
         n += 1
-        display.console.print(f"  {n}. {item['exercise_key']:<16} {_fmt_target(item)}")
+        display.console.print(f"  {n}. {_fmt_name(item):<16} {_fmt_target(item)}")
         _segments(item, "       ")
     if t.get("notes"):
         display.console.print(f"  [dim]{t['notes']}[/dim]")
@@ -372,7 +383,7 @@ def review(
 
     for st in s.get("sets", []):
         actual = f"{_fmt_secs(st['time_seconds'])}" if st.get("time_seconds") is not None else ""
-        line = f"  {st['exercise_key']:<16}"
+        line = f"  {_fmt_name(st):<16}"
         if st.get("distance_m") is not None:
             line += f" {_fmt_distance(st['distance_m']):<7}"
         if actual:
