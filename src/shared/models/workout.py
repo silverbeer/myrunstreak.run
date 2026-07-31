@@ -17,7 +17,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ExerciseCategory(StrEnum):
@@ -34,6 +34,20 @@ class WorkoutType(StrEnum):
     intervals = "intervals"
     test = "test"
     session = "session"
+
+
+class RestMode(StrEnum):
+    """How rest between efforts is prescribed (SB-446).
+
+    Matthew writes rest three different ways, and two of them are not numbers:
+    "60-90 second rest (go off how you feel)" is a range the athlete resolves,
+    and "full recovery before ground-to-sprint accelerations" is a condition.
+    """
+
+    fixed = "fixed"  # rest_seconds exactly
+    range = "range"  # rest_seconds..rest_seconds_max
+    full = "full"  # full recovery — until ready, no number
+    autoregulated = "autoregulated"  # "go off how you feel"
 
 
 class ExerciseVisibility(StrEnum):
@@ -161,11 +175,18 @@ class TemplateItemCreate(BaseModel):
     target_reps: int | None = Field(default=None, ge=0)
     target_duration_seconds: float | None = Field(default=None, ge=0)
     # Upper bound when the goal is a range ("20-22 sec"); the field above is the
-    # lower bound (SB-264).
+    # lower bound (SB-264). Reps, load and rest follow the same convention
+    # (SB-446) — Matthew prescribes "8-12x200", "5-8lb", "60-90 second rest".
     target_duration_max_seconds: float | None = Field(default=None, ge=0)
+    target_reps_max: int | None = Field(default=None, ge=0)
     target_load_kg: float | None = Field(default=None, ge=0)
+    target_load_max_kg: float | None = Field(default=None, ge=0)
     target_distance_m: float | None = Field(default=None, ge=0)
     rest_seconds: float | None = Field(default=None, ge=0)
+    rest_seconds_max: float | None = Field(default=None, ge=0)
+    # "Full recovery" and "go off how you feel" are prescriptions, not numbers —
+    # storing them as a mode beats inventing a value the coach never gave.
+    rest_mode: RestMode | None = None
     # Per-segment goals for a broken rep (SB-264); None for ordinary items.
     segments: list[SegmentTarget] | None = None
     variant: str | None = None
@@ -175,6 +196,25 @@ class TemplateItemCreate(BaseModel):
     option_group: str | None = None
     option_group_label: str | None = None
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def _ranges_are_ordered(self) -> TemplateItemCreate:
+        """A max below its min would render as "12-8 reps" — reject at the edge.
+
+        Mirrored by CHECK constraints in the migration; this catches it before a
+        round-trip and gives a field-level error instead of a database one.
+        """
+        pairs = (
+            ("target_reps", "target_reps_max"),
+            ("target_load_kg", "target_load_max_kg"),
+            ("rest_seconds", "rest_seconds_max"),
+            ("target_duration_seconds", "target_duration_max_seconds"),
+        )
+        for lo_name, hi_name in pairs:
+            lo, hi = getattr(self, lo_name), getattr(self, hi_name)
+            if lo is not None and hi is not None and hi < lo:
+                raise ValueError(f"{hi_name} ({hi}) is below {lo_name} ({lo})")
+        return self
 
 
 class TemplateItem(TemplateItemCreate):
