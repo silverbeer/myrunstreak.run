@@ -22,7 +22,19 @@ from rich.console import Console
 
 from cli import __version__
 from cli import cache as cache_lib
-from cli.commands import athlete, auth, cache, invite, plan, runs, splits, stats, sync, workout
+from cli.commands import (
+    athlete,
+    auth,
+    cache,
+    invite,
+    plan,
+    runs,
+    splits,
+    stats,
+    sync,
+    verify,
+    workout,
+)
 
 # Create the main app
 app = typer.Typer(
@@ -139,6 +151,7 @@ app.command(name="map", rich_help_panel=_PANEL_RUNS)(runs.territory_map)
 app.command(name="audio", rich_help_panel=_PANEL_RUNS)(runs.audio)
 app.command(name="summary", rich_help_panel=_PANEL_RUNS)(runs.summary)
 app.command(name="sync", rich_help_panel=_PANEL_RUNS)(sync.sync_runs)
+app.command(name="verify", rich_help_panel=_PANEL_RUNS)(verify.verify)
 app.command(name="goals", rich_help_panel=_PANEL_PLANNING)(stats.goals)
 
 
