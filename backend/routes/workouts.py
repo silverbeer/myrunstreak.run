@@ -9,6 +9,7 @@ Tracker epic (SB-189).
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 from uuid import UUID
 
 from backend.admin import is_admin, require_athlete_access
@@ -71,14 +72,49 @@ def search_exercises(
     return [Exercise(**r) for r in rows]
 
 
+def _duplicate_conflict(candidates: list[dict[str, Any]], message: str) -> HTTPException:
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail={
+            "message": message,
+            "candidates": [
+                {
+                    "key": c["key"],
+                    "display_name": c["display_name"],
+                    "visibility": c.get("visibility"),
+                    "aliases": c.get("aliases") or [],
+                }
+                for c in candidates
+            ],
+        },
+    )
+
+
 @router.post("/exercises", response_model=Exercise, status_code=status.HTTP_201_CREATED)
 def create_exercise(
     body: ExerciseCreate,
+    force: bool = False,
     user_id: UUID = Depends(authenticate_request),
 ) -> Exercise:
-    """Add a coach-owned exercise (private by default; publishable later)."""
+    """Add a coach-owned exercise (private by default; publishable later).
+
+    Guards against duplicates (SB-454): if the catalog already holds this
+    movement under any spelling, returns 409 with the candidates rather than
+    silently creating a second row under a `_2` slug. Pass ?force=true when it
+    genuinely is a distinct movement.
+    """
+    repo = ExercisesRepository(get_supabase_client())
+    if not force:
+        dups = repo.find_possible_duplicates(user_id, body.display_name, body.aliases)
+        if dups:
+            raise _duplicate_conflict(
+                dups,
+                "An exercise with this name already exists. Use it instead of "
+                "adding a second row for the same movement — or resubmit with "
+                "force=true if this is genuinely different.",
+            )
     payload = body.model_dump(exclude_none=True, mode="json")
-    row = ExercisesRepository(get_supabase_client()).create(user_id, payload)
+    row = repo.create(user_id, payload)
     return Exercise(**row)
 
 
@@ -102,10 +138,30 @@ def update_exercise(
 @router.post("/exercises/{key}/publish", response_model=Exercise)
 def publish_exercise(
     key: str,
+    force: bool = False,
     user_id: UUID = Depends(authenticate_request),
 ) -> Exercise:
-    """Promote an owned private exercise to the public library."""
-    row = ExercisesRepository(get_supabase_client()).publish(user_id, key)
+    """Promote an owned private exercise to the public library.
+
+    This is the publish-time near-duplicate warning the catalog migration
+    promised (SB-454): if the shared library already has this movement, 409 with
+    the candidates instead of adding a second public row. ?force=true overrides.
+    """
+    repo = ExercisesRepository(get_supabase_client())
+    if not force:
+        own = repo.get(key)
+        if own is not None:
+            dups = repo.find_possible_duplicates(
+                user_id, own["display_name"], own.get("aliases"), public_only=True
+            )
+            if dups:
+                raise _duplicate_conflict(
+                    dups,
+                    "The public library already has this movement. Publishing "
+                    "would create a second canonical row — resubmit with "
+                    "force=true if it is genuinely distinct.",
+                )
+    row = repo.publish(user_id, key)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Exercise not found or not yours")
     return Exercise(**row)

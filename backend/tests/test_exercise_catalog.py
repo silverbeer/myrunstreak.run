@@ -85,6 +85,7 @@ def test_create_exercise_returns_created() -> None:
         "visibility": "private",
         "owner_id": str(uid),
     }
+    repo.find_possible_duplicates.return_value = []
     body = ExerciseCreate(display_name="Goblet Squat", category="strength", measures=["reps"])
     with (
         patch("backend.routes.workouts.get_supabase_client"),
@@ -104,6 +105,7 @@ def test_publish_exercise_404_when_not_owned() -> None:
     uid = uuid4()
     repo = _repo()
     repo.publish.return_value = None
+    repo.get.return_value = None  # nothing to dup-check against
     with (
         patch("backend.routes.workouts.get_supabase_client"),
         patch("backend.routes.workouts.ExercisesRepository", return_value=repo),
@@ -202,3 +204,129 @@ def test_delete_exercise_404_when_not_owned() -> None:
         with pytest.raises(HTTPException) as exc:
             delete_exercise(key="nope", user_id=uid)
     assert exc.value.status_code == 404
+
+
+# --- dedup guard: normalized matching + create/publish 409 (SB-454) -----------
+
+
+def test_repo_search_finds_the_catalog_blind_spots() -> None:
+    """The queries from the SB-454 audit, through the real repository path.
+
+    The folding itself is unit-tested in ``tests/test_exercise_matching.py``;
+    this covers `search` actually delegating to it, which is what regressed.
+    """
+    repo = ExercisesRepository(MagicMock())
+    repo.list_visible = MagicMock(  # type: ignore[method-assign]
+        return_value=[
+            {"key": "pushups", "display_name": "Push-ups", "aliases": []},
+            {"key": "row_hold", "display_name": "Bent-over row hold", "aliases": []},
+            {"key": "farmers_carry", "display_name": "Farmer's carry", "aliases": []},
+            {"key": "pro_agility", "display_name": "5-10-5 pro agility", "aliases": []},
+        ]
+    )
+    uid = uuid4()
+    assert [r["key"] for r in repo.search(uid, "push ups")] == ["pushups"]
+    assert [r["key"] for r in repo.search(uid, "bent over row")] == ["row_hold"]
+    assert [r["key"] for r in repo.search(uid, "farmers carry")] == ["farmers_carry"]
+    assert [r["key"] for r in repo.search(uid, "5 10 5")] == ["pro_agility"]
+
+
+def test_repo_find_possible_duplicates_public_only() -> None:
+    repo = ExercisesRepository(MagicMock())
+    repo.list_visible = MagicMock(  # type: ignore[method-assign]
+        return_value=[
+            {"key": "pushups", "display_name": "Push-ups", "aliases": [], "visibility": "public"},
+            {"key": "pushup_2", "display_name": "Pushups", "aliases": [], "visibility": "private"},
+        ]
+    )
+    uid = uuid4()
+    assert len(repo.find_possible_duplicates(uid, "Push ups")) == 2
+    public = repo.find_possible_duplicates(uid, "Push ups", public_only=True)
+    assert [r["key"] for r in public] == ["pushups"]
+
+
+def test_create_exercise_409_on_duplicate() -> None:
+    uid = uuid4()
+    repo = _repo()
+    repo.find_possible_duplicates.return_value = [
+        {"key": "pushups", "display_name": "Push-ups", "visibility": "public", "aliases": []}
+    ]
+    body = ExerciseCreate(display_name="Pushups", category="strength", measures=["reps"])
+    with (
+        patch("backend.routes.workouts.get_supabase_client"),
+        patch("backend.routes.workouts.ExercisesRepository", return_value=repo),
+    ):
+        from backend.routes.workouts import create_exercise
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc:
+            create_exercise(body=body, user_id=uid)
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["candidates"][0]["key"] == "pushups"
+    repo.create.assert_not_called()
+
+
+def test_create_exercise_force_bypasses_guard() -> None:
+    uid = uuid4()
+    repo = _repo()
+    repo.create.return_value = {
+        "key": "pushups_2",
+        "display_name": "Pushups",
+        "category": "strength",
+        "visibility": "private",
+    }
+    body = ExerciseCreate(display_name="Pushups", category="strength", measures=["reps"])
+    with (
+        patch("backend.routes.workouts.get_supabase_client"),
+        patch("backend.routes.workouts.ExercisesRepository", return_value=repo),
+    ):
+        from backend.routes.workouts import create_exercise
+
+        result = create_exercise(body=body, force=True, user_id=uid)
+
+    assert result.key == "pushups_2"
+    repo.find_possible_duplicates.assert_not_called()
+
+
+def test_publish_exercise_409_when_public_library_has_it() -> None:
+    uid = uuid4()
+    repo = _repo()
+    repo.get.return_value = {"key": "my_pushup", "display_name": "Pushups", "aliases": []}
+    repo.find_possible_duplicates.return_value = [
+        {"key": "pushups", "display_name": "Push-ups", "visibility": "public", "aliases": []}
+    ]
+    with (
+        patch("backend.routes.workouts.get_supabase_client"),
+        patch("backend.routes.workouts.ExercisesRepository", return_value=repo),
+    ):
+        from backend.routes.workouts import publish_exercise
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc:
+            publish_exercise(key="my_pushup", user_id=uid)
+
+    assert exc.value.status_code == 409
+    assert repo.find_possible_duplicates.call_args.kwargs["public_only"] is True
+    repo.publish.assert_not_called()
+
+
+def test_publish_exercise_force_bypasses_guard() -> None:
+    uid = uuid4()
+    repo = _repo()
+    repo.publish.return_value = {
+        "key": "my_pushup",
+        "display_name": "Pushups",
+        "category": "strength",
+        "visibility": "public",
+    }
+    with (
+        patch("backend.routes.workouts.get_supabase_client"),
+        patch("backend.routes.workouts.ExercisesRepository", return_value=repo),
+    ):
+        from backend.routes.workouts import publish_exercise
+
+        result = publish_exercise(key="my_pushup", force=True, user_id=uid)
+
+    assert result.visibility == "public"
+    repo.find_possible_duplicates.assert_not_called()

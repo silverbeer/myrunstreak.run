@@ -16,6 +16,7 @@ from datetime import date
 from typing import Any, cast
 from uuid import UUID
 
+from src.shared.exercise_matching import find_duplicate_candidates, matches_query
 from supabase import Client
 
 
@@ -75,20 +76,41 @@ class ExercisesRepository:
         """Fuzzy match over display_name + aliases across the visible catalog.
 
         Drives search-first selection and the publish-time dedup warning. The
-        catalog is small, so we match in Python (case-insensitive substring)
-        rather than a DB text index; move to trigram/tsvector if it grows.
+        catalog is small, so we match in Python (normalized substring) rather
+        than a DB text index; move to trigram/tsvector if it grows.
+
+        Both sides are normalized (SB-454) so punctuation and plurals don't hide
+        a row from the coach looking for it — "push ups" has to find "Push-ups",
+        because a search that returns nothing is how duplicates get created.
         """
-        q = query.strip().lower()
-        if not q:
+        if not query.strip():
             return []
         hits = []
         for row in self.list_visible(user_id):
-            haystay = [row.get("display_name", "")] + list(row.get("aliases") or [])
-            if any(q in str(h).lower() for h in haystay):
+            if matches_query(query, row):
                 hits.append(row)
             if len(hits) >= limit:
                 break
         return hits
+
+    def find_possible_duplicates(
+        self,
+        user_id: UUID,
+        display_name: str,
+        aliases: list[str] | None = None,
+        *,
+        public_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Catalog rows that are the same movement under a different spelling.
+
+        Backs the 409 on create/publish (SB-454) — the guard the catalog
+        migration promised but never got. `public_only` is for publish, where the
+        question is whether the shared library already has this movement.
+        """
+        rows = self.list_visible(user_id)
+        if public_only:
+            rows = [r for r in rows if r.get("visibility") == "public"]
+        return find_duplicate_candidates(display_name, aliases, rows)
 
     def get(self, key: str) -> dict[str, Any] | None:
         result = self.supabase.table("exercises").select("*").eq("key", key).execute()
@@ -111,7 +133,12 @@ class ExercisesRepository:
         return f"{base}_{i}"
 
     def create(self, user_id: UUID, payload: dict[str, Any]) -> dict[str, Any]:
-        """Create a coach-owned exercise; the key is generated to stay unique."""
+        """Create a coach-owned exercise; the key is generated to stay unique.
+
+        Slug uniqueness is not duplicate protection — it is what lets a second
+        row for the same movement exist as ``pull_up_2``. The semantic guard is
+        ``find_possible_duplicates``, enforced by the route before it gets here.
+        """
         row = {
             **payload,
             "key": self._unique_key(payload["display_name"]),

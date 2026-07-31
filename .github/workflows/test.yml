@@ -32,6 +32,12 @@ jobs:
         run: uv run ruff format --check src/ tests/
       - name: Run tests (coverage floor 60%)
         run: uv run pytest tests/ -q --cov-fail-under=60
+      # SB-454: the catalog's dedup strategy is search-first selection, so a name
+      # that its own search can't find is a latent duplicate. Parses the seeded
+      # rows out of the migrations — no database needed — and fails on identical
+      # names or colliding aliases.
+      - name: Exercise catalog audit
+        run: uv run python scripts/audit_exercise_catalog.py
       - name: Coverage summary
         if: always()
         run: |
