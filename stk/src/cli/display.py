@@ -868,3 +868,96 @@ def display_territory_heatmap(data: dict[str, Any], w: int = 46, h: int = 22) ->
             width=w + 4,
         )
     )
+
+
+def display_verify_report(data: dict[str, Any]) -> None:
+    """Reconciliation of stored runs against the source of record (SB-477)."""
+    rng = data.get("range", {})
+    stored, source = data.get("stored_count", 0), data.get("source_count", 0)
+    totals = data.get("totals", {})
+
+    header = (
+        f"[cyan]{rng.get('since', '?')}[/] → [cyan]{rng.get('until', '?')}[/]   "
+        f"stk [bold]{stored}[/] runs · smashrun [bold]{source}[/] · "
+        f"matched [bold]{data.get('matched', 0)}[/]"
+    )
+    delta_km = totals.get("delta_km", 0.0)
+    miles = km_to_miles(totals.get("stored_km", 0.0))
+    header += f"\n[dim]{miles:.2f} mi stored"
+    if abs(delta_km) > 1e-9:
+        header += f" · source differs by {delta_km * 1000:+.1f} m"
+    header += "[/dim]"
+
+    clean = data.get("clean", True)
+    console.print(
+        Panel(
+            Text.from_markup(header),
+            title="[bold]verify[/] · [green]in sync[/]"
+            if clean
+            else "[bold]verify[/] · [red]drift[/]",
+            border_style="green" if clean else "red",
+        )
+    )
+
+    def _rows(key: str, title: str, columns: list[tuple[str, str]]) -> None:
+        rows = data.get(key) or []
+        if not rows:
+            return
+        table = Table(title=f"{title} ({len(rows)})", show_header=True, border_style="red")
+        table.add_column("Date", style="cyan")
+        for name, _ in columns:
+            table.add_column(name, justify="right")
+        table.add_column("Activity", style="dim")
+        for r in rows:
+            table.add_row(
+                str(r.get("date", "")),
+                *(fmt(r) for _, fmt in columns),
+                str(r.get("activity_id", "")),
+            )
+        console.print(table)
+
+    _rows(
+        "missing_from_stk",
+        "In SmashRun, missing here",
+        [("Distance", lambda r: f"{km_to_miles(r.get('distance_km', 0)):.2f} mi")],
+    )
+    _rows(
+        "missing_from_source",
+        "Here, gone from SmashRun",
+        [("Distance", lambda r: f"{km_to_miles(r.get('distance_km', 0)):.2f} mi")],
+    )
+    _rows(
+        "distance_mismatches",
+        "Distance disagrees",
+        [
+            ("stk", lambda r: f"{km_to_miles(r.get('stored_km', 0)):.3f} mi"),
+            ("smashrun", lambda r: f"{km_to_miles(r.get('source_km', 0)):.3f} mi"),
+            ("delta", lambda r: f"{r.get('delta_m', 0):+.1f} m"),
+        ],
+    )
+    _rows(
+        "duration_mismatches",
+        "Duration disagrees",
+        [
+            ("stk", lambda r: f"{r.get('stored_seconds', 0):.0f}s"),
+            ("smashrun", lambda r: f"{r.get('source_seconds', 0):.0f}s"),
+            ("delta", lambda r: f"{r.get('delta_seconds', 0):+.0f}s"),
+        ],
+    )
+
+    # Advisory, not a failure: a 3-decimal distance is either pre-SB-477
+    # truncation residue or a genuinely round manual entry, and only a human
+    # knows which.
+    low = data.get("low_precision") or []
+    if low:
+        console.print(
+            f"\n[yellow]{len(low)} run(s) stored at ≤3 decimals[/] — "
+            "[dim]truncation residue or a round manual entry; re-sync to find out[/dim]"
+        )
+        for r in low[:10]:
+            console.print(f"  [dim]{r.get('date')}  {r.get('distance_km')} km[/dim]")
+        if len(low) > 10:
+            console.print(f"  [dim]… and {len(low) - 10} more[/dim]")
+
+    if clean:
+        console.print("\n[green]✓[/] every run matches the source of record")

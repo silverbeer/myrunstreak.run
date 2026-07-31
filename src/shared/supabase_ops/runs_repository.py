@@ -184,6 +184,33 @@ class RunsRepository:
 
         return {r["run_id"]: r["polyline"] for r in self._paginate(page) if r.get("polyline")}
 
+    def get_runs_for_verify(
+        self, user_id: UUID, date_from: date, date_to: date
+    ) -> list[dict[str, Any]]:
+        """Runs in a date range, keyed for reconciliation against the source (SB-477).
+
+        Only the fields the diff compares, so a wide window stays cheap. Paged,
+        because a multi-year window exceeds PostgREST's 1000-row cap and would
+        otherwise truncate silently — reporting phantom "missing from STK" rows
+        for everything past the first page.
+        """
+
+        def page(off: int, size: int) -> list[dict[str, Any]]:
+            return cast(
+                list[dict[str, Any]],
+                self.supabase.table("runs")
+                .select("id, source_activity_id, start_date, distance_km, duration_seconds")
+                .eq("user_id", str(user_id))
+                .gte("start_date", date_from.isoformat())
+                .lte("start_date", date_to.isoformat())
+                .order("start_date")
+                .range(off, off + size - 1)
+                .execute()
+                .data,
+            )
+
+        return self._paginate(page)
+
     def count_tracks(self, user_id: UUID) -> int:
         """How many of a user's runs have a stored polyline (backfill progress)."""
         result = (

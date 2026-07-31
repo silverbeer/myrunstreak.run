@@ -15,7 +15,7 @@ from uuid import UUID
 from backend.auth import authenticate_request
 from backend.cache import invalidate_user
 from backend.config import Settings, get_settings
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from src.shared.geo import simplify_and_encode
 from src.shared.secrets import get_smashrun_oauth_credentials
 from src.shared.smashrun import SmashRunAPIClient, SmashRunOAuthClient
@@ -27,6 +27,7 @@ from src.shared.supabase_ops import (
     activity_to_run_dict,
     split_to_dict,
 )
+from src.shared.verify import reconcile
 
 logger = logging.getLogger(__name__)
 
@@ -381,3 +382,71 @@ async def sync_splits_status(
         "pct_complete": round((total - missing) / total * 100, 1) if total else 100.0,
         "done": missing == 0,
     }
+
+
+# Fetch cost scales with how far back `since` reaches, not with the window's
+# width: SmashRun pages newest-first, so verifying one month in 2014 walks every
+# activity since. Two years is ~730 activities (~8 API calls), which stays inside
+# the ingress timeout; beyond that this needs the resumable treatment SB-292
+# describes for --full, so refuse rather than 502 halfway through.
+VERIFY_MAX_LOOKBACK_DAYS = 730
+
+
+@router.get("/verify")
+async def verify_runs(
+    user_id: UUID = Depends(authenticate_request),
+    since: str | None = None,
+    until: str | None = None,
+) -> dict[str, Any]:
+    """Reconcile stored runs against SmashRun for a date range (SB-477).
+
+    Read-only: reports drift, never writes. Sync moves forward only, so a run
+    corrected upstream after it synced keeps its stale value here indefinitely
+    with nothing to surface it — this is how that becomes visible.
+
+    Defaults to the last 30 days.
+    """
+    until_date = date.fromisoformat(until) if until else date.today()
+    since_date = date.fromisoformat(since) if since else until_date - timedelta(days=30)
+
+    if since_date > until_date:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "since must be on or before until"
+        )
+    lookback = (date.today() - since_date).days
+    if lookback > VERIFY_MAX_LOOKBACK_DAYS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"since is {lookback} days back; this endpoint walks every activity from "
+            f"`since` to today, so it is capped at {VERIFY_MAX_LOOKBACK_DAYS} days "
+            "(see SB-292 for the resumable full-history path)",
+        )
+
+    supabase = get_supabase_client()
+    runs_repo = RunsRepository(supabase)
+    token_repo = TokenRepository(supabase)
+    access_token = _resolve_access_token(user_id, token_repo)
+
+    source: list[dict[str, Any]] = []
+    with SmashRunAPIClient(access_token=access_token) as api:
+        for raw in api.get_all_activities_since(since_date):
+            try:
+                activity = api.parse_activity(raw)
+            except Exception:  # noqa: BLE001 — a row we cannot parse is a finding, not a crash
+                continue
+            activity_date = activity.start_date_time_local.date()
+            if activity_date < since_date or activity_date > until_date:
+                continue
+            source.append(
+                {
+                    "activity_id": activity.activity_id,
+                    "date": activity_date.isoformat(),
+                    "distance_km": float(activity.distance),
+                    "duration_seconds": float(activity.duration),
+                }
+            )
+
+    stored = runs_repo.get_runs_for_verify(user_id, since_date, until_date)
+    report = reconcile(stored, source)
+    report["range"] = {"since": since_date.isoformat(), "until": until_date.isoformat()}
+    return report
