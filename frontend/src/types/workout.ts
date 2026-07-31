@@ -122,6 +122,12 @@ export interface TemplateItem {
   rest_seconds_max?: number | null
   rest_mode?: 'fixed' | 'range' | 'full' | 'autoregulated' | null
   segments?: SegmentTarget[] | null
+  // HR / cadence / speed (SB-447). Speed is canonical kph, shown as mph.
+  // Cadence is a per-minute count whose unit follows the movement.
+  target_hr_min?: number | null
+  target_hr_max?: number | null
+  target_cadence?: number | null
+  target_speed_kph?: number | null
   variant: string | null
   // Alternatives (SB-448): items sharing an option_group are a "pick one of N".
   // null = mandatory. The label is read from any member of the group.

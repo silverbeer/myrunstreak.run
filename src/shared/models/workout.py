@@ -184,6 +184,14 @@ class TemplateItemCreate(BaseModel):
     target_distance_m: float | None = Field(default=None, ge=0)
     rest_seconds: float | None = Field(default=None, ge=0)
     rest_seconds_max: float | None = Field(default=None, ge=0)
+    # Heart rate, cadence and speed (SB-447) — the 2026-07-30 plan is the first
+    # to prescribe them ("HR 160-175", "170 rpm or 20 mph"). Speed is canonical
+    # kph, shown as mph at the edge. Cadence is a per-minute count whose unit
+    # follows the movement: crank rpm cycling, steps running, skips on a rope.
+    target_hr_min: int | None = Field(default=None, ge=20, le=250)
+    target_hr_max: int | None = Field(default=None, ge=20, le=250)
+    target_cadence: float | None = Field(default=None, ge=0, le=300)
+    target_speed_kph: float | None = Field(default=None, ge=0, le=100)
     # "Full recovery" and "go off how you feel" are prescriptions, not numbers —
     # storing them as a mode beats inventing a value the coach never gave.
     rest_mode: RestMode | None = None
@@ -208,6 +216,7 @@ class TemplateItemCreate(BaseModel):
             ("target_reps", "target_reps_max"),
             ("target_load_kg", "target_load_max_kg"),
             ("rest_seconds", "rest_seconds_max"),
+            ("target_hr_min", "target_hr_max"),
             ("target_duration_seconds", "target_duration_max_seconds"),
         )
         for lo_name, hi_name in pairs:
@@ -271,11 +280,27 @@ class ExerciseSetCreate(BaseModel):
     load_kg: float | None = Field(default=None, ge=0)
     distance_m: float | None = Field(default=None, ge=0)
     time_seconds: float | None = Field(default=None, ge=0)
+    # Measured HR / cadence / speed (SB-447). Bounds catch a transposed 610 bpm,
+    # not implausible coaching — judging whether a value is realistic stays with
+    # the log-workout skill, which flags outliers to a human.
+    hr_bpm_avg: int | None = Field(default=None, ge=20, le=250)
+    hr_bpm_max: int | None = Field(default=None, ge=20, le=250)
+    cadence: float | None = Field(default=None, ge=0, le=300)
+    speed_kph: float | None = Field(default=None, ge=0, le=100)
     rpe: int | None = Field(default=None, ge=1, le=10)
     started_at: datetime | None = None
     ended_at: datetime | None = None
     notes: str | None = None
     extra: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _hr_max_not_below_avg(self) -> ExerciseSetCreate:
+        if self.hr_bpm_avg is not None and self.hr_bpm_max is not None:
+            if self.hr_bpm_max < self.hr_bpm_avg:
+                raise ValueError(
+                    f"hr_bpm_max ({self.hr_bpm_max}) is below hr_bpm_avg ({self.hr_bpm_avg})"
+                )
+        return self
 
 
 class ExerciseSet(ExerciseSetCreate):
