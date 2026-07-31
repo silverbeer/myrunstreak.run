@@ -126,3 +126,76 @@ describe('WorkoutTemplateCard', () => {
     expect(w.text()).toContain('Jul 28')
   })
 })
+
+// --- SB-484: the card had been under-reporting the plan ----------------------
+
+const sbTemplate = (items: TemplateItem[]): WorkoutTemplate => ({
+  ...template,
+  id: 't2',
+  name: 'Speed Endurance — Track',
+  items,
+})
+
+const render484 = (items: TemplateItem[]) =>
+  mount(WorkoutTemplateCard, { props: { template: sbTemplate(items), readonly: true } })
+
+describe('WorkoutTemplateCard — full prescription (SB-484)', () => {
+  it('shows items in sections outside warmup/main/cooldown', () => {
+    // The worst of the bug, because it was silent: `sections` filtered against
+    // a fixed whitelist while `section` is free text, so a speed_endurance
+    // block rendered without its intervals and nothing said anything was gone.
+    const w = render484([
+      ti({ id: 'a', position: 0, section: 'warmup', exercise_key: 'easy_jog' }),
+      ti({ id: 'b', position: 1, section: 'speed_endurance', exercise_key: 'interval_run' }),
+      ti({ id: 'c', position: 2, section: 'accelerations', exercise_key: 'ground_start_accel' }),
+    ])
+
+    const text = w.text()
+    expect(text).toContain('Interval run')
+    expect(text).toContain('Ground start accel')
+    expect(text).toContain('Speed endurance')
+  })
+
+  it('renders a rep range rather than its lower bound', () => {
+    const w = render484([ti({ position: 0, target_reps: 8, target_reps_max: 12 })])
+    expect(w.text()).toContain('8-12 reps')
+  })
+
+  it('renders a heart-rate zone', () => {
+    const w = render484([ti({ position: 0, target_hr_min: 120, target_hr_max: 145 })])
+    expect(w.text()).toContain('HR 120-145')
+  })
+
+  it('renders alternatives as one choice', () => {
+    const w = render484([
+      ti({
+        position: 0,
+        exercise_key: 'easy_jog',
+        option_group: 'aerobic',
+        option_group_label: 'Aerobic engine',
+      }),
+      ti({ position: 1, exercise_key: 'bike', option_group: 'aerobic' }),
+      ti({ position: 2, exercise_key: 'jump_rope', option_group: 'aerobic' }),
+    ])
+    const text = w.text()
+    expect(text).toContain('Aerobic engine')
+    expect(text).toContain('do one')
+  })
+
+  it('shows full recovery instead of nothing', () => {
+    const w = render484([ti({ position: 0, rest_mode: 'full' })])
+    expect(w.text()).toContain('full recovery')
+  })
+
+  it('shows a load range in lb', () => {
+    const w = render484([ti({ position: 0, target_load_kg: 2.26796, target_load_max_kg: 3.62874 })])
+    expect(w.text()).toContain('5-8 lb')
+  })
+
+  it('renders every item of a twelve-item circuit', () => {
+    const items = Array.from({ length: 12 }, (_, i) =>
+      ti({ id: `i${i}`, position: i, exercise_key: `ex_${i}`, target_duration_seconds: 30 }),
+    )
+    expect(render484(items).findAll('li')).toHaveLength(12)
+  })
+})

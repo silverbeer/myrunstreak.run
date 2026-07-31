@@ -72,17 +72,32 @@
           <span class="text-gray-300 font-medium">· {{ sec.items.length }}</span>
         </h4>
         <ul>
+          <template v-for="(row, ri) in sec.rows" :key="row.kind === 'group' ? row.key : row.item.id">
+            <!-- Alternatives are one choice, not a checklist (SB-448). -->
+            <li
+              v-if="row.kind === 'group'"
+              class="flex items-center gap-2 pt-1.5 pb-0.5 px-2 -mx-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400"
+            >
+              {{ row.label }} · do one
+            </li>
           <li
-            v-for="(item, i) in sec.items"
+            v-for="item in row.kind === 'group' ? row.items : [row.item]"
             :key="item.id"
             class="group flex items-center justify-between gap-3 py-1.5 px-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors print:hover:bg-transparent"
+            :class="row.kind === 'group' ? 'pl-6' : ''"
           >
             <span class="flex items-center gap-2 min-w-0">
               <span
-                v-if="sec.key === 'main'"
+                v-if="row.kind === 'group'"
+                class="w-5 h-5 shrink-0 grid place-items-center text-gray-300 text-[11px]"
+              >
+                ○
+              </span>
+              <span
+                v-else-if="sec.key === 'main'"
                 class="w-5 h-5 shrink-0 grid place-items-center rounded-full bg-brand-50 text-brand-700 text-[11px] font-semibold tabular-nums"
               >
-                {{ i + 1 }}
+                {{ ri + 1 }}
               </span>
               <span class="text-sm text-gray-900 truncate">{{ nameFor(item.exercise_key) }}</span>
               <span
@@ -96,6 +111,7 @@
               <span v-for="p in pills(item)" :key="p.text" class="pill" :class="p.cls">{{ p.text }}</span>
             </span>
           </li>
+          </template>
         </ul>
       </section>
     </div>
@@ -106,7 +122,9 @@
 import { computed, ref } from 'vue'
 import { Calendar, Check, ClipboardCheck, Pencil, Printer, Repeat, Trash2 } from 'lucide-vue-next'
 import type { Exercise, TemplateItem, WorkoutSectionKey, WorkoutTemplate } from '@/types/workout'
-import { SECTIONS, fmtDuration, kgToLb, prettifyKey } from '@/utils/workoutPayload'
+import { SECTIONS, prettifyKey } from '@/utils/workoutPayload'
+import { groupOptionItems } from '@/utils/optionGroups'
+import { targetPills } from '@/utils/targets'
 import { formatDayMonth, formatRelativeTime } from '@/utils/format'
 
 const props = defineProps<{
@@ -132,34 +150,39 @@ const ACCENT: Record<WorkoutSectionKey, { rule: string; label: string }> = {
   cooldown: { rule: 'border-sky-300', label: 'text-sky-600' },
 }
 
-const sections = computed(() =>
-  SECTIONS.map((s) => ({
-    key: s.key,
-    title: s.label,
-    ...ACCENT[s.key],
-    items: props.template.items
-      .filter((it) => it.section === s.key)
-      .sort((a, b) => a.position - b.position),
-  })).filter((s) => s.items.length > 0),
-)
+const KNOWN = new Set(SECTIONS.map((s) => s.key as string))
+const FALLBACK_ACCENT = { rule: 'border-gray-200', label: 'text-gray-500' }
 
-interface Pill {
-  text: string
-  cls: string
-}
-const pills = (it: TemplateItem): Pill[] => {
-  const out: Pill[] = []
-  const base = 'bg-gray-100 text-gray-600'
-  if (it.target_reps != null) out.push({ text: `${it.target_reps} reps`, cls: base })
-  if (it.target_duration_seconds != null)
-    out.push({ text: fmtDuration(it.target_duration_seconds), cls: base })
-  if (it.target_load_kg != null)
-    out.push({ text: `${kgToLb(it.target_load_kg)} lb`, cls: 'bg-amber-50 text-amber-700' })
-  if (it.target_distance_m != null) out.push({ text: `${it.target_distance_m} m`, cls: base })
-  if (it.rest_seconds != null)
-    out.push({ text: `rest ${fmtDuration(it.rest_seconds)}`, cls: 'bg-gray-50 text-gray-400' })
-  return out
-}
+/**
+ * Every section the template actually uses (SB-484).
+ *
+ * `section` is free text, but this used to filter against a fixed
+ * warmup/main/cooldown whitelist — so a plan with a `speed_endurance` block
+ * silently rendered without its intervals, and the athlete had no way to know
+ * anything was missing. Known sections keep their order and accent; anything
+ * else follows, in the order the items appear.
+ */
+const sections = computed(() => {
+  const byKey = new Map<string, TemplateItem[]>()
+  for (const it of [...props.template.items].sort((a, b) => a.position - b.position)) {
+    const key = it.section || 'main'
+    if (!byKey.has(key)) byKey.set(key, [])
+    byKey.get(key)!.push(it)
+  }
+  const keys = [
+    ...SECTIONS.map((s) => s.key as string).filter((k) => byKey.has(k)),
+    ...[...byKey.keys()].filter((k) => !KNOWN.has(k)),
+  ]
+  return keys.map((key) => ({
+    key,
+    title: SECTIONS.find((s) => s.key === key)?.label ?? prettifyKey(key),
+    ...(ACCENT[key as WorkoutSectionKey] ?? FALLBACK_ACCENT),
+    rows: groupOptionItems(byKey.get(key)!),
+    items: byKey.get(key)!,
+  }))
+})
+
+const pills = targetPills
 
 const rootEl = ref<HTMLElement | null>(null)
 
