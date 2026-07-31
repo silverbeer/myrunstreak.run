@@ -174,9 +174,29 @@ const fmtSecs = (s: number) => {
   return `${s} sec`
 }
 
+// A target may be a range (SB-446): "8-12", "5-8 lb", "60-90 sec".
+const fmtRange = (lo?: number | null, hi?: number | null, unit = ''): string => {
+  if (lo != null && hi != null && hi !== lo) return `${lo}-${hi}${unit}`
+  const value = lo ?? hi
+  return value != null ? `${value}${unit}` : ''
+}
+
+// Rest is not always a number: "full recovery" and "go off how you feel" are
+// conditions the athlete resolves, and printing an invented number would
+// misreport what the coach wrote.
+const restText = (item: TemplateItem): string => {
+  if (item.rest_mode === 'full') return 'rest: full recovery'
+  if (item.rest_seconds == null && item.rest_seconds_max == null) {
+    return item.rest_mode === 'autoregulated' ? 'rest: by feel' : ''
+  }
+  const range = fmtRange(item.rest_seconds, item.rest_seconds_max, ' sec')
+  return item.rest_mode === 'autoregulated' ? `rest ${range} (by feel)` : `rest ${range}`
+}
+
 const targetText = (item: TemplateItem): string => {
   const parts: string[] = []
-  if (item.target_reps) parts.push(`${item.target_reps} rep${item.target_reps === 1 ? '' : 's'}`)
+  const reps = fmtRange(item.target_reps, item.target_reps_max)
+  if (reps) parts.push(`${reps} rep${item.target_reps === 1 && !item.target_reps_max ? '' : 's'}`)
   if (item.target_duration_seconds != null) {
     const max = item.target_duration_max_seconds
     parts.push(
@@ -185,7 +205,10 @@ const targetText = (item: TemplateItem): string => {
         : fmtSecs(item.target_duration_seconds),
     )
   }
-  if (item.target_load_kg != null) parts.push(`${Math.round(item.target_load_kg * 2.20462)} lb`)
+  if (item.target_load_kg != null || item.target_load_max_kg != null) {
+    const lb = (kg?: number | null) => (kg != null ? Math.round(kg * 2.20462) : null)
+    parts.push(`${fmtRange(lb(item.target_load_kg), lb(item.target_load_max_kg))} lb`)
+  }
   if (item.target_distance_m != null) {
     const yd = item.target_distance_m / 0.9144
     parts.push(
@@ -194,7 +217,8 @@ const targetText = (item: TemplateItem): string => {
         : `${item.target_distance_m} m`,
     )
   }
-  if (item.rest_seconds) parts.push(`rest ${fmtSecs(item.rest_seconds)}`)
+  const rest = restText(item)
+  if (rest) parts.push(rest)
   return parts.join(' · ') || '—'
 }
 

@@ -288,3 +288,66 @@ def test_template_items_without_option_group_are_unchanged():
         },
     )
     assert out["items"][0].get("option_group") is None
+
+
+def test_template_item_range_targets_round_trip():
+    """Ranged reps/load/rest survive create -> read (SB-446).
+
+    The 2026-07-30 speed-endurance block: "8-12x200 at 40-42 seconds,
+    60-90 second rest (go off how you feel)".
+    """
+    supa = _FakeSupabase()
+    repo = WorkoutTemplatesRepository(supa)
+    out = repo.create(
+        uuid4(),
+        {
+            "name": "Speed endurance",
+            "type": "intervals",
+            "items": [
+                {
+                    "exercise_key": "interval_run",
+                    "position": 0,
+                    "target_reps": 8,
+                    "target_reps_max": 12,
+                    "target_distance_m": 200,
+                    "target_duration_seconds": 40,
+                    "target_duration_max_seconds": 42,
+                    "rest_seconds": 60,
+                    "rest_seconds_max": 90,
+                    "rest_mode": "autoregulated",
+                },
+                {
+                    "exercise_key": "ground_start_accel",
+                    "position": 1,
+                    "target_reps": 4,
+                    "rest_mode": "full",
+                },
+            ],
+        },
+    )
+
+    intervals, accels = out["items"][0], out["items"][1]
+    assert (intervals["target_reps"], intervals["target_reps_max"]) == (8, 12)
+    assert (intervals["rest_seconds"], intervals["rest_seconds_max"]) == (60, 90)
+    assert intervals["rest_mode"] == "autoregulated"
+    # "Full recovery" carries no number — that is the point of the mode.
+    assert accels["rest_mode"] == "full"
+    assert accels.get("rest_seconds") is None
+
+
+def test_template_item_without_ranges_is_unchanged():
+    """Every existing item has NULL maxima and must behave exactly as before."""
+    supa = _FakeSupabase()
+    repo = WorkoutTemplatesRepository(supa)
+    out = repo.create(
+        uuid4(),
+        {
+            "name": "Monday Circuit",
+            "type": "circuit",
+            "items": [{"exercise_key": "pushups", "position": 0, "target_reps": 15}],
+        },
+    )
+    item = out["items"][0]
+    assert item["target_reps"] == 15
+    assert item.get("target_reps_max") is None
+    assert item.get("rest_mode") is None

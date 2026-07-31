@@ -110,17 +110,54 @@ def _fmt_goal(smin: float | None, smax: float | None) -> str:
     return "—"
 
 
+def _fmt_range(lo: float | None, hi: float | None, unit: str = "") -> str:
+    """A target that may be a range: (8, 12) -> "8-12"; (8, None) -> "8" (SB-446)."""
+    if lo is not None and hi is not None and hi != lo:
+        return f"{lo:g}-{hi:g}{unit}"
+    value = lo if lo is not None else hi
+    return f"{value:g}{unit}" if value is not None else ""
+
+
+def _fmt_rest(item: dict[str, Any]) -> str:
+    """Rest as prescribed — which is not always a number (SB-446).
+
+    "Full recovery" and "go off how you feel" are conditions the athlete
+    resolves; rendering them as a made-up number would misreport the plan.
+    """
+    mode = item.get("rest_mode")
+    if mode == "full":
+        return "rest: full recovery"
+    lo, hi = item.get("rest_seconds"), item.get("rest_seconds_max")
+    if lo is None and hi is None:
+        return "rest: by feel" if mode == "autoregulated" else ""
+    text = f"rest {_fmt_range(lo, hi, 's')}"
+    if mode == "autoregulated":
+        text += " (by feel)"
+    return text
+
+
 def _fmt_target(item: dict[str, Any]) -> str:
     parts = []
-    if item.get("target_reps") is not None:
-        parts.append(f"{item['target_reps']} reps")
+    reps = _fmt_range(item.get("target_reps"), item.get("target_reps_max"))
+    if reps:
+        parts.append(f"{reps} reps")
     smin, smax = item.get("target_duration_seconds"), item.get("target_duration_max_seconds")
     if smin is not None or smax is not None:
         parts.append(_fmt_goal(smin, smax))
-    if item.get("target_load_kg") is not None:
-        parts.append(f"{item['target_load_kg'] * 2.20462:.0f}lb")
+    lo_kg, hi_kg = item.get("target_load_kg"), item.get("target_load_max_kg")
+    if lo_kg is not None or hi_kg is not None:
+        lo_lb = lo_kg * 2.20462 if lo_kg is not None else None
+        hi_lb = hi_kg * 2.20462 if hi_kg is not None else None
+        # Loads are prescribed in lb; round each bound so "5-8lb" comes back as
+        # "5-8lb" rather than "5-8.0000001lb" after the kg round-trip.
+        lo_lb = round(lo_lb) if lo_lb is not None else None
+        hi_lb = round(hi_lb) if hi_lb is not None else None
+        parts.append(f"{_fmt_range(lo_lb, hi_lb)}lb")
     if item.get("target_distance_m") is not None:
         parts.append(_fmt_distance(item["target_distance_m"]))
+    rest = _fmt_rest(item)
+    if rest:
+        parts.append(rest)
     return " · ".join(parts) if parts else "—"
 
 
@@ -241,6 +278,23 @@ def _goal_status(time_s: float, smin: float | None, smax: float | None) -> str:
     return "[red]missed[/red]"
 
 
+def _range_status(actual: float, lo: float | None, hi: float | None) -> str:
+    """Grade an actual against a prescribed range (SB-446).
+
+    A range is a legitimate prescription, not a fuzzy point target: "8-12 reps"
+    means anywhere in 8..12 is the plan followed, so anything inside reads as
+    hit rather than "off by 2". With only a lower bound set, more is better —
+    which is how Matthew writes rep targets.
+    """
+    if lo is None and hi is None:
+        return ""
+    if lo is not None and actual < lo:
+        return "[yellow]under[/yellow]"
+    if hi is not None and actual > hi:
+        return "[green]over[/green]"
+    return "[green]hit[/green]"
+
+
 def review(
     session_id: str = typer.Argument(
         ..., help="Session id (full or 8-char prefix from `sessions`)"
@@ -262,13 +316,16 @@ def review(
         _dump(s)
         return
 
-    # Segment goals come from the template the session was logged against.
+    # Goals come from the template the session was logged against — segment
+    # goals (SB-264) and item-level targets, which may be ranges (SB-446).
     goals_by_key: dict[str, list[dict[str, Any]]] = {}
+    items_by_key: dict[str, dict[str, Any]] = {}
     tpl_name = None
     if s.get("template_id"):
         tpl = api.request(f"workouts/templates/{s['template_id']}")
         tpl_name = tpl.get("name")
         for item in tpl.get("items", []):
+            items_by_key.setdefault(item["exercise_key"], item)
             if item.get("segments"):
                 goals_by_key.setdefault(item["exercise_key"], []).append(item)
 
@@ -288,6 +345,12 @@ def review(
             line += f" {actual}"
         if st.get("reps") is not None:
             line += f" {st['reps']} reps"
+            goal = items_by_key.get(st["exercise_key"], {})
+            verdict = _range_status(
+                st["reps"], goal.get("target_reps"), goal.get("target_reps_max")
+            )
+            if verdict:
+                line += f"  {verdict}"
         display.console.print(line.rstrip())
 
         # Broken rep: goal vs reality per segment.

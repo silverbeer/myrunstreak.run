@@ -78,6 +78,10 @@ export interface TemplateItemInput {
   target_load_kg?: number | null
   target_distance_m?: number | null
   rest_seconds?: number | null
+  rest_seconds_max?: number | null
+  rest_mode?: 'fixed' | 'range' | 'full' | 'autoregulated' | null
+  target_reps_max?: number | null
+  target_load_max_kg?: number | null
   variant?: string | null
   option_group?: string | null
   option_group_label?: string | null
@@ -106,11 +110,17 @@ export interface TemplateItem {
   section: string
   position: number
   target_reps: number | null
+  // Upper bounds: a target may be a range (SB-446) — "8-12x200", "5-8lb
+  // dumbbells", "60-90 second rest". The field above is the lower bound.
+  target_reps_max?: number | null
   target_duration_seconds: number | null
   target_duration_max_seconds?: number | null
   target_load_kg: number | null
+  target_load_max_kg?: number | null
   target_distance_m: number | null
   rest_seconds: number | null
+  rest_seconds_max?: number | null
+  rest_mode?: 'fixed' | 'range' | 'full' | 'autoregulated' | null
   segments?: SegmentTarget[] | null
   variant: string | null
   // Alternatives (SB-448): items sharing an option_group are a "pick one of N".
