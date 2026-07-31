@@ -58,6 +58,7 @@
           :key="t.id"
           :template="t"
           :exercises="exercises"
+          :authored-by="authoredBy(t)"
           @edit="router.push(`/coach/${athleteId}/build/${t.id}`)"
           @log="router.push(`/coach/${athleteId}/log/${t.id}`)"
           @print="router.push(`/coach/${athleteId}/print/${t.id}`)"
@@ -102,6 +103,7 @@ import { useExercises } from '@/composables/useExercises'
 import AthleteProfileForm from '@/components/AthleteProfileForm.vue'
 import AthleteAccessPanel from '@/components/AthleteAccessPanel.vue'
 import WorkoutTemplateCard from '@/components/WorkoutTemplateCard.vue'
+import type { WorkoutTemplate } from '@/types/workout'
 import { deleteTemplate } from '@/composables/useWorkoutTemplates'
 import type { Athlete } from '@/types/coach'
 
@@ -109,6 +111,17 @@ const route = useRoute()
 const router = useRouter()
 const athleteId = route.params.athleteId as string
 const { athlete, sessions, templates, loading, error, load } = useAthleteDetail(athleteId)
+
+/**
+ * Label a workout the athlete built for themselves (SB-486). A template created
+ * by the linked athlete's own user carries their user id in `created_by`;
+ * anything else came from a coach and needs no badge.
+ */
+const authoredBy = (t: WorkoutTemplate): string | null => {
+  const linked = athlete.value?.linked_user_id
+  if (!linked || !t.created_by || t.created_by !== linked) return null
+  return `Added by ${athlete.value?.display_name ?? 'athlete'}`
+}
 const { exercises, load: loadExercises } = useExercises()
 
 const editing = ref(false)

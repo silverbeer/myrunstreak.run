@@ -60,3 +60,16 @@ def require_athlete_access(user_id: UUID, athlete_id: UUID) -> None:
     """Raise 403 unless the user may act on this athlete."""
     if not can_access_athlete(user_id, athlete_id):
         raise HTTPException(status_code=_FORBIDDEN, detail="No access to this athlete")
+
+
+def coaches_athlete(user_id: UUID, athlete_id: UUID) -> bool:
+    """True if the user *coaches* this athlete, as opposed to *being* them.
+
+    ``can_access_athlete`` deliberately answers yes to both, which is right for
+    reads. Writes need the distinction: an athlete may edit what they authored
+    themselves, while their coach may edit anything of theirs (SB-486).
+    """
+    supabase = get_supabase_client()
+    if CoachAthletesRepository(supabase).active_link_exists(user_id, athlete_id):
+        return True
+    return is_admin(user_id)

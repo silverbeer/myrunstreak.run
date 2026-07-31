@@ -11,7 +11,13 @@ vi.mock('@/composables/useCoach', () => ({
 }))
 
 const replaceMock = vi.fn()
-vi.mock('vue-router', () => ({ useRouter: () => ({ replace: replaceMock }) }))
+const pushMock = vi.fn()
+// The view now links to the build/log/print surfaces (SB-486), so the mock has
+// to provide RouterLink as well as the router itself.
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ replace: replaceMock, push: pushMock }),
+  RouterLink: { template: '<a><slot /></a>' },
+}))
 
 import MyWorkoutsView from '../MyWorkoutsView.vue'
 
@@ -68,6 +74,6 @@ describe('MyWorkoutsView (SB-332)', () => {
     })
     const w = mount(MyWorkoutsView)
     await flushPromises()
-    expect(w.text()).toContain('No workouts assigned yet')
+    expect(w.text()).toContain('No workouts yet')
   })
 })

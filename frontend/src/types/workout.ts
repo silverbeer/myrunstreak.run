@@ -138,6 +138,10 @@ export interface TemplateItem {
 
 export interface WorkoutTemplate {
   id: string
+  // Who authored it (SB-486): the coach who prescribed it, or the athlete
+  // themselves. Drives who may edit it, and the "added by" badge.
+  created_by?: string | null
+  athlete_id?: string | null
   name: string
   type: WorkoutType
   rounds: number
@@ -173,6 +177,11 @@ export interface BuilderItem {
 /** One logged set in the API payload. Only the used dimensions are filled. */
 export interface SessionSetInput {
   exercise_key: string
+  // Measured HR / cadence / speed (SB-447). Speed is canonical kph.
+  hr_bpm_avg?: number | null
+  hr_bpm_max?: number | null
+  cadence?: number | null
+  speed_kph?: number | null
   round_number?: number | null
   set_index?: number | null
   variant?: string | null
@@ -206,6 +215,11 @@ export interface LoggerAttempt {
   load_lb: number | null
   distance_m: number | null
   time_seconds: number | null
+  // Entered in the units a US athlete reads off a watch; converted on the way
+  // out (SB-486). Cadence has no unit of its own — it follows the movement.
+  hr_bpm: number | null
+  cadence: number | null
+  speed_mph: number | null
   rpe: number | null
 }
 

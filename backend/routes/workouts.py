@@ -12,7 +12,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from backend.admin import is_admin, require_athlete_access
+from backend.admin import coaches_athlete, is_admin, require_athlete_access
 from backend.auth import authenticate_request
 from backend.cache import invalidate_user
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -51,6 +51,33 @@ def acting_athlete(
 
 
 # ---------------------------------------------------------------- catalog
+
+
+def _require_may_modify(
+    user_id: UUID, athlete_id: UUID | None, row: dict[str, Any], kind: str
+) -> None:
+    """Enforce who may change an athlete-scoped row (SB-486).
+
+    A coach may modify anything belonging to an athlete they coach. Anyone else
+    with access — which means the athlete themselves — may modify only what
+    they authored. So Matthew's prescription stays authoritative: Gabe can log
+    against it and print it, but not rewrite it.
+
+    Hiding the buttons is not enforcement; without this an athlete could PATCH a
+    coach's template directly. A NULL ``created_by`` predates athlete-authored
+    rows and is treated as the coach's.
+    """
+    if athlete_id is None:
+        return  # self-owned rows: _scope already limits these to the caller
+    if coaches_athlete(user_id, athlete_id):
+        return
+    created_by = row.get("created_by")
+    if created_by and UUID(str(created_by)) == user_id:
+        return
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        f"This {kind} was created by your coach — you can use it, but not change it",
+    )
 
 
 @router.get("/exercises", response_model=list[Exercise])
@@ -212,6 +239,11 @@ async def update_template(
     if unknown:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown exercise(s): {sorted(unknown)}")
 
+    existing = WorkoutTemplatesRepository(supabase).get(user_id, template_id, athlete_id=athlete_id)
+    if existing is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found or not yours")
+    _require_may_modify(user_id, athlete_id, existing, "workout")
+
     row = WorkoutTemplatesRepository(supabase).update(
         user_id, template_id, body.model_dump(mode="json", exclude_none=True), athlete_id=athlete_id
     )
@@ -250,9 +282,13 @@ async def delete_template(
     user_id: UUID = Depends(authenticate_request),
     athlete_id: UUID | None = Depends(acting_athlete),
 ) -> None:
-    if not WorkoutTemplatesRepository(get_supabase_client()).delete(
-        user_id, template_id, athlete_id=athlete_id
-    ):
+    repo = WorkoutTemplatesRepository(get_supabase_client())
+    existing = repo.get(user_id, template_id, athlete_id=athlete_id)
+    if existing is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found")
+    _require_may_modify(user_id, athlete_id, existing, "workout")
+
+    if not repo.delete(user_id, template_id, athlete_id=athlete_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found")
     await invalidate_user(user_id)
 
@@ -313,8 +349,15 @@ async def delete_session(
     user_id: UUID = Depends(authenticate_request),
     athlete_id: UUID | None = Depends(acting_athlete),
 ) -> None:
-    if not WorkoutSessionsRepository(get_supabase_client()).delete(
-        user_id, session_id, athlete_id=athlete_id
-    ):
+    repo = WorkoutSessionsRepository(get_supabase_client())
+    existing = repo.get(user_id, session_id, athlete_id=athlete_id)
+    if existing is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+    # A session is editable by whoever logged it, and by the coach for any of
+    # their athlete's (SB-486) — so Gabe can fix his own typo without being able
+    # to delete a session Matthew recorded.
+    _require_may_modify(user_id, athlete_id, existing, "session")
+
+    if not repo.delete(user_id, session_id, athlete_id=athlete_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
     await invalidate_user(user_id)

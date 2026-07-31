@@ -9,6 +9,9 @@ const h = vi.hoisted(() => ({
   replace: vi.fn(),
   isCoach: { value: true },
   loadRoles: vi.fn().mockResolvedValue(undefined),
+  // The athlete the caller IS, for the self-service path (SB-486).
+  myAthlete: { value: null as { id: string } | null },
+  loadMyAthlete: vi.fn().mockResolvedValue(undefined),
   load: vi.fn().mockResolvedValue(undefined),
   params: { athleteId: 'ath1' } as Record<string, string>,
 }))
@@ -34,6 +37,7 @@ vi.mock('@/composables/useExercises', async () => {
 })
 vi.mock('@/composables/useCoach', () => ({
   useRoles: () => ({ isCoach: h.isCoach, loadRoles: h.loadRoles }),
+  useMyAthlete: () => ({ myAthlete: h.myAthlete, loadMyAthlete: h.loadMyAthlete }),
 }))
 vi.mock('@/composables/useWorkoutTemplates', () => ({
   createTemplate: (...a: unknown[]) => h.createTemplate(...a),
@@ -49,6 +53,7 @@ vi.mock('vue-router', () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   h.isCoach.value = true
+  h.myAthlete.value = null
   h.params = { athleteId: 'ath1' }
 })
 
@@ -60,8 +65,12 @@ async function mountBuilder() {
 }
 
 describe('WorkoutBuilderView', () => {
-  it('redirects non-coaches', async () => {
+  it('redirects when there is no athlete to act on', async () => {
+    // Since SB-486 the gate is "do we have an athlete", not "are you a coach" —
+    // an athlete opens this view for themselves with no route param.
     h.isCoach.value = false
+    h.params = {}
+    h.myAthlete.value = null
     await mountBuilder()
     expect(h.replace).toHaveBeenCalledWith('/dashboard')
   })

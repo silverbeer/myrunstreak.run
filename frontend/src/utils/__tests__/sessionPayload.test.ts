@@ -7,7 +7,7 @@ import {
 } from '@/utils/sessionPayload'
 import type { Exercise, LoggerAttempt, LoggerRow, WorkoutTemplate } from '@/types/workout'
 
-const ex = (key: string, measures: string[] = []): Exercise => ({
+const ex = (key: string, measures: string[] = ['reps']): Exercise => ({
   key,
   display_name: key,
   category: 'strength',
@@ -102,6 +102,27 @@ describe('buildSessionPayload', () => {
     expect(p.sets).toHaveLength(1)
     expect(p.sets[0].exercise_key).toBe('pushups')
     expect(p.sets[0].set_index).toBeNull() // only one non-empty attempt survived
+  })
+
+  it('keeps a movement that has nothing to measure (SB-486)', () => {
+    // A tick-box exercise carries no `measures`, so there is nothing for the
+    // athlete to type — the row's presence is the record. Dropping it as
+    // "empty" would make a completed workout read as half-done.
+    const p = buildSessionPayload(meta, [
+      row('pushups', { attempts: [attempt({ reps: 8 })] }),
+      { ...row('skywalker'), exercise: ex('skywalker', []) },
+    ])
+
+    expect(p.sets).toHaveLength(2)
+    const tick = p.sets.find((s) => s.exercise_key === 'skywalker')
+    expect(tick).toBeDefined()
+    expect(tick?.reps ?? null).toBeNull()
+  })
+
+  it('still drops a measurable exercise the athlete left blank', () => {
+    // The distinction: nothing *could* be entered vs nothing *was*.
+    const p = buildSessionPayload(meta, [row('plank', { attempts: [attempt()] })])
+    expect(p.sets).toHaveLength(0)
   })
 
   it('carries round_number + trims variant, notes on first set only', () => {
