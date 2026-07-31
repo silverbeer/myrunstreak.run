@@ -136,6 +136,15 @@ def _fmt_rest(item: dict[str, Any]) -> str:
     return text
 
 
+def _fmt_hr_zone(lo: int | None, hi: int | None) -> str:
+    """A prescribed heart-rate zone: "HR 160-175", "HR 120+", "HR ≤145" (SB-447)."""
+    if lo is None and hi is None:
+        return ""
+    if lo is not None and hi is not None:
+        return f"HR {lo:g}-{hi:g}" if hi != lo else f"HR {lo:g}"
+    return f"HR {lo:g}+" if lo is not None else f"HR ≤{hi:g}"
+
+
 def _fmt_target(item: dict[str, Any]) -> str:
     parts = []
     reps = _fmt_range(item.get("target_reps"), item.get("target_reps_max"))
@@ -155,6 +164,14 @@ def _fmt_target(item: dict[str, Any]) -> str:
         parts.append(f"{_fmt_range(lo_lb, hi_lb)}lb")
     if item.get("target_distance_m") is not None:
         parts.append(_fmt_distance(item["target_distance_m"]))
+    zone = _fmt_hr_zone(item.get("target_hr_min"), item.get("target_hr_max"))
+    if zone:
+        parts.append(zone)
+    if item.get("target_cadence") is not None:
+        # Unit follows the movement — rpm on a bike, spm running, skips on a rope.
+        parts.append(f"{item['target_cadence']:g}/min")
+    if item.get("target_speed_kph") is not None:
+        parts.append(f"{item['target_speed_kph'] * 0.621371:.0f}mph")
     rest = _fmt_rest(item)
     if rest:
         parts.append(rest)
@@ -295,6 +312,23 @@ def _range_status(actual: float, lo: float | None, hi: float | None) -> str:
     return "[green]hit[/green]"
 
 
+def _zone_status(actual: float, lo: float | None, hi: float | None) -> str:
+    """Grade a heart rate against its prescribed zone (SB-447).
+
+    Deliberately not `_range_status`: exceeding a rep range is over-delivery,
+    but exceeding a heart-rate ceiling is the opposite of the prescription. On
+    Matthew's in-season aerobic day the whole point of "keep HR 120-145" is
+    *not* going harder, so above-zone reads as a warning, not a win.
+    """
+    if lo is None and hi is None:
+        return ""
+    if lo is not None and actual < lo:
+        return "[yellow]below zone[/yellow]"
+    if hi is not None and actual > hi:
+        return "[red]above zone[/red]"
+    return "[green]in zone[/green]"
+
+
 def review(
     session_id: str = typer.Argument(
         ..., help="Session id (full or 8-char prefix from `sessions`)"
@@ -343,6 +377,15 @@ def review(
             line += f" {_fmt_distance(st['distance_m']):<7}"
         if actual:
             line += f" {actual}"
+        hr = st.get("hr_bpm_avg")
+        if hr is not None:
+            goal = items_by_key.get(st["exercise_key"], {})
+            zone = _zone_status(hr, goal.get("target_hr_min"), goal.get("target_hr_max"))
+            line += f" {hr}bpm" + (f"  {zone}" if zone else "")
+        if st.get("cadence") is not None:
+            line += f" {st['cadence']:g}/min"
+        if st.get("speed_kph") is not None:
+            line += f" {st['speed_kph'] * 0.621371:.1f}mph"
         if st.get("reps") is not None:
             line += f" {st['reps']} reps"
             goal = items_by_key.get(st["exercise_key"], {})

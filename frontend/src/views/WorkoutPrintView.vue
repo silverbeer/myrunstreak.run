@@ -217,6 +217,17 @@ const targetText = (item: TemplateItem): string => {
         : `${item.target_distance_m} m`,
     )
   }
+  // A prescribed heart-rate zone is the point of the in-season aerobic day.
+  if (item.target_hr_min != null || item.target_hr_max != null) {
+    const lo = item.target_hr_min
+    const hi = item.target_hr_max
+    parts.push(
+      lo != null && hi != null ? `HR ${lo}-${hi}` : lo != null ? `HR ${lo}+` : `HR ≤${hi}`,
+    )
+  }
+  if (item.target_cadence != null) parts.push(`${item.target_cadence}/min`)
+  if (item.target_speed_kph != null)
+    parts.push(`${Math.round(item.target_speed_kph * 0.621371)} mph`)
   const rest = restText(item)
   if (rest) parts.push(rest)
   return parts.join(' · ') || '—'
