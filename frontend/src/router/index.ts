@@ -163,4 +163,36 @@ router.beforeEach(async (to) => {
   }
 })
 
+/**
+ * Recover when a deploy lands mid-session (SB-485).
+ *
+ * Route components are lazy chunks with hashed names. If the app is rebuilt
+ * while someone has the page open, their next navigation asks for a filename
+ * that no longer exists and Vue Router raises "Failed to fetch dynamically
+ * imported module" — a dead screen with nothing to click.
+ *
+ * Reloading fetches the current index.html and its live chunk names. The
+ * sessionStorage flag means a genuinely broken build reloads once and then
+ * surfaces the error, rather than looping forever.
+ */
+const RELOAD_FLAG = 'stk:chunk-reload'
+
+router.onError((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error)
+  const isStaleChunk =
+    /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(
+      message,
+    )
+  if (!isStaleChunk) return
+  if (sessionStorage.getItem(RELOAD_FLAG)) return
+  sessionStorage.setItem(RELOAD_FLAG, '1')
+  window.location.reload()
+})
+
+// A completed navigation means the running bundle is current — clear the guard
+// so a later deploy can trigger its own single reload.
+router.afterEach(() => {
+  sessionStorage.removeItem(RELOAD_FLAG)
+})
+
 export default router
