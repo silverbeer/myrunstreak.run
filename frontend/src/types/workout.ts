@@ -79,6 +79,8 @@ export interface TemplateItemInput {
   target_distance_m?: number | null
   rest_seconds?: number | null
   variant?: string | null
+  option_group?: string | null
+  option_group_label?: string | null
   notes?: string | null
 }
 
@@ -111,6 +113,10 @@ export interface TemplateItem {
   rest_seconds: number | null
   segments?: SegmentTarget[] | null
   variant: string | null
+  // Alternatives (SB-448): items sharing an option_group are a "pick one of N".
+  // null = mandatory. The label is read from any member of the group.
+  option_group?: string | null
+  option_group_label?: string | null
   notes: string | null
 }
 
