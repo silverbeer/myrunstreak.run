@@ -131,3 +131,70 @@ describe('WorkoutPrintView on /my/workouts/print (SB-522)', () => {
     expect(w.get('a').attributes('href')).toBe('/my/workouts')
   })
 })
+
+describe('WorkoutPrintView failure state (SB-523)', () => {
+  // Gabe's whole experience of the bug was one line of red text reading
+  // "HTTP 422". Whatever fails next, he should get a sentence and a way out.
+
+  const fail = (message: string, status?: number) => {
+    apiCallMock.mockReset()
+    apiCallMock.mockImplementation(() => {
+      const e = new Error(message) as Error & { status?: number }
+      e.status = status
+      return Promise.reject(e)
+    })
+  }
+
+  it('explains the failure instead of printing a bare status', async () => {
+    fail('HTTP 422', 422)
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    const panel = w.get('[data-testid="print-error"]')
+    expect(panel.text()).toContain("Couldn't load this workout")
+    expect(panel.text()).toContain('not something you did')
+  })
+
+  it('tailors the explanation to the status', async () => {
+    fail('nope', 404)
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    expect(w.get('[data-testid="print-error"]').text()).toContain("doesn't exist any more")
+  })
+
+  it('keeps the raw message available for debugging', async () => {
+    fail('HTTP 500', 500)
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    expect(w.get('[data-testid="print-error"]').text()).toContain('HTTP 500')
+  })
+
+  it('offers a retry that actually refetches', async () => {
+    fail('HTTP 500', 500)
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    const before = apiCallMock.mock.calls.length
+
+    // Recover, then retry: the sheet should render without a reload.
+    apiCallMock.mockReset()
+    apiCallMock.mockImplementation((path: string) => {
+      if (path.startsWith('/workouts/templates/')) return Promise.resolve(template)
+      if (path.startsWith('/athletes/')) return Promise.resolve({ id: 'a1', display_name: 'Gabe' })
+      if (path === '/workouts/exercises') return Promise.resolve(exercises)
+      return Promise.reject(new Error(`unexpected: ${path}`))
+    })
+    await w.get('[data-testid="print-retry"]').trigger('click')
+    await flushPromises()
+
+    expect(apiCallMock.mock.calls.length).toBeGreaterThan(0)
+    expect(before).toBeGreaterThan(0)
+    expect(w.find('[data-testid="print-error"]').exists()).toBe(false)
+    expect(w.text()).toContain('Track Thursday')
+  })
+
+  it('offers a way out of the dead end', async () => {
+    fail('HTTP 500', 500)
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    expect(w.get('[data-testid="print-error"]').text()).toContain('Back to workouts')
+  })
+})
