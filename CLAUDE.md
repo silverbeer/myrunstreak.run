@@ -247,9 +247,13 @@ runs), restore prod into local. **This is one command — do not write a new
 script for it.**
 
 ```bash
-source ~/.config/janitor/stk.env        # secrets, via 1Password/varlock
+jt secrets pull stk                     # 1Password → ~/.config/janitor/stk.env
+source ~/.config/janitor/stk.env
 jt supabase restore-from-prod stk
 ```
+
+`jt secrets pull stk` writes the env file from the `stk-prod` 1Password item, so
+no secret is ever typed into a shell. Skip it if the file is already current.
 
 `jt` is [janitor](https://github.com/silverbeer/janitor), configured for STK in
 `~/.config/janitor/config.toml` under the key **`stk`** (the config key, not the
