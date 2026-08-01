@@ -133,17 +133,30 @@ import type { Exercise, TemplateItem, WorkoutTemplate } from '@/types/workout'
 import type { Athlete } from '@/types/coach'
 import { groupOptionItems } from '@/utils/optionGroups'
 import { fmtRange, hrZoneText, restText } from '@/utils/targets'
+import { useMyAthlete } from '@/composables/useCoach'
 
 const route = useRoute()
 const templateId = String(route.params.templateId)
 
-// This view serves two routes: /coach/:athleteId/print/:templateId and
-// /my/workouts/print/:templateId. Only the coach one carries an athleteId, so
-// it must stay nullable — String(undefined) yields the string "undefined",
-// which the API then rejects as an invalid UUID with a bare 422 (SB-522).
-const athleteId = route.params.athleteId ? String(route.params.athleteId) : null
-const actingAsAthlete = athleteId !== null
-const backTo = actingAsAthlete ? `/coach/${athleteId}` : '/my/workouts'
+// This view serves two routes:
+//   /coach/:athleteId/print/:templateId   — a coach printing for an athlete
+//   /my/workouts/print/:templateId        — the athlete printing their own
+//
+// Only the coach route carries an athleteId, so it must stay nullable:
+// String(undefined) yields the string "undefined", which the API rejects as an
+// invalid UUID with a bare 422 (SB-522).
+const coachRouteAthleteId = route.params.athleteId ? String(route.params.athleteId) : null
+const isCoachRoute = coachRouteAthleteId !== null
+const backTo = isCoachRoute ? `/coach/${coachRouteAthleteId}` : '/my/workouts'
+
+// Every workout request is scoped by athlete id, and a coach-assigned template
+// belongs to the ATHLETE row — not to the athlete's user account. Omitting the
+// header sends the query down the "my own self-authored rows" branch
+// (athlete_id IS NULL), which can never match it, so the athlete got a 404
+// (SB-524). Resolve the caller's athlete row and scope by its id, exactly as
+// MyWorkoutsView already does.
+const { myAthlete, loadMyAthlete } = useMyAthlete()
+const scopeAthleteId = ref<string | null>(coachRouteAthleteId)
 
 const template = ref<WorkoutTemplate | null>(null)
 const athleteName = ref('')
@@ -286,20 +299,27 @@ const load = async () => {
   error.value = null
   errorStatus.value = null
   try {
-    // Send X-Act-As-Athlete only when a coach is genuinely acting for someone
-    // else. The backend types it as UUID | None and already treats an absent
-    // header as "me", so omitting it is correct — sending "undefined" is a 422.
-    const headers = actingAsAthlete ? { 'X-Act-As-Athlete': athleteId as string } : undefined
+    // On the athlete route the scope id is not in the URL — resolve it first.
+    if (!isCoachRoute && scopeAthleteId.value === null) {
+      await loadMyAthlete(true)
+      if (!myAthlete.value) {
+        throw Object.assign(new Error('No athlete profile is linked to this account.'), {
+          status: 404,
+        })
+      }
+      scopeAthleteId.value = myAthlete.value.id
+    }
+    const headers = { 'X-Act-As-Athlete': scopeAthleteId.value as string }
     const [tpl, catalog] = await Promise.all([
       apiCall<WorkoutTemplate>(`/workouts/templates/${templateId}`, { headers }),
       apiCall<Exercise[]>('/workouts/exercises'),
     ])
     template.value = tpl
     exercises.value = new Map(catalog.map((e) => [e.key, e]))
-    // Only a coach needs the athlete's name in the heading; printing your own
-    // sheet does not, so skip the lookup rather than fetch /athletes/me.
-    if (actingAsAthlete) {
-      const athlete = await apiCall<Athlete>(`/athletes/${athleteId}`)
+    // Only a coach needs the athlete's name in the heading — printing your own
+    // sheet does not, so skip the extra request.
+    if (isCoachRoute) {
+      const athlete = await apiCall<Athlete>(`/athletes/${coachRouteAthleteId}`)
       athleteName.value = athlete.display_name
     }
   } catch (e) {
