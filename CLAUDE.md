@@ -240,6 +240,56 @@ from ..models import Activity           # Relative imports
 from shared.models import Activity      # Missing src prefix
 ```
 
+## 🗄️ Local Database: restoring prod data
+
+Local Supabase starts empty. To develop or analyse against real history (4,700+
+runs), restore prod into local. **This is one command — do not write a new
+script for it.**
+
+```bash
+jt secrets pull stk                     # 1Password → ~/.config/janitor/stk.env
+source ~/.config/janitor/stk.env
+jt supabase restore-from-prod stk
+```
+
+`jt secrets pull stk` writes the env file from the `stk-prod` 1Password item, so
+no secret is ever typed into a shell. Skip it if the file is already current.
+
+`jt` is [janitor](https://github.com/silverbeer/janitor), configured for STK in
+`~/.config/janitor/config.toml` under the key **`stk`** (the config key, not the
+folder name `myrunstreak.run`). One command does all of it:
+
+1. Resets local to `supabase/migrations`
+2. Loads prod `public` data
+3. Runs this project's `post_restore_cmd` — `jt supabase sync-users stk`, then
+   `scripts/seed_local_users.py` to reseed coach/athlete fixtures
+
+So you end up with prod data, a working login, and the test users. **A loopback
+guard refuses to run unless the target is local**, so it cannot touch prod.
+
+### Connection gotcha
+
+Use the **pooler** URL for `STK_PROD_DATABASE_URL`, not the direct host.
+`db.<ref>.supabase.co` publishes only an AAAA record and is unreachable on an
+IPv4-only network (`pg_dump` → "No route to host"). Pooler username is
+`postgres.<ref>`, port `6543`.
+
+### REST fallback
+
+If the pooler rejects the tenant, `scripts/restore_prod_to_local.sh` does the
+same job over the Supabase REST API — plain HTTPS, works anywhere (SB-224). It
+excludes auth users, OAuth tokens and invites by design. **Prefer the `jt`
+command**; this exists only for when the Postgres path is blocked.
+
+### For agents
+
+Both paths read secrets from 1Password via `op`, which needs biometric auth and
+**will not work in a non-interactive agent shell**. Ask the user to run the
+restore, then work against local. Never point analysis scripts at prod
+credentials to get around it.
+
+Full guide: `~/gitrepos/janitor/docs/supabase-guide.md`.
+
 ## 🧪 Testing Requirements
 
 ### Coverage Requirements
