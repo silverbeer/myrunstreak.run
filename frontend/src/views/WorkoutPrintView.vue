@@ -26,7 +26,21 @@
     <div v-if="loading" class="max-w-3xl mx-auto p-8">
       <div class="bg-white rounded-xl h-96 animate-pulse" />
     </div>
-    <div v-else-if="error" class="max-w-3xl mx-auto p-8 text-sm text-red-700">{{ error }}</div>
+    <div v-else-if="error" class="max-w-xl mx-auto p-8">
+      <div class="bg-white rounded-xl p-6 text-center" data-testid="print-error">
+        <h2 class="text-lg font-semibold text-gray-900">Couldn't load this workout</h2>
+        <p class="mt-2 text-sm text-gray-600">{{ errorHelp }}</p>
+        <div class="mt-5 flex items-center justify-center gap-3">
+          <button type="button" class="btn-primary text-sm" data-testid="print-retry" @click="load">
+            Try again
+          </button>
+          <RouterLink :to="backTo" class="text-sm text-gray-500 hover:text-brand-600">
+            Back to workouts
+          </RouterLink>
+        </div>
+        <p class="mt-4 text-xs text-gray-400">{{ error }}</p>
+      </div>
+    </div>
 
     <div
       v-else-if="template"
@@ -136,6 +150,7 @@ const athleteName = ref('')
 const exercises = ref<Map<string, Exercise>>(new Map())
 const loading = ref(true)
 const error = ref<string | null>(null)
+const errorStatus = ref<number | null>(null)
 
 type FormatKey = 'full' | 'card'
 const format = ref<FormatKey>('full')
@@ -248,7 +263,28 @@ const timeRows = (item: TemplateItem): TimeRow[] => {
 
 const printSheet = () => window.print()
 
-onMounted(async () => {
+// Plain-English cause, chosen by status. The raw message stays on screen too,
+// small and grey — useful when debugging, not shouted at the athlete (SB-523).
+const errorHelp = computed(() => {
+  switch (errorStatus.value) {
+    case 401:
+    case 403:
+      return 'You may not have access to this workout, or your session expired. Try signing in again.'
+    case 404:
+      return "This workout doesn't exist any more — it may have been deleted."
+    case 422:
+      return 'Something in the request was wrong, so the server turned it down. This is a bug on our side, not something you did.'
+    default:
+      return errorStatus.value && errorStatus.value >= 500
+        ? 'The server had a problem. Trying again usually works.'
+        : 'Check your connection and try again.'
+  }
+})
+
+const load = async () => {
+  loading.value = true
+  error.value = null
+  errorStatus.value = null
   try {
     // Send X-Act-As-Athlete only when a coach is genuinely acting for someone
     // else. The backend types it as UUID | None and already treats an absent
@@ -268,10 +304,13 @@ onMounted(async () => {
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load workout'
+    errorStatus.value = (e as { status?: number })?.status ?? null
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(load)
 </script>
 
 <style scoped>
