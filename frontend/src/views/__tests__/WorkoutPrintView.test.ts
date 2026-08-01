@@ -15,6 +15,13 @@ vi.mock('vue-router', () => ({
   RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 }))
 
+// The athlete route has to resolve its own athletes-table row (SB-524).
+const myAthlete: { value: { id: string } | null } = { value: { id: 'my-athlete-row' } }
+const loadMyAthlete = vi.fn(async () => {})
+vi.mock('@/composables/useCoach', () => ({
+  useMyAthlete: () => ({ myAthlete, loadMyAthlete }),
+}))
+
 import WorkoutPrintView from '../WorkoutPrintView.vue'
 
 const template = {
@@ -42,6 +49,8 @@ const exercises = [
 
 beforeEach(() => {
   routeParams = { ...COACH_ROUTE }
+  myAthlete.value = { id: 'my-athlete-row' }
+  loadMyAthlete.mockClear()
   apiCallMock.mockReset()
   apiCallMock.mockImplementation((path: string) => {
     if (path.startsWith('/workouts/templates/')) return Promise.resolve(template)
@@ -99,12 +108,27 @@ describe('WorkoutPrintView on /my/workouts/print (SB-522)', () => {
   // /athletes/undefined. The backend types that header as UUID and rejects the
   // request before any handler runs.
 
-  it('sends no X-Act-As-Athlete header when printing your own workout', async () => {
+  it('scopes to the caller\'s own athlete row (SB-524)', async () => {
+    // Not "no header": a coach-assigned template belongs to the ATHLETE row, so
+    // an absent header queries `athlete_id IS NULL` and 404s. The scope id is
+    // the athletes-table id, which is not the user id and is not in the URL.
     routeParams = { ...OWN_ROUTE }
     mount(WorkoutPrintView)
     await flushPromises()
     const call = apiCallMock.mock.calls.find((c) => c[0] === '/workouts/templates/t1')
-    expect(call?.[1]?.headers).toBeUndefined()
+    expect(call?.[1]?.headers).toEqual({ 'X-Act-As-Athlete': 'my-athlete-row' })
+  })
+
+  it('says so when the account has no linked athlete row', async () => {
+    routeParams = { ...OWN_ROUTE }
+    myAthlete.value = null
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    expect(w.get('[data-testid="print-error"]').text()).toContain('No athlete profile')
+    // Nothing athlete-scoped should have been attempted.
+    expect(apiCallMock.mock.calls.some((c) => String(c[0]).includes('/workouts/templates/'))).toBe(
+      false,
+    )
   })
 
   it('never sends the string "undefined" anywhere', async () => {
