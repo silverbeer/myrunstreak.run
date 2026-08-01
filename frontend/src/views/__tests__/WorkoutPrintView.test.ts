@@ -5,9 +5,14 @@ const apiCallMock = vi.fn()
 vi.mock('@/config/api', () => ({
   apiCall: (...args: unknown[]) => apiCallMock(...args),
 }))
+// Mutable, because this view serves BOTH routes and only the coach one carries
+// an athleteId. Hardcoding the coach params is what let SB-522 ship unnoticed.
+const COACH_ROUTE = { athleteId: 'a1', templateId: 't1' }
+const OWN_ROUTE = { templateId: 't1' }
+let routeParams: Record<string, string> = { ...COACH_ROUTE }
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { athleteId: 'a1', templateId: 't1' } }),
-  RouterLink: { template: '<a><slot /></a>' },
+  useRoute: () => ({ params: routeParams }),
+  RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 }))
 
 import WorkoutPrintView from '../WorkoutPrintView.vue'
@@ -36,6 +41,7 @@ const exercises = [
 ]
 
 beforeEach(() => {
+  routeParams = { ...COACH_ROUTE }
   apiCallMock.mockReset()
   apiCallMock.mockImplementation((path: string) => {
     if (path.startsWith('/workouts/templates/')) return Promise.resolve(template)
@@ -77,5 +83,51 @@ describe('WorkoutPrintView (SB-231)', () => {
       '/workouts/templates/t1',
       expect.objectContaining({ headers: { 'X-Act-As-Athlete': 'a1' } }),
     )
+  })
+
+  it('links back to the athlete when a coach is printing', async () => {
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    expect(w.get('a').attributes('href')).toBe('/coach/a1')
+  })
+})
+
+describe('WorkoutPrintView on /my/workouts/print (SB-522)', () => {
+  // Gabe printing his own workout got a bare HTTP 422: the view did
+  // String(route.params.athleteId) on a route that has no athleteId, so the
+  // literal string "undefined" went out as X-Act-As-Athlete and as
+  // /athletes/undefined. The backend types that header as UUID and rejects the
+  // request before any handler runs.
+
+  it('sends no X-Act-As-Athlete header when printing your own workout', async () => {
+    routeParams = { ...OWN_ROUTE }
+    mount(WorkoutPrintView)
+    await flushPromises()
+    const call = apiCallMock.mock.calls.find((c) => c[0] === '/workouts/templates/t1')
+    expect(call?.[1]?.headers).toBeUndefined()
+  })
+
+  it('never sends the string "undefined" anywhere', async () => {
+    routeParams = { ...OWN_ROUTE }
+    mount(WorkoutPrintView)
+    await flushPromises()
+    const flat = JSON.stringify(apiCallMock.mock.calls)
+    expect(flat).not.toContain('undefined')
+  })
+
+  it('skips the athlete lookup and titles the sheet with the workout alone', async () => {
+    routeParams = { ...OWN_ROUTE }
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    expect(apiCallMock.mock.calls.some((c) => String(c[0]).startsWith('/athletes/'))).toBe(false)
+    // Title is the workout alone — no dangling "— " where a name would go.
+    expect(w.get('h1.sheet-title').text()).toBe('Track Thursday')
+  })
+
+  it('links back to /my/workouts, not a coach page', async () => {
+    routeParams = { ...OWN_ROUTE }
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    expect(w.get('a').attributes('href')).toBe('/my/workouts')
   })
 })

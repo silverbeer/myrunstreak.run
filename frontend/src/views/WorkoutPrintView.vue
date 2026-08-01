@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen bg-gray-100 print:bg-white">
     <div class="no-print sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-      <RouterLink :to="`/coach/${athleteId}`" class="text-sm text-gray-500 hover:text-brand-600">
+      <RouterLink :to="backTo" class="text-sm text-gray-500 hover:text-brand-600">
         ← Back
       </RouterLink>
       <div class="flex items-center gap-3">
@@ -33,7 +33,7 @@
       class="sheet mx-auto bg-white text-black"
       :class="format === 'card' ? 'sheet-card' : 'sheet-full'"
     >
-      <h1 class="sheet-title">{{ athleteName }} — {{ template.name }}</h1>
+      <h1 class="sheet-title">{{ athleteName ? `${athleteName} — ${template.name}` : template.name }}</h1>
 
       <div class="sheet-meta">
         <span>Date: <span class="blank w-32" /></span>
@@ -121,8 +121,15 @@ import { groupOptionItems } from '@/utils/optionGroups'
 import { fmtRange, hrZoneText, restText } from '@/utils/targets'
 
 const route = useRoute()
-const athleteId = String(route.params.athleteId)
 const templateId = String(route.params.templateId)
+
+// This view serves two routes: /coach/:athleteId/print/:templateId and
+// /my/workouts/print/:templateId. Only the coach one carries an athleteId, so
+// it must stay nullable — String(undefined) yields the string "undefined",
+// which the API then rejects as an invalid UUID with a bare 422 (SB-522).
+const athleteId = route.params.athleteId ? String(route.params.athleteId) : null
+const actingAsAthlete = athleteId !== null
+const backTo = actingAsAthlete ? `/coach/${athleteId}` : '/my/workouts'
 
 const template = ref<WorkoutTemplate | null>(null)
 const athleteName = ref('')
@@ -243,15 +250,22 @@ const printSheet = () => window.print()
 
 onMounted(async () => {
   try {
-    const actAs = { 'X-Act-As-Athlete': athleteId }
-    const [tpl, athlete, catalog] = await Promise.all([
-      apiCall<WorkoutTemplate>(`/workouts/templates/${templateId}`, { headers: actAs }),
-      apiCall<Athlete>(`/athletes/${athleteId}`),
+    // Send X-Act-As-Athlete only when a coach is genuinely acting for someone
+    // else. The backend types it as UUID | None and already treats an absent
+    // header as "me", so omitting it is correct — sending "undefined" is a 422.
+    const headers = actingAsAthlete ? { 'X-Act-As-Athlete': athleteId as string } : undefined
+    const [tpl, catalog] = await Promise.all([
+      apiCall<WorkoutTemplate>(`/workouts/templates/${templateId}`, { headers }),
       apiCall<Exercise[]>('/workouts/exercises'),
     ])
     template.value = tpl
-    athleteName.value = athlete.display_name
     exercises.value = new Map(catalog.map((e) => [e.key, e]))
+    // Only a coach needs the athlete's name in the heading; printing your own
+    // sheet does not, so skip the lookup rather than fetch /athletes/me.
+    if (actingAsAthlete) {
+      const athlete = await apiCall<Athlete>(`/athletes/${athleteId}`)
+      athleteName.value = athlete.display_name
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load workout'
   } finally {
