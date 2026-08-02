@@ -7,11 +7,30 @@
           Workouts your coach has assigned, plus any you build yourself.
         </p>
       </div>
+      <!-- "+ New workout" used to be the loudest control here and it built a
+           PLAN, which read as "do a workout" and was the reported confusion
+           (SB-530). Building is secondary; doing is the point. -->
       <RouterLink
         to="/my/workouts/build"
-        class="shrink-0 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+        class="shrink-0 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
       >
-        + New workout
+        + Build a workout
+      </RouterLink>
+    </div>
+
+    <!-- Nothing is scheduled yet — `scheduled_for` is unset on every template —
+         so logging what you just did IS the primary action (SB-531). When
+         scheduling lands this becomes the "due today" card and the ad-hoc link
+         drops beneath it. -->
+    <div class="mb-5 rounded-2xl border border-brand-200 bg-brand-50 p-5 text-center">
+      <p class="text-sm font-semibold text-brand-800">Did a workout on your own?</p>
+      <p class="mt-1 text-sm text-brand-700">Log it and get the credit — no plan needed.</p>
+      <RouterLink
+        to="/my/workouts/log"
+        class="mt-3 inline-block rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+        data-testid="log-adhoc"
+      >
+        + Log a workout
       </RouterLink>
     </div>
 

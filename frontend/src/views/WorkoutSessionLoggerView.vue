@@ -4,9 +4,15 @@
       ← Back
     </RouterLink>
 
-    <h1 class="text-2xl font-bold text-gray-900 mt-4">Log workout</h1>
+    <!-- No plan behind it: he is not logging *against* anything (SB-531). -->
+    <h1 class="text-2xl font-bold text-gray-900 mt-4">
+      {{ templateId ? 'Log workout' : 'New workout' }}
+    </h1>
     <p v-if="templateName" class="text-sm text-gray-500 mt-1" data-testid="from-template">
       From <span class="font-medium text-gray-700">{{ templateName }}</span>
+    </p>
+    <p v-else class="text-sm text-gray-500 mt-1">
+      Add what you did — it counts the same as a workout from your coach.
     </p>
 
     <!-- Session meta -->
@@ -174,8 +180,43 @@
       />
     </div>
 
+    <!-- Kept a workout he invented (SB-531) -->
+    <div
+      v-if="savedAdhoc"
+      class="mt-6 rounded-2xl border border-brand-200 bg-brand-50 p-5"
+      data-testid="keep-offer"
+    >
+      <p class="text-base font-semibold text-brand-900">Logged — nice one.</p>
+      <p class="mt-1 text-sm text-brand-800">
+        Do this one again? Save it to your workouts and it&rsquo;s one tap next time — and
+        printable.
+      </p>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="btn-primary text-sm"
+          :disabled="keeping"
+          data-testid="keep-yes"
+          @click="keepAsPlan"
+        >
+          {{ keeping ? 'Saving…' : 'Save to my workouts' }}
+        </button>
+        <button
+          type="button"
+          class="rounded-lg border border-brand-200 px-3 py-2 text-sm font-medium text-brand-700"
+          data-testid="keep-no"
+          @click="router.push(homePath)"
+        >
+          No thanks
+        </button>
+      </div>
+      <p v-if="keepError" class="mt-2 text-sm text-red-700">
+        Couldn&rsquo;t save it as a workout — your session is logged either way.
+      </p>
+    </div>
+
     <!-- Save -->
-    <div class="mt-6">
+    <div v-else class="mt-6">
       <div class="flex items-center gap-3">
         <button
           type="button"
@@ -217,7 +258,7 @@ import { Info } from 'lucide-vue-next'
 import ExercisePicker from '@/components/ExercisePicker.vue'
 import ExerciseDescription from '@/components/ExerciseDescription.vue'
 import { useExercises } from '@/composables/useExercises'
-import { getTemplate } from '@/composables/useWorkoutTemplates'
+import { createTemplate, getTemplate } from '@/composables/useWorkoutTemplates'
 import { createSession } from '@/composables/useWorkoutSessions'
 import {
   FELT_OPTIONS,
@@ -226,7 +267,7 @@ import {
   templateToRows,
   todayISO,
 } from '@/utils/sessionPayload'
-import type { Exercise, LoggerRow, WorkoutType } from '@/types/workout'
+import type { Exercise, LoggerRow, WorkoutTemplateInput, WorkoutType } from '@/types/workout'
 import { useActingAthlete } from '@/composables/useActingAthlete'
 import { explainStatus, statusOf } from '@/utils/apiErrors'
 
@@ -248,6 +289,9 @@ const picking = ref(false)
 const saving = ref(false)
 const error = ref<string | null>(null)
 const errorStatus = ref<number | null>(null)
+const savedAdhoc = ref(false)
+const keeping = ref(false)
+const keepError = ref(false)
 
 let nextUid = 1
 
@@ -348,6 +392,13 @@ const save = async (): Promise<void> => {
   errorStatus.value = null
   try {
     await createSession(payload.value, athleteId.value!)
+    // An ad-hoc session is the one moment he might want to keep the workout:
+    // he just did it and liked it. Nobody opens an empty builder cold, which is
+    // why every plan he has is his coach's (SB-531).
+    if (!templateId) {
+      savedAdhoc.value = true
+      return
+    }
     router.push(homePath.value)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save session'
@@ -355,6 +406,42 @@ const save = async (): Promise<void> => {
   } finally {
     saving.value = false
   }
+}
+
+/** Turn what he just logged into a reusable workout (SB-531). */
+const keepAsPlan = async (): Promise<void> => {
+  keeping.value = true
+  keepError.value = false
+  try {
+    await createTemplate(
+      {
+        name: sessionName(),
+        type: 'circuit',
+        rounds: 1,
+        items: rows.value.map((r, i) => ({
+          exercise_key: r.exercise.key,
+          section: 'main',
+          position: i,
+        })),
+      } as WorkoutTemplateInput,
+      athleteId.value!,
+    )
+    router.push(homePath.value)
+  } catch {
+    // The session is already saved; failing to keep it is not worth losing that.
+    keepError.value = true
+  } finally {
+    keeping.value = false
+  }
+}
+
+/** "Sunday morning" — a name he never had to stop and type. */
+const sessionName = (): string => {
+  const d = new Date(`${sessionDate.value}T12:00:00`)
+  const day = d.toLocaleDateString(undefined, { weekday: 'long' })
+  const hour = new Date().getHours()
+  const part = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
+  return `${day} ${part}`
 }
 
 const prefillFrom = (id: string): Promise<void> =>

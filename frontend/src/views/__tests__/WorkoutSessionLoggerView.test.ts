@@ -4,6 +4,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 const h = vi.hoisted(() => ({
   createSession: vi.fn(),
   getTemplate: vi.fn(),
+  createTemplate: vi.fn(),
   push: vi.fn(),
   replace: vi.fn(),
   isCoach: { value: true },
@@ -46,6 +47,7 @@ vi.mock('@/composables/useCoach', () => ({
 }))
 vi.mock('@/composables/useWorkoutTemplates', () => ({
   getTemplate: (...a: unknown[]) => h.getTemplate(...a),
+  createTemplate: (...a: unknown[]) => h.createTemplate(...a),
 }))
 vi.mock('@/composables/useWorkoutSessions', () => ({
   createSession: (...a: unknown[]) => h.createSession(...a),
@@ -133,6 +135,10 @@ describe('WorkoutSessionLoggerView', () => {
     const [payload, athleteId] = h.createSession.mock.calls[0]
     expect(athleteId).toBe('ath1')
     expect(payload.sets[0]).toMatchObject({ exercise_key: 'farmers_carry', load_kg: 4.5 })
+    // No template behind this one, so it offers to keep it rather than leaving
+    // straight away (SB-531). Declining goes home as before.
+    expect(w.find('[data-testid="keep-offer"]').exists()).toBe(true)
+    await w.find('[data-testid="keep-no"]').trigger('click')
     expect(h.push).toHaveBeenCalledWith('/coach/ath1')
   })
 
@@ -259,6 +265,86 @@ describe('WorkoutSessionLoggerView — save failure and dead ends (SB-501)', () 
     await flushPromises()
 
     expect(w.find('[data-testid="save-error"]').exists()).toBe(false)
-    expect(h.push).toHaveBeenCalled()
+    // Ad-hoc: the keep-offer stands in for navigation (SB-531).
+    expect(w.find('[data-testid="keep-offer"]').exists()).toBe(true)
+  })
+})
+
+describe('WorkoutSessionLoggerView — ad-hoc workout (SB-531)', () => {
+  // Gabe wakes up, does four exercises, wants credit. No plan involved.
+  const logSomething = async () => {
+    h.createSession.mockResolvedValue({ id: 's9' })
+    const w = await mountLogger()
+    await w.find('[data-testid="add-exercise"]').trigger('click')
+    await w.find('[data-testid="ex-pushups"]').trigger('click')
+    await w.find('[data-testid="reps-pushups-0"]').setValue(20)
+    await w.find('[data-testid="save"]').trigger('click')
+    await flushPromises()
+    return w
+  }
+
+  it('titles it a new workout, not a log against something', async () => {
+    const w = await mountLogger()
+    expect(w.text()).toContain('New workout')
+    expect(w.find('[data-testid="from-template"]').exists()).toBe(false)
+  })
+
+  it('saves with no template behind it', async () => {
+    await logSomething()
+    const [payload] = h.createSession.mock.calls[0]
+    expect(payload.template_id ?? null).toBeNull()
+    expect(payload.sets).toHaveLength(1)
+  })
+
+  it('offers to keep it rather than requiring a name up front', async () => {
+    // Asking him to name it before he gets the tick is friction in the wrong
+    // place — credit first, the offer second.
+    const w = await logSomething()
+    const offer = w.get('[data-testid="keep-offer"]')
+    expect(offer.text()).toContain('Logged')
+    expect(offer.text()).toContain('Do this one again?')
+  })
+
+  it('keeping it creates a reusable workout named after the day', async () => {
+    h.createTemplate.mockResolvedValue({ id: 't9' })
+    const w = await logSomething()
+    await w.get('[data-testid="keep-yes"]').trigger('click')
+    await flushPromises()
+
+    const [payload, athleteId] = h.createTemplate.mock.calls[0]
+    expect(athleteId).toBe('ath1')
+    expect(payload.name).toMatch(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) (morning|afternoon|evening)$/)
+    expect(payload.items[0]).toMatchObject({ exercise_key: 'pushups', position: 0 })
+    expect(h.push).toHaveBeenCalledWith('/coach/ath1')
+  })
+
+  it('declining just goes home — the session is already saved', async () => {
+    const w = await logSomething()
+    await w.get('[data-testid="keep-no"]').trigger('click')
+    expect(h.createTemplate).not.toHaveBeenCalled()
+    expect(h.push).toHaveBeenCalledWith('/coach/ath1')
+  })
+
+  it('a failed keep does not imply the session was lost', async () => {
+    h.createTemplate.mockRejectedValueOnce(new Error('nope'))
+    const w = await logSomething()
+    await w.get('[data-testid="keep-yes"]').trigger('click')
+    await flushPromises()
+    expect(w.get('[data-testid="keep-offer"]').text()).toContain('your session is logged either way')
+  })
+
+  it('a workout from a template still leaves straight away', async () => {
+    // The existing flow must not change.
+    h.params = { athleteId: 'ath1', templateId: 't1' }
+    h.getTemplate.mockResolvedValue({ id: 't1', name: 'Monday At-Home', rounds: 1, items: [] })
+    h.createSession.mockResolvedValue({ id: 's10' })
+    const w = await mountLogger()
+    await w.find('[data-testid="add-exercise"]').trigger('click')
+    await w.find('[data-testid="ex-pushups"]').trigger('click')
+    await w.find('[data-testid="reps-pushups-0"]').setValue(15)
+    await w.find('[data-testid="save"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="keep-offer"]').exists()).toBe(false)
+    expect(h.push).toHaveBeenCalledWith('/coach/ath1')
   })
 })
