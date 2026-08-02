@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from src.shared.supabase_ops.workout_repository import (
+    WorkoutScheduleRepository,
     WorkoutSessionsRepository,
     WorkoutTemplatesRepository,
 )
@@ -274,6 +275,45 @@ def test_session_list_reports_zero_for_a_session_with_no_sets():
 
     assert row["set_count"] == 0
     assert row["exercise_count"] == 0
+
+
+def test_schedule_row_always_names_its_author():
+    """Who scheduled it is the reason this is a table and not a date column, so
+    `created_by` is written on a self-owned row too (SB-534) — `_owner_fields`
+    only fills it for athlete-scoped ones."""
+    supa = _FakeSupabase()
+    user = uuid4()
+    row = WorkoutScheduleRepository(supa).create(
+        user, {"template_id": str(uuid4()), "scheduled_for": "2026-08-06"}
+    )
+    assert row["created_by"] == str(user)
+    assert row["user_id"] == str(user)
+
+
+def test_schedule_records_the_acting_coach_not_the_athlete():
+    """A coach scheduling for their athlete: the row is the athlete's, the
+    authorship is the coach's — which is what "From Matthew" reads from."""
+    supa = _FakeSupabase()
+    coach, athlete = uuid4(), uuid4()
+    row = WorkoutScheduleRepository(supa).create(
+        coach, {"template_id": str(uuid4()), "scheduled_for": "2026-08-06"}, athlete_id=athlete
+    )
+    assert row["created_by"] == str(coach)
+    assert row["athlete_id"] == str(athlete)
+
+
+def test_the_same_plan_can_sit_on_two_days_at_once():
+    """The thing `workout_templates.scheduled_for` could not do: a plan is
+    reused, an occasion happens once (SB-534)."""
+    supa = _FakeSupabase()
+    user = uuid4()
+    template = str(uuid4())
+    repo = WorkoutScheduleRepository(supa)
+    repo.create(user, {"template_id": template, "scheduled_for": "2026-08-06"})
+    repo.create(user, {"template_id": template, "scheduled_for": "2026-08-13"})
+
+    dates = [r["scheduled_for"] for r in repo.list(user)]
+    assert dates == ["2026-08-06", "2026-08-13"]
 
 
 def test_session_create_round_trips_with_sets():

@@ -20,6 +20,8 @@ from src.shared.models.workout import (
     Exercise,
     ExerciseCreate,
     ExerciseUpdate,
+    WorkoutSchedule,
+    WorkoutScheduleCreate,
     WorkoutSession,
     WorkoutSessionCreate,
     WorkoutTemplate,
@@ -28,6 +30,7 @@ from src.shared.models.workout import (
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import (
     ExercisesRepository,
+    WorkoutScheduleRepository,
     WorkoutSessionsRepository,
     WorkoutTemplatesRepository,
 )
@@ -290,6 +293,76 @@ async def delete_template(
 
     if not repo.delete(user_id, template_id, athlete_id=athlete_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found")
+    await invalidate_user(user_id)
+
+
+# ---------------------------------------------------------------- schedule
+
+
+@router.post("/schedule", response_model=WorkoutSchedule, status_code=status.HTTP_201_CREATED)
+async def create_schedule(
+    body: WorkoutScheduleCreate,
+    user_id: UUID = Depends(authenticate_request),
+    athlete_id: UUID | None = Depends(acting_athlete),
+) -> WorkoutSchedule:
+    """Put a plan on a day (SB-534).
+
+    Either side may: the coach assigning Thursday, or the athlete planning their
+    own week. Both are authorised identically — ``acting_athlete`` already
+    accepts the coach and the linked athlete — and the row records which of them
+    it was, because the screen has to say.
+    """
+    supabase = get_supabase_client()
+    template = WorkoutTemplatesRepository(supabase).get(
+        user_id, body.template_id, athlete_id=athlete_id
+    )
+    # Scheduling something you cannot see would leak its existence, and a
+    # dangling schedule row renders as a blank card.
+    if template is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found")
+
+    row = WorkoutScheduleRepository(supabase).create(
+        user_id, body.model_dump(mode="json", exclude_none=True), athlete_id=athlete_id
+    )
+    await invalidate_user(user_id)
+    return WorkoutSchedule(**row)
+
+
+@router.get("/schedule", response_model=list[WorkoutSchedule])
+def list_schedule(
+    user_id: UUID = Depends(authenticate_request),
+    athlete_id: UUID | None = Depends(acting_athlete),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+) -> list[WorkoutSchedule]:
+    """Planned occasions in date order. Callers filter the window they want —
+    Coming up asks from today, a calendar would ask for a month."""
+    rows = WorkoutScheduleRepository(get_supabase_client()).list(
+        user_id, date_from=date_from, date_to=date_to, athlete_id=athlete_id
+    )
+    return [WorkoutSchedule(**r) for r in rows]
+
+
+@router.delete("/schedule/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_schedule(
+    schedule_id: UUID,
+    user_id: UUID = Depends(authenticate_request),
+    athlete_id: UUID | None = Depends(acting_athlete),
+) -> None:
+    """Unschedule an occasion.
+
+    The same split as everything else athlete-scoped (SB-486): a coach may
+    remove anything on their athlete's calendar; the athlete may remove what
+    they put there themselves, and not the workout their coach expects of them.
+    """
+    repo = WorkoutScheduleRepository(get_supabase_client())
+    existing = repo.get(user_id, schedule_id, athlete_id=athlete_id)
+    if existing is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Scheduled workout not found")
+    _require_may_modify(user_id, athlete_id, existing, "scheduled workout")
+
+    if not repo.delete(user_id, schedule_id, athlete_id=athlete_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Scheduled workout not found")
     await invalidate_user(user_id)
 
 

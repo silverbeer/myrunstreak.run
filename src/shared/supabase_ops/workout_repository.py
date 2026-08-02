@@ -380,6 +380,65 @@ class WorkoutTemplatesRepository:
         return bool(cast(list[dict[str, Any]], query.execute().data))
 
 
+class WorkoutScheduleRepository:
+    """Planned occasions: a template put on a date, by a coach or the athlete.
+
+    One row per occasion rather than a date on the template (SB-534), so the
+    same plan can sit on two days at once and every row remembers who put it
+    there. `created_by` is written by ``_owner_fields`` for athlete-scoped rows
+    and set explicitly for self-owned ones, because "who scheduled this" has to
+    be answerable either way.
+    """
+
+    def __init__(self, supabase: Client):
+        self.supabase = supabase
+
+    def create(
+        self, user_id: UUID, payload: dict[str, Any], athlete_id: UUID | None = None
+    ) -> dict[str, Any]:
+        owner = _owner_fields(user_id, athlete_id)
+        # Self-owned rows get no created_by from _owner_fields (nothing else
+        # needs it), but the schedule always has to name its author.
+        owner.setdefault("created_by", str(user_id))
+        row = self.supabase.table("workout_schedule").insert({**payload, **owner}).execute()
+        return cast(list[dict[str, Any]], row.data)[0]
+
+    def list(
+        self,
+        user_id: UUID,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        athlete_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        """Occasions in date order — soonest first, which is how they are read."""
+        query = _scope(self.supabase.table("workout_schedule").select("*"), user_id, athlete_id)
+        if date_from is not None:
+            query = query.gte("scheduled_for", date_from.isoformat())
+        if date_to is not None:
+            query = query.lte("scheduled_for", date_to.isoformat())
+        result = query.order("scheduled_for").execute()
+        return cast(list[dict[str, Any]], result.data)
+
+    def get(
+        self, user_id: UUID, schedule_id: UUID, athlete_id: UUID | None = None
+    ) -> dict[str, Any] | None:
+        query = _scope(
+            self.supabase.table("workout_schedule").select("*").eq("id", str(schedule_id)),
+            user_id,
+            athlete_id,
+        )
+        rows = cast(list[dict[str, Any]], query.execute().data)
+        return rows[0] if rows else None
+
+    def delete(self, user_id: UUID, schedule_id: UUID, athlete_id: UUID | None = None) -> bool:
+        query = _scope(
+            self.supabase.table("workout_schedule").delete().eq("id", str(schedule_id)),
+            user_id,
+            athlete_id,
+        )
+        return bool(cast(list[dict[str, Any]], query.execute().data))
+
+
 class WorkoutSessionsRepository:
     """Per-user logged sessions + their exercise sets."""
 

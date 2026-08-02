@@ -48,17 +48,31 @@ const daysFromNow = (n: number): string => {
 }
 
 /**
- * Serve the three calls the athlete's home makes. Everything defaults to empty,
- * so each test names only the data it is about.
+ * Serve the calls the athlete's home makes. Everything defaults to empty, so
+ * each test names only the data it is about.
  */
-const serve = (opts: { templates?: unknown[]; sessions?: unknown[] } = {}) => {
+const serve = (
+  opts: { templates?: unknown[]; sessions?: unknown[]; schedule?: unknown[] } = {},
+) => {
   apiCallMock.mockImplementation((path: string) => {
     if (path === '/me/workouts') return Promise.resolve(opts.templates ?? [])
     if (path === '/workouts/exercises') return Promise.resolve([])
     if (path.startsWith('/workouts/sessions')) return Promise.resolve(opts.sessions ?? [])
+    if (path.startsWith('/workouts/schedule')) return Promise.resolve(opts.schedule ?? [])
     return Promise.reject(new Error(`unexpected: ${path}`))
   })
 }
+
+/** A planned occasion, authored by the coach unless told otherwise (SB-534). */
+const occasion = (o: Partial<Record<string, unknown>> = {}) => ({
+  id: 'sch1',
+  template_id: 't1',
+  athlete_id: 'ath1',
+  created_by: 'coach',
+  scheduled_for: todayISO(),
+  notes: null,
+  ...o,
+})
 
 beforeEach(() => {
   apiCallMock.mockReset()
@@ -159,7 +173,7 @@ describe('MyWorkoutsView — Training | Plans tabs (SB-530)', () => {
   })
 
   it('does not send you to the plans when one is already due', async () => {
-    serve({ templates: [{ ...template, scheduled_for: todayISO() }] })
+    serve({ templates: [template], schedule: [occasion()] })
     const w = mount(MyWorkoutsView)
     await flushPromises()
     expect(w.find('[data-testid="go-to-plans"]').exists()).toBe(false)
@@ -262,15 +276,12 @@ describe('MyWorkoutsView — Completed (SB-530)', () => {
   })
 })
 
-describe('MyWorkoutsView — Coming up (SB-530)', () => {
+describe('MyWorkoutsView — Coming up (SB-530, SB-534)', () => {
   beforeEach(() => {
     myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
   })
 
-  it('is absent entirely while nothing carries a scheduled date', async () => {
-    // `scheduled_for` is unset on every template and what should schedule one is
-    // an open product decision — so the section renders only when the data
-    // exists, and the screen is honest in the meantime.
+  it('is absent entirely while nothing is scheduled', async () => {
     serve({ templates: [template] })
     const w = mount(MyWorkoutsView)
     await flushPromises()
@@ -280,9 +291,10 @@ describe('MyWorkoutsView — Coming up (SB-530)', () => {
 
   it('promotes the workout due today to a labelled Start card', async () => {
     serve({
-      templates: [
-        { ...template, scheduled_for: todayISO() },
-        { ...template, id: 't2', name: 'Track Thursday', scheduled_for: daysFromNow(3) },
+      templates: [template, { ...template, id: 't2', name: 'Track Thursday' }],
+      schedule: [
+        occasion(),
+        occasion({ id: 'sch2', template_id: 't2', scheduled_for: daysFromNow(3) }),
       ],
     })
     const w = mount(MyWorkoutsView)
@@ -299,7 +311,7 @@ describe('MyWorkoutsView — Coming up (SB-530)', () => {
   })
 
   it('drops the ad-hoc entry to a quiet line when something is due', async () => {
-    serve({ templates: [{ ...template, scheduled_for: todayISO() }] })
+    serve({ templates: [template], schedule: [occasion()] })
     const w = mount(MyWorkoutsView)
     await flushPromises()
     const adhoc = w.get('[data-testid="log-adhoc"]')
@@ -308,7 +320,10 @@ describe('MyWorkoutsView — Coming up (SB-530)', () => {
   })
 
   it('names what is next when nothing is due today', async () => {
-    serve({ templates: [{ ...template, name: 'Track Thursday', scheduled_for: daysFromNow(3) }] })
+    serve({
+      templates: [{ ...template, name: 'Track Thursday' }],
+      schedule: [occasion({ scheduled_for: daysFromNow(3) })],
+    })
     const w = mount(MyWorkoutsView)
     await flushPromises()
     expect(w.text()).toContain('Nothing scheduled today')
@@ -317,12 +332,104 @@ describe('MyWorkoutsView — Coming up (SB-530)', () => {
     expect(w.get('[data-testid="log-adhoc"]').text()).toContain('+ Log a workout')
   })
 
-  it('ignores a date that has already passed', async () => {
-    serve({ templates: [{ ...template, scheduled_for: daysFromNow(-2) }] })
+  it('ignores a day that has already passed', async () => {
+    serve({ templates: [template], schedule: [occasion({ scheduled_for: daysFromNow(-2) })] })
     const w = mount(MyWorkoutsView)
     await flushPromises()
     expect(w.find('[data-testid="start-card"]').exists()).toBe(false)
     expect(w.find('[data-testid="coming-up"]').exists()).toBe(false)
+  })
+
+  it('asks only for occasions from today forward', async () => {
+    serve({ templates: [template] })
+    mount(MyWorkoutsView)
+    await flushPromises()
+    const call = apiCallMock.mock.calls.find((c) => String(c[0]).startsWith('/workouts/schedule'))
+    expect(String(call![0])).toContain(`date_from=${todayISO()}`)
+    expect((call![1] as { headers: Record<string, string> }).headers).toEqual({
+      'X-Act-As-Athlete': 'ath1',
+    })
+  })
+
+  it('drops an occasion whose plan has since been deleted', async () => {
+    // Otherwise it renders as a row with no name on it.
+    serve({
+      templates: [template],
+      schedule: [
+        occasion({ id: 'gone', template_id: 'deleted', scheduled_for: daysFromNow(2) }),
+        occasion({ id: 'ok', template_id: 't1', scheduled_for: daysFromNow(3) }),
+      ],
+    })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    const rows = w.findAll('[data-testid="coming-up-row"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].text()).toContain('Monday At-Home')
+  })
+})
+
+describe('MyWorkoutsView — who scheduled it (SB-534)', () => {
+  beforeEach(() => {
+    myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
+  })
+
+  it('says the coach put it there', async () => {
+    serve({ templates: [template], schedule: [occasion({ created_by: 'coach' })] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    // A workout Matthew expects of him reads differently from one he planned.
+    expect(w.get('[data-testid="scheduled-by"]').text()).toBe('From Matthew')
+  })
+
+  it('says when the athlete put it there themselves', async () => {
+    serve({ templates: [template], schedule: [occasion({ created_by: 'u1' })] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    expect(w.get('[data-testid="scheduled-by"]').text()).toBe('Mine')
+  })
+
+  it('offers to unschedule only what the athlete scheduled', async () => {
+    serve({
+      templates: [template, { ...template, id: 't2', name: 'Track Thursday' }],
+      schedule: [
+        occasion({ id: 'sch1', created_by: 'coach', scheduled_for: daysFromNow(2) }),
+        occasion({ id: 'sch2', template_id: 't2', created_by: 'u1', scheduled_for: daysFromNow(3) }),
+      ],
+    })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    const rows = w.findAll('[data-testid="coming-up-row"]')
+    // Matthew's Thursday is not Gabe's to remove — the API says so too.
+    expect(rows[0].find('[data-testid="unschedule"]').exists()).toBe(false)
+    expect(rows[1].find('[data-testid="unschedule"]').exists()).toBe(true)
+
+    await rows[1].get('[data-testid="unschedule"]').trigger('click')
+    await flushPromises()
+    const del = apiCallMock.mock.calls.find((c) => c[1] && (c[1] as { method?: string }).method === 'DELETE')
+    expect(String(del![0])).toBe('/workouts/schedule/sch2')
+  })
+
+  it('lets the athlete put a plan on a day from the Plans tab', async () => {
+    serve({ templates: [template] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+
+    await w.get('[data-testid="schedule-open"]').trigger('click')
+    await w.get('[data-testid="schedule-date"]').setValue(daysFromNow(2))
+    await w.get('[data-testid="schedule-save"]').trigger('click')
+    await flushPromises()
+
+    const post = apiCallMock.mock.calls.find((c) => c[1] && (c[1] as { method?: string }).method === 'POST')
+    expect(String(post![0])).toBe('/workouts/schedule')
+    expect(JSON.parse((post![1] as { body: string }).body)).toEqual({
+      template_id: 't1',
+      scheduled_for: daysFromNow(2),
+    })
+    // Scheduling for yourself goes through the same act-as header the coach uses.
+    expect((post![1] as { headers: Record<string, string> }).headers).toEqual({
+      'X-Act-As-Athlete': 'ath1',
+    })
   })
 })
 

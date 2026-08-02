@@ -170,6 +170,28 @@ export interface WorkoutTemplate {
   blocks?: TemplateBlock[]
 }
 
+/**
+ * One planned occasion (SB-534): a plan put on a date, by someone.
+ *
+ * Separate from the template because a plan is reused and an occasion happens
+ * once — and because `created_by` is what lets the screen say who scheduled it.
+ */
+export interface WorkoutScheduleEntry {
+  id: string
+  template_id: string
+  athlete_id: string | null
+  created_by: string | null
+  scheduled_for: string
+  notes: string | null
+  created_at?: string | null
+}
+
+export interface WorkoutScheduleInput {
+  template_id: string
+  scheduled_for: string
+  notes?: string | null
+}
+
 /** One row while building — loads are entered in lb (US coach), stored as kg. */
 export interface BuilderItem {
   uid: number

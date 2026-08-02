@@ -313,6 +313,34 @@ class WorkoutTemplate(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# Schedule (a plan put on a day, by someone)
+# --------------------------------------------------------------------------- #
+class WorkoutScheduleCreate(BaseModel):
+    """Input for putting a template on a date (SB-534)."""
+
+    template_id: UUID
+    scheduled_for: date
+    notes: str | None = None
+
+
+class WorkoutSchedule(BaseModel):
+    """One planned occasion.
+
+    `created_by` is the point of the row: either a coach or the athlete may
+    schedule, and the screen has to say which without being told.
+    """
+
+    id: UUID
+    user_id: UUID
+    athlete_id: UUID | None = None
+    created_by: UUID | None = None
+    template_id: UUID
+    scheduled_for: date
+    notes: str | None = None
+    created_at: datetime | None = None
+
+
+# --------------------------------------------------------------------------- #
 # Sessions + sets (the actual performance)
 # --------------------------------------------------------------------------- #
 class ExerciseSetCreate(BaseModel):
