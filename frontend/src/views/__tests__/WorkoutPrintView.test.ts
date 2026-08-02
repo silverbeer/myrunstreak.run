@@ -222,3 +222,35 @@ describe('WorkoutPrintView failure state (SB-523)', () => {
     expect(w.get('[data-testid="print-error"]').text()).toContain('Back to workouts')
   })
 })
+
+describe('WorkoutPrintView rounds (SB-529)', () => {
+  // `rounds` was only ever round-tripped as an integer — created, read back,
+  // asserted equal. Nothing checked that a multi-round circuit is COMMUNICATED,
+  // so if every consumer ignored the field the suite would still be green.
+  // These fail if it stops being honoured.
+
+  const withRounds = (rounds: number) => {
+    apiCallMock.mockReset()
+    apiCallMock.mockImplementation((path: string) => {
+      if (path.startsWith('/workouts/templates/')) return Promise.resolve({ ...template, rounds })
+      if (path.startsWith('/athletes/')) return Promise.resolve({ id: 'a1', display_name: 'Gabe' })
+      if (path === '/workouts/exercises') return Promise.resolve(exercises)
+      return Promise.reject(new Error(`unexpected: ${path}`))
+    })
+  }
+
+  it('tells the athlete how many rounds to complete', async () => {
+    withRounds(3)
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    expect(w.text()).toContain('Complete 3 rounds')
+  })
+
+  it('stays quiet for a single-round workout', async () => {
+    withRounds(1)
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    expect(w.text()).not.toContain('Complete 1 rounds')
+    expect(w.text()).not.toContain('rounds')
+  })
+})
