@@ -20,6 +20,9 @@ from src.shared.models.workout import (
     Exercise,
     ExerciseCreate,
     ExerciseUpdate,
+    WorkoutRecurrence,
+    WorkoutRecurrenceCreate,
+    WorkoutRecurrenceUpdate,
     WorkoutSchedule,
     WorkoutScheduleCreate,
     WorkoutSession,
@@ -31,6 +34,7 @@ from src.shared.models.workout import (
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import (
     ExercisesRepository,
+    WorkoutRecurrenceRepository,
     WorkoutScheduleRepository,
     WorkoutSessionsRepository,
     WorkoutTemplatesRepository,
@@ -337,8 +341,17 @@ def list_schedule(
     date_to: date | None = Query(default=None),
 ) -> list[WorkoutSchedule]:
     """Planned occasions in date order. Callers filter the window they want —
-    Coming up asks from today, a calendar would ask for a month."""
-    rows = WorkoutScheduleRepository(get_supabase_client()).list(
+    Coming up asks from today, a calendar would ask for a month.
+
+    Any weekly pattern that owes days produces them first (SB-535), so Coming up
+    is populated by reading it rather than by a cron job somebody has to
+    remember exists. The watermark makes a second read the same day free.
+    """
+    supabase = get_supabase_client()
+    WorkoutRecurrenceRepository(supabase).materialise(
+        user_id, today=date.today(), athlete_id=athlete_id
+    )
+    rows = WorkoutScheduleRepository(supabase).list(
         user_id, date_from=date_from, date_to=date_to, athlete_id=athlete_id
     )
     return [WorkoutSchedule(**r) for r in rows]
@@ -364,6 +377,102 @@ async def delete_schedule(
 
     if not repo.delete(user_id, schedule_id, athlete_id=athlete_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Scheduled workout not found")
+    await invalidate_user(user_id)
+
+
+# ---------------------------------------------------------------- recurrence
+
+
+@router.post("/recurrence", response_model=WorkoutRecurrence, status_code=status.HTTP_201_CREATED)
+async def create_recurrence(
+    body: WorkoutRecurrenceCreate,
+    user_id: UUID = Depends(authenticate_request),
+    athlete_id: UUID | None = Depends(acting_athlete),
+) -> WorkoutRecurrence:
+    """Repeat a workout weekly (SB-535).
+
+    Either side, like one-off scheduling: Matthew sets the in-season week, and
+    the athlete can repeat something of their own. The rule records who set it,
+    and every occasion it generates inherits that.
+    """
+    supabase = get_supabase_client()
+    template = WorkoutTemplatesRepository(supabase).get(
+        user_id, body.template_id, athlete_id=athlete_id
+    )
+    if template is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Template not found")
+
+    repo = WorkoutRecurrenceRepository(supabase)
+    row = repo.create(
+        user_id, body.model_dump(mode="json", exclude_none=True), athlete_id=athlete_id
+    )
+    # Generate straight away, so the pattern shows on the next screen rather
+    # than whenever the schedule next happens to be read.
+    repo.materialise(user_id, today=date.today(), athlete_id=athlete_id)
+    await invalidate_user(user_id)
+    return WorkoutRecurrence(**row)
+
+
+@router.get("/recurrence", response_model=list[WorkoutRecurrence])
+def list_recurrence(
+    user_id: UUID = Depends(authenticate_request),
+    athlete_id: UUID | None = Depends(acting_athlete),
+) -> list[WorkoutRecurrence]:
+    """Every pattern, active or not — the UI says what repeats and offers to
+    stop it."""
+    rows = WorkoutRecurrenceRepository(get_supabase_client()).list(user_id, athlete_id=athlete_id)
+    return [WorkoutRecurrence(**r) for r in rows]
+
+
+@router.patch("/recurrence/{recurrence_id}", response_model=WorkoutRecurrence)
+async def update_recurrence(
+    recurrence_id: UUID,
+    body: WorkoutRecurrenceUpdate,
+    user_id: UUID = Depends(authenticate_request),
+    athlete_id: UUID | None = Depends(acting_athlete),
+) -> WorkoutRecurrence:
+    """Change a pattern, or turn it off.
+
+    Turning it off stops future occasions and leaves everything already
+    generated alone — including anything logged against it. Changing the days
+    takes effect from the next ungenerated day forward; it never rearranges a
+    week the athlete has already been shown.
+    """
+    repo = WorkoutRecurrenceRepository(get_supabase_client())
+    existing = repo.get(user_id, recurrence_id, athlete_id=athlete_id)
+    if existing is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Repeat not found")
+    _require_may_modify(user_id, athlete_id, existing, "repeat")
+
+    row = repo.update(
+        user_id,
+        recurrence_id,
+        body.model_dump(mode="json", exclude_unset=True),
+        athlete_id=athlete_id,
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Repeat not found")
+    await invalidate_user(user_id)
+    return WorkoutRecurrence(**row)
+
+
+@router.delete("/recurrence/{recurrence_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_recurrence(
+    recurrence_id: UUID,
+    user_id: UUID = Depends(authenticate_request),
+    athlete_id: UUID | None = Depends(acting_athlete),
+) -> None:
+    """Remove a pattern. Occasions it already generated survive — they are on
+    the calendar, and deleting a rule is not a claim that the next two weeks
+    never happened. `recurrence_id` on those rows goes null."""
+    repo = WorkoutRecurrenceRepository(get_supabase_client())
+    existing = repo.get(user_id, recurrence_id, athlete_id=athlete_id)
+    if existing is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Repeat not found")
+    _require_may_modify(user_id, athlete_id, existing, "repeat")
+
+    if not repo.delete(user_id, recurrence_id, athlete_id=athlete_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Repeat not found")
     await invalidate_user(user_id)
 
 

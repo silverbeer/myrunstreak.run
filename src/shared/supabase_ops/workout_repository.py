@@ -17,12 +17,20 @@ from typing import Any, cast
 from uuid import UUID
 
 from src.shared.exercise_matching import find_duplicate_candidates, matches_query
+from src.shared.workout_recurrence import DEFAULT_HORIZON_DAYS, due_dates, horizon_end
 from supabase import Client
 
 
 def slugify(name: str) -> str:
     """Lowercase, non-alnum → underscore. Base for a generated exercise key."""
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "exercise"
+
+
+def _as_date(value: Any) -> Any:
+    """Supabase hands dates back as 'YYYY-MM-DD' strings; the walk wants dates."""
+    if value is None or isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
 
 
 def _owner_fields(user_id: UUID, athlete_id: UUID | None) -> dict[str, str]:
@@ -437,6 +445,149 @@ class WorkoutScheduleRepository:
             athlete_id,
         )
         return bool(cast(list[dict[str, Any]], query.execute().data))
+
+
+class WorkoutRecurrenceRepository:
+    """Weekly patterns, and turning them into dated occasions (SB-535).
+
+    A rule generates rows in ``workout_schedule`` and is otherwise invisible:
+    everything downstream reads occasions, so the Start card, the
+    who-scheduled-it line and unscheduling need no knowledge that recurrence
+    exists.
+    """
+
+    def __init__(self, supabase: Client):
+        self.supabase = supabase
+
+    def create(
+        self, user_id: UUID, payload: dict[str, Any], athlete_id: UUID | None = None
+    ) -> dict[str, Any]:
+        owner = _owner_fields(user_id, athlete_id)
+        # As with a one-off occasion, the author is always recorded — the
+        # generated rows inherit it (SB-534).
+        owner.setdefault("created_by", str(user_id))
+        row = self.supabase.table("workout_recurrence").insert({**payload, **owner}).execute()
+        return cast(list[dict[str, Any]], row.data)[0]
+
+    def list(
+        self, user_id: UUID, athlete_id: UUID | None = None, active_only: bool = False
+    ) -> list[dict[str, Any]]:
+        query = _scope(self.supabase.table("workout_recurrence").select("*"), user_id, athlete_id)
+        if active_only:
+            query = query.eq("active", True)
+        return cast(list[dict[str, Any]], query.execute().data)
+
+    def get(
+        self, user_id: UUID, recurrence_id: UUID, athlete_id: UUID | None = None
+    ) -> dict[str, Any] | None:
+        query = _scope(
+            self.supabase.table("workout_recurrence").select("*").eq("id", str(recurrence_id)),
+            user_id,
+            athlete_id,
+        )
+        rows = cast(list[dict[str, Any]], query.execute().data)
+        return rows[0] if rows else None
+
+    def update(
+        self,
+        user_id: UUID,
+        recurrence_id: UUID,
+        payload: dict[str, Any],
+        athlete_id: UUID | None = None,
+    ) -> dict[str, Any] | None:
+        if not payload:
+            return self.get(user_id, recurrence_id, athlete_id)
+        query = _scope(
+            self.supabase.table("workout_recurrence").update(payload).eq("id", str(recurrence_id)),
+            user_id,
+            athlete_id,
+        )
+        if not cast(list[dict[str, Any]], query.execute().data):
+            return None
+        return self.get(user_id, recurrence_id, athlete_id)
+
+    def delete(self, user_id: UUID, recurrence_id: UUID, athlete_id: UUID | None = None) -> bool:
+        query = _scope(
+            self.supabase.table("workout_recurrence").delete().eq("id", str(recurrence_id)),
+            user_id,
+            athlete_id,
+        )
+        return bool(cast(list[dict[str, Any]], query.execute().data))
+
+    def materialise(
+        self,
+        user_id: UUID,
+        today: date,
+        athlete_id: UUID | None = None,
+        horizon_days: int = DEFAULT_HORIZON_DAYS,
+    ) -> int:
+        """Generate the occasions every active rule still owes. Returns how many.
+
+        Called before reading the schedule, so Coming up is always populated
+        without a cron job to forget about. Cheap when there is nothing to do:
+        the watermark means a second call the same day generates nothing.
+
+        Dates already carrying a hand-scheduled occasion for the same template
+        are skipped rather than duplicated — the unique index would reject them,
+        and the athlete's own entry should win over the pattern's.
+        """
+        rules = self.list(user_id, athlete_id=athlete_id, active_only=True)
+        if not rules:
+            return 0
+
+        written = 0
+        for rule in rules:
+            # The query already filters this; checking again is cheap and makes
+            # "turned off means generates nothing" true of this function alone,
+            # rather than of this function plus a WHERE clause elsewhere.
+            if not rule.get("active", True):
+                continue
+            wanted = due_dates(
+                byweekday=[int(d) for d in rule.get("byweekday") or []],
+                starts_on=_as_date(rule["starts_on"]),
+                ends_on=_as_date(rule.get("ends_on")),
+                generated_through=_as_date(rule.get("generated_through")),
+                today=today,
+                horizon_days=horizon_days,
+            )
+            if not wanted:
+                continue
+
+            taken = {
+                str(r["scheduled_for"])
+                for r in _scope(
+                    self.supabase.table("workout_schedule")
+                    .select("scheduled_for")
+                    .eq("template_id", str(rule["template_id"])),
+                    user_id,
+                    athlete_id,
+                )
+                .execute()
+                .data
+            }
+            rows = [
+                {
+                    "user_id": rule["user_id"],
+                    "athlete_id": rule.get("athlete_id"),
+                    "created_by": rule.get("created_by"),
+                    "template_id": rule["template_id"],
+                    "recurrence_id": rule["id"],
+                    "scheduled_for": d.isoformat(),
+                }
+                for d in wanted
+                if d.isoformat() not in taken
+            ]
+            if rows:
+                self.supabase.table("workout_schedule").insert(rows).execute()
+                written += len(rows)
+
+            # Move the watermark whether or not anything was written: the dates
+            # are decided either way, and re-offering a day the athlete already
+            # deleted is exactly what this prevents.
+            self.supabase.table("workout_recurrence").update(
+                {"generated_through": horizon_end(today, horizon_days).isoformat()}
+            ).eq("id", str(rule["id"])).execute()
+        return written
 
 
 class WorkoutSessionsRepository:

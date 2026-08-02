@@ -47,6 +47,57 @@ describe('ScheduleWorkout (SB-534)', () => {
     expect(w.find('[data-testid="schedule-form"]').exists()).toBe(false)
   })
 
+  it('repeats weekly on the days picked, starting from the date', async () => {
+    apiCallMock.mockImplementation(async () => ({ id: 'r1' }))
+    const w = mountIt()
+    await w.get('[data-testid="schedule-open"]').trigger('click')
+    await w.get('[data-testid="mode-repeat"]').trigger('click')
+    await w.get('[data-testid="schedule-date"]').setValue('2026-08-03')
+    await w.get('[data-testid="weekday-1"]').trigger('click') // Monday
+    await w.get('[data-testid="weekday-4"]').trigger('click') // Thursday
+    await w.get('[data-testid="schedule-save"]').trigger('click')
+    await flushPromises()
+
+    const post = apiCallMock.mock.calls.at(-1)!
+    expect(String(post[0])).toBe('/workouts/recurrence')
+    expect(JSON.parse((post[1] as { body: string }).body)).toEqual({
+      template_id: 't1',
+      byweekday: [1, 4],
+      starts_on: '2026-08-03',
+    })
+    expect(w.emitted('scheduled')).toHaveLength(1)
+  })
+
+  it('will not save a repeat with no days picked', async () => {
+    // It would be a pattern that silently never fires.
+    const w = mountIt()
+    await w.get('[data-testid="schedule-open"]').trigger('click')
+    await w.get('[data-testid="mode-repeat"]').trigger('click')
+    await w.get('[data-testid="schedule-date"]').setValue('2026-08-03')
+    expect(w.get('[data-testid="schedule-save"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('a day can be unpicked again', async () => {
+    const w = mountIt()
+    await w.get('[data-testid="schedule-open"]').trigger('click')
+    await w.get('[data-testid="mode-repeat"]').trigger('click')
+    await w.get('[data-testid="weekday-1"]').trigger('click')
+    expect(w.get('[data-testid="weekday-1"]').attributes('aria-pressed')).toBe('true')
+    await w.get('[data-testid="weekday-1"]').trigger('click')
+    expect(w.get('[data-testid="weekday-1"]').attributes('aria-pressed')).toBe('false')
+  })
+
+  it('stays a one-off unless repeating is chosen', async () => {
+    apiCallMock.mockImplementation(async () => ({ id: 'sch1' }))
+    const w = mountIt()
+    await w.get('[data-testid="schedule-open"]').trigger('click')
+    expect(w.find('[data-testid="weekday-chips"]').exists()).toBe(false)
+    await w.get('[data-testid="schedule-date"]').setValue('2026-08-03')
+    await w.get('[data-testid="schedule-save"]').trigger('click')
+    await flushPromises()
+    expect(String(apiCallMock.mock.calls.at(-1)![0])).toBe('/workouts/schedule')
+  })
+
   it('explains a day that already has this plan on it', async () => {
     // The unique index is the guard; a raw constraint string is not an answer.
     apiCallMock.mockImplementation(async () => {

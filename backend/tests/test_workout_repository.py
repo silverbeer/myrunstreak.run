@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
 from src.shared.supabase_ops.workout_repository import (
+    WorkoutRecurrenceRepository,
     WorkoutScheduleRepository,
     WorkoutSessionsRepository,
     WorkoutTemplatesRepository,
@@ -456,3 +458,145 @@ def test_template_item_without_ranges_is_unchanged():
     assert item["target_reps"] == 15
     assert item.get("target_reps_max") is None
     assert item.get("rest_mode") is None
+
+
+# --- SB-535: a weekly pattern generating occasions --------------------------
+
+MONDAY = date(2026, 8, 3)
+
+
+def _rule(user: UUID, **over: Any) -> dict[str, Any]:
+    return {
+        "id": str(uuid4()),
+        "user_id": str(user),
+        "athlete_id": None,
+        "created_by": str(user),
+        "template_id": str(uuid4()),
+        "byweekday": [1],  # Mondays
+        "starts_on": "2026-08-03",
+        "ends_on": None,
+        "active": True,
+        "generated_through": None,
+        **over,
+    }
+
+
+def test_materialise_generates_the_occasions_a_rule_owes():
+    supa = _FakeSupabase()
+    user = uuid4()
+    supa.store["workout_recurrence"] = [_rule(user)]
+
+    written = WorkoutRecurrenceRepository(supa).materialise(user, today=MONDAY, horizon_days=14)
+
+    rows = supa.store["workout_schedule"]
+    assert written == 3
+    assert [r["scheduled_for"] for r in rows] == ["2026-08-03", "2026-08-10", "2026-08-17"]
+    # Generated occasions carry the pattern's author, so "who scheduled this"
+    # keeps working with no special case (SB-534).
+    assert all(r["created_by"] == str(user) for r in rows)
+    assert all(r["recurrence_id"] == supa.store["workout_recurrence"][0]["id"] for r in rows)
+
+
+def test_materialise_twice_generates_nothing_the_second_time():
+    """The watermark: reading the schedule again the same day is free."""
+    supa = _FakeSupabase()
+    user = uuid4()
+    supa.store["workout_recurrence"] = [_rule(user)]
+    repo = WorkoutRecurrenceRepository(supa)
+
+    repo.materialise(user, today=MONDAY, horizon_days=14)
+    before = len(supa.store["workout_schedule"])
+    again = repo.materialise(user, today=MONDAY, horizon_days=14)
+
+    assert again == 0
+    assert len(supa.store["workout_schedule"]) == before
+
+
+def test_a_skipped_occasion_does_not_come_back():
+    """Delete one Monday; the rule keeps producing the rest and never refills
+    the hole. This is the whole reason generation carries a watermark instead
+    of reconciling against what exists."""
+    supa = _FakeSupabase()
+    user = uuid4()
+    supa.store["workout_recurrence"] = [_rule(user)]
+    repo = WorkoutRecurrenceRepository(supa)
+    repo.materialise(user, today=MONDAY, horizon_days=14)
+
+    supa.store["workout_schedule"] = [
+        r for r in supa.store["workout_schedule"] if r["scheduled_for"] != "2026-08-10"
+    ]
+    repo.materialise(user, today=MONDAY, horizon_days=14)
+
+    dates = [r["scheduled_for"] for r in supa.store["workout_schedule"]]
+    assert "2026-08-10" not in dates
+    assert dates == ["2026-08-03", "2026-08-17"]
+
+
+def test_a_rule_that_is_off_generates_nothing():
+    supa = _FakeSupabase()
+    user = uuid4()
+    supa.store["workout_recurrence"] = [_rule(user, active=False)]
+
+    assert WorkoutRecurrenceRepository(supa).materialise(user, today=MONDAY) == 0
+    assert supa.store.get("workout_schedule", []) == []
+
+
+def test_materialise_leaves_a_hand_scheduled_day_alone():
+    """The athlete's own entry wins over the pattern, and the unique index on
+    (template, day) would reject a second row anyway (SB-534)."""
+    supa = _FakeSupabase()
+    user = uuid4()
+    rule = _rule(user)
+    supa.store["workout_recurrence"] = [rule]
+    supa.store["workout_schedule"] = [
+        {
+            "id": str(uuid4()),
+            "user_id": str(user),
+            "template_id": rule["template_id"],
+            "scheduled_for": "2026-08-03",
+            "recurrence_id": None,
+        }
+    ]
+
+    WorkoutRecurrenceRepository(supa).materialise(user, today=MONDAY, horizon_days=14)
+
+    on_the_third = [r for r in supa.store["workout_schedule"] if r["scheduled_for"] == "2026-08-03"]
+    assert len(on_the_third) == 1
+    assert on_the_third[0]["recurrence_id"] is None  # still the hand-made one
+
+
+def test_materialise_with_no_rules_does_nothing():
+    supa = _FakeSupabase()
+    assert WorkoutRecurrenceRepository(supa).materialise(uuid4(), today=MONDAY) == 0
+
+
+def test_the_watermark_moves_even_when_nothing_was_written():
+    """A pass that writes no rows has still decided those days.
+
+    Every date the rule owed was already taken by a hand-scheduled occasion, so
+    nothing is inserted — but if the watermark stayed put, deleting that
+    occasion later would let the rule recreate it, which is the skipped-day bug
+    coming back through the side door.
+    """
+    supa = _FakeSupabase()
+    user = uuid4()
+    rule = _rule(user)
+    supa.store["workout_recurrence"] = [rule]
+    supa.store["workout_schedule"] = [
+        {
+            "id": str(uuid4()),
+            "user_id": str(user),
+            "template_id": rule["template_id"],
+            "scheduled_for": d,
+            "recurrence_id": None,
+        }
+        for d in ("2026-08-03", "2026-08-10", "2026-08-17")
+    ]
+    repo = WorkoutRecurrenceRepository(supa)
+
+    assert repo.materialise(user, today=MONDAY, horizon_days=14) == 0
+    assert supa.store["workout_recurrence"][0]["generated_through"] == "2026-08-17"
+
+    supa.store["workout_schedule"] = []
+    assert repo.materialise(user, today=MONDAY, horizon_days=14) == 0
+    assert supa.store["workout_schedule"] == []

@@ -331,6 +331,24 @@
             </button>
             <!-- Gabe plans his own week too — scheduling is not a coach-only
                  verb (SB-534). -->
+            <!-- What repeats, and how to stop it (SB-535). -->
+            <div
+              v-if="repeatFor(t.id)"
+              class="mt-2 flex items-center justify-between gap-2 rounded-lg bg-brand-50 px-3 py-2"
+              data-testid="repeat-line"
+            >
+              <span class="text-xs font-semibold text-brand-800">
+                {{ describeRepeat(repeatFor(t.id)!.byweekday) }}
+              </span>
+              <button
+                type="button"
+                class="text-xs font-medium text-brand-700 underline"
+                data-testid="repeat-stop"
+                @click="stopRepeat(repeatFor(t.id)!.id)"
+              >
+                Stop repeating
+              </button>
+            </div>
             <ScheduleWorkout
               v-if="athleteId"
               class="mt-2"
@@ -370,6 +388,24 @@
             </button>
             <!-- Gabe plans his own week too — scheduling is not a coach-only
                  verb (SB-534). -->
+            <!-- What repeats, and how to stop it (SB-535). -->
+            <div
+              v-if="repeatFor(t.id)"
+              class="mt-2 flex items-center justify-between gap-2 rounded-lg bg-brand-50 px-3 py-2"
+              data-testid="repeat-line"
+            >
+              <span class="text-xs font-semibold text-brand-800">
+                {{ describeRepeat(repeatFor(t.id)!.byweekday) }}
+              </span>
+              <button
+                type="button"
+                class="text-xs font-medium text-brand-700 underline"
+                data-testid="repeat-stop"
+                @click="stopRepeat(repeatFor(t.id)!.id)"
+              >
+                Stop repeating
+              </button>
+            </div>
             <ScheduleWorkout
               v-if="athleteId"
               class="mt-2"
@@ -411,6 +447,11 @@ import { useMyAthlete } from '@/composables/useCoach'
 import { useMyWorkouts } from '@/composables/useMyWorkouts'
 import { renameSession, useWorkoutSessions } from '@/composables/useWorkoutSessions'
 import { useWorkoutSchedule, deleteSchedule } from '@/composables/useWorkoutSchedule'
+import {
+  describeRecurrence,
+  stopRecurrence,
+  useWorkoutRecurrence,
+} from '@/composables/useWorkoutRecurrence'
 import { deleteTemplate } from '@/composables/useWorkoutTemplates'
 import ScheduleWorkout from '@/components/ScheduleWorkout.vue'
 import WorkoutTemplateCard from '@/components/WorkoutTemplateCard.vue'
@@ -428,6 +469,7 @@ const {
   load: loadSessions,
 } = useWorkoutSessions()
 const { schedule, load: loadSchedule } = useWorkoutSchedule()
+const { recurrences, load: loadRecurrence } = useWorkoutRecurrence()
 
 const tab = ref<'training' | 'plans'>('training')
 
@@ -520,7 +562,25 @@ const nextUp = computed(() => laterUp.value[0] ?? null)
 
 const reloadSchedule = async (): Promise<void> => {
   if (!myAthlete.value) return
-  await loadSchedule(myAthlete.value.id, todayLocalISO())
+  // Both: a new pattern generates occasions, so the schedule changed too.
+  await Promise.all([
+    loadSchedule(myAthlete.value.id, todayLocalISO()),
+    loadRecurrence(myAthlete.value.id),
+  ])
+}
+
+/** The live pattern for a plan, if it has one (SB-535). */
+const repeatFor = (templateId: string) =>
+  recurrences.value.find((r) => r.template_id === templateId && r.active) ?? null
+
+const describeRepeat = describeRecurrence
+
+const stopRepeat = async (recurrenceId: string): Promise<void> => {
+  if (!myAthlete.value) return
+  // Turning it off stops future occasions and leaves the ones already on the
+  // calendar — and anything logged against them — alone.
+  await stopRecurrence(recurrenceId, myAthlete.value.id)
+  await reloadSchedule()
 }
 
 const unschedule = async (o: Occasion): Promise<void> => {
@@ -637,6 +697,7 @@ onMounted(async () => {
     load(),
     loadSessions(myAthlete.value.id),
     loadSchedule(myAthlete.value.id, todayLocalISO()),
+    loadRecurrence(myAthlete.value.id),
   ])
 })
 </script>

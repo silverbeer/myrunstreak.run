@@ -52,12 +52,18 @@ const daysFromNow = (n: number): string => {
  * each test names only the data it is about.
  */
 const serve = (
-  opts: { templates?: unknown[]; sessions?: unknown[]; schedule?: unknown[] } = {},
+  opts: {
+    templates?: unknown[]
+    sessions?: unknown[]
+    schedule?: unknown[]
+    recurrence?: unknown[]
+  } = {},
 ) => {
   apiCallMock.mockImplementation((path: string) => {
     if (path === '/me/workouts') return Promise.resolve(opts.templates ?? [])
     if (path === '/workouts/exercises') return Promise.resolve([])
     if (path.startsWith('/workouts/sessions')) return Promise.resolve(opts.sessions ?? [])
+    if (path.startsWith('/workouts/recurrence')) return Promise.resolve(opts.recurrence ?? [])
     if (path.startsWith('/workouts/schedule')) return Promise.resolve(opts.schedule ?? [])
     return Promise.reject(new Error(`unexpected: ${path}`))
   })
@@ -587,5 +593,94 @@ describe('MyWorkoutsView — Plans grouping (SB-530)', () => {
     await flushPromises()
     await w.get('[data-testid="tab-plans"]').trigger('click')
     expect(w.get('[data-testid="group-from-coach"]').text()).toContain('From my coach')
+  })
+})
+
+
+describe('MyWorkoutsView — a week that repeats (SB-535)', () => {
+  beforeEach(() => {
+    myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
+  })
+
+  const rule = (o: Partial<Record<string, unknown>> = {}) => ({
+    id: 'r1',
+    template_id: 't1',
+    athlete_id: 'ath1',
+    created_by: 'coach',
+    byweekday: [1, 4],
+    starts_on: '2026-08-03',
+    ends_on: null,
+    active: true,
+    generated_through: null,
+    ...o,
+  })
+
+  it('says what repeats, on the plan it belongs to', async () => {
+    serve({ templates: [template], recurrence: [rule()] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+    expect(w.get('[data-testid="repeat-line"]').text()).toContain('Every Mon, Thu')
+  })
+
+  it('shows nothing for a plan that does not repeat', async () => {
+    serve({ templates: [template] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+    expect(w.find('[data-testid="repeat-line"]').exists()).toBe(false)
+  })
+
+  it('ignores a pattern that has been turned off', async () => {
+    serve({ templates: [template], recurrence: [rule({ active: false })] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+    expect(w.find('[data-testid="repeat-line"]').exists()).toBe(false)
+  })
+
+  it('stops a repeat by turning it off, not by deleting it', async () => {
+    // Future occasions stop; the ones already on the calendar stay, along with
+    // anything logged against them.
+    serve({ templates: [template], recurrence: [rule()] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+    await w.get('[data-testid="repeat-stop"]').trigger('click')
+    await flushPromises()
+
+    const patch = apiCallMock.mock.calls.find(
+      (c) => c[1] && (c[1] as { method?: string }).method === 'PATCH',
+    )
+    expect(String(patch![0])).toBe('/workouts/recurrence/r1')
+    expect(JSON.parse((patch![1] as { body: string }).body)).toEqual({ active: false })
+    expect(
+      apiCallMock.mock.calls.some((c) => c[1] && (c[1] as { method?: string }).method === 'DELETE'),
+    ).toBe(false)
+  })
+
+  it('a generated occasion reads exactly like a hand-scheduled one', async () => {
+    // Coming up is fed by occasions; nothing there branches on where they came
+    // from, which is the point of generating into the same table.
+    serve({
+      templates: [template],
+      recurrence: [rule()],
+      schedule: [
+        {
+          id: 'sch1',
+          template_id: 't1',
+          athlete_id: 'ath1',
+          created_by: 'coach',
+          scheduled_for: daysFromNow(2),
+          notes: null,
+          recurrence_id: 'r1',
+        },
+      ],
+    })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    const row = w.get('[data-testid="coming-up-row"]')
+    expect(row.text()).toContain('Monday At-Home')
+    expect(row.get('[data-testid="scheduled-by"]').text()).toBe('From Matthew')
   })
 })
