@@ -1,4 +1,6 @@
+import { ref } from 'vue'
 import { apiCall } from '@/config/api'
+import type { WorkoutSession } from '@/types/coach'
 import type { WorkoutSessionInput } from '@/types/workout'
 
 /**
@@ -15,4 +17,38 @@ export async function createSession(
     body: JSON.stringify(payload),
     headers: { 'X-Act-As-Athlete': athleteId },
   })
+}
+
+/**
+ * An athlete's logged sessions, newest first (SB-530).
+ *
+ * `GET /workouts/sessions` has existed since SB-230 and nothing on the athlete's
+ * screen ever called it — which is why "zero sessions ever logged" was invisible
+ * rather than merely true. Same act-as header as `createSession`: the backend
+ * authorises the coach and the linked athlete identically, so this one function
+ * serves both callers.
+ *
+ * Sets are not returned by the list endpoint; `exercise_count` says what was
+ * logged instead.
+ */
+export function useWorkoutSessions() {
+  const sessions = ref<WorkoutSession[]>([])
+  const loading = ref(false)
+  const error = ref<string | null>(null)
+
+  const load = async (athleteId: string, limit = 100): Promise<void> => {
+    loading.value = true
+    error.value = null
+    try {
+      sessions.value = await apiCall<WorkoutSession[]>(`/workouts/sessions?limit=${limit}`, {
+        headers: { 'X-Act-As-Athlete': athleteId },
+      })
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load sessions'
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { sessions, loading, error, load }
 }

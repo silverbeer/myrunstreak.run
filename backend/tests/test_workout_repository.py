@@ -211,6 +211,71 @@ def test_list_attaches_completion_state():
     assert by_id[t2]["last_session_date"] is None
 
 
+def test_list_counts_sessions_per_template():
+    """list() reports how many times each plan was done (SB-530) — the "done 5x"
+    on the Plans tab. Two sessions on one template is 2, not 1; a plan nobody has
+    done is 0, which is what renders as "not yet"."""
+    supa = _FakeSupabase()
+    user = uuid4()
+    t1, t2 = str(uuid4()), str(uuid4())
+    supa.store["workout_templates"] = [
+        {"id": t1, "user_id": str(user), "name": "A", "type": "circuit", "rounds": 1},
+        {"id": t2, "user_id": str(user), "name": "B", "type": "circuit", "rounds": 1},
+    ]
+    supa.store["workout_sessions"] = [
+        {"template_id": t1, "session_date": "2026-07-21"},
+        {"template_id": t1, "session_date": "2026-07-23"},
+        # Same day, twice — still two times done.
+        {"template_id": t1, "session_date": "2026-07-23"},
+        # Ad-hoc: no plan behind it, so it counts towards nothing (SB-531).
+        {"template_id": None, "session_date": "2026-07-24"},
+    ]
+    by_id = {r["id"]: r for r in WorkoutTemplatesRepository(supa).list(user)}
+
+    assert by_id[t1]["session_count"] == 3
+    assert by_id[t2]["session_count"] == 0
+
+
+def test_session_list_counts_what_was_logged():
+    """list() says what each session logged without returning its sets (SB-530).
+
+    The Completed list reads "22 exercises logged"; shipping every set row for a
+    hundred sessions to get that number is not worth it. Exercises are distinct
+    movements — three sets of push-ups is one exercise."""
+    supa = _FakeSupabase()
+    user = uuid4()
+    s1 = str(uuid4())
+    supa.store["workout_sessions"] = [
+        {"id": s1, "user_id": str(user), "session_date": "2026-08-01", "type": "circuit"},
+    ]
+    supa.store["exercise_sets"] = [
+        {"session_id": s1, "exercise_key": "pushups"},
+        {"session_id": s1, "exercise_key": "pushups"},
+        {"session_id": s1, "exercise_key": "plank"},
+    ]
+    [row] = WorkoutSessionsRepository(supa).list(user)
+
+    assert row["set_count"] == 3
+    assert row["exercise_count"] == 2
+    # Still no sets on the wire — that is the point of counting server-side.
+    assert "sets" not in row
+
+
+def test_session_list_reports_zero_for_a_session_with_no_sets():
+    """A session with nothing under it reports 0, not a missing key — the row
+    still has to render (SB-530)."""
+    supa = _FakeSupabase()
+    user = uuid4()
+    supa.store["workout_sessions"] = [
+        {"id": str(uuid4()), "user_id": str(user), "session_date": "2026-08-01", "type": "circuit"},
+    ]
+    supa.store["exercise_sets"] = []
+    [row] = WorkoutSessionsRepository(supa).list(user)
+
+    assert row["set_count"] == 0
+    assert row["exercise_count"] == 0
+
+
 def test_session_create_round_trips_with_sets():
     supa = _FakeSupabase()
     repo = WorkoutSessionsRepository(supa)

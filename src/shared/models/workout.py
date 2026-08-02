@@ -305,6 +305,11 @@ class WorkoutTemplate(BaseModel):
     # when a logged session references it. False/None on single-template reads.
     has_session: bool = False
     last_session_date: date | None = None
+    # How many sessions reference this template (SB-530) — the "done 5x" the
+    # Plans tab shows, which turns a library into something with history rather
+    # than a filing cabinet. Same batched query as has_session, so it costs
+    # nothing extra. 0 on single-template reads, where that join is not run.
+    session_count: int = 0
 
 
 # --------------------------------------------------------------------------- #
@@ -382,3 +387,9 @@ class WorkoutSession(BaseModel):
     notes: str | None = None
     sets: list[ExerciseSet] = Field(default_factory=list)
     created_at: datetime | None = None
+    # What was logged, populated by the list query (SB-530), which returns no
+    # sets: a session row has to be able to say "22 exercises logged" without
+    # the caller fetching each session in turn. Both are 0 on a single-session
+    # read, where `sets` is present and carries the same answer.
+    set_count: int = 0
+    exercise_count: int = 0

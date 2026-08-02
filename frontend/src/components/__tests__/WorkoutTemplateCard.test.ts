@@ -119,6 +119,41 @@ describe('WorkoutTemplateCard', () => {
     expect(w.text()).toContain('Not logged')
   })
 
+  it('swaps the completion pill for a usage count when asked (SB-530)', () => {
+    const w = mount(WorkoutTemplateCard, {
+      props: {
+        template: {
+          ...template,
+          has_session: true,
+          last_session_date: '2026-07-23',
+          session_count: 5,
+        },
+        showUsage: true,
+      },
+    })
+    // How often it was done says more on a list of plans than whether it ever
+    // was — and it replaces the pill rather than sitting beside it.
+    expect(w.get('[data-testid="usage-count"]').text()).toBe('done 5×')
+    expect(w.text()).not.toContain('Completed')
+  })
+
+  it('reads "not yet" for a plan nobody has done (SB-530)', () => {
+    const w = mount(WorkoutTemplateCard, {
+      props: { template: { ...template, session_count: 0 }, showUsage: true },
+    })
+    expect(w.get('[data-testid="usage-count"]').text()).toBe('not yet')
+    expect(w.text()).not.toContain('Not logged')
+  })
+
+  it('leaves the coach views on the completion pill (SB-530)', () => {
+    // The card is shared; opting in is what keeps AthleteDetailView unchanged.
+    const w = mount(WorkoutTemplateCard, {
+      props: { template: { ...template, has_session: false, session_count: 3 } },
+    })
+    expect(w.find('[data-testid="usage-count"]').exists()).toBe(false)
+    expect(w.text()).toContain('Not logged')
+  })
+
   it('shows the scheduled date when set (SB-335)', () => {
     const w = mount(WorkoutTemplateCard, {
       props: { template: { ...template, scheduled_for: '2026-07-28' } },

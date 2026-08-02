@@ -6,6 +6,7 @@ import {
   formatDuration,
   formatDate,
   formatDayMonth,
+  formatDayPill,
   formatMonthLabel,
   formatRelativeTime,
   distanceLabel,
@@ -171,5 +172,39 @@ describe('formatDayMonth', () => {
 
   it('falls back to the raw string when unparseable', () => {
     expect(formatDayMonth('nope')).toBe('nope')
+  })
+})
+
+describe('formatDayPill (SB-530)', () => {
+  // "today" is passed in rather than read from the clock, so these assert the
+  // arithmetic and not the day the suite happens to run on.
+  const today = '2026-08-05' // a Wednesday
+
+  it('names the days either side of now in words', () => {
+    expect(formatDayPill('2026-08-05', today)).toBe('Today')
+    expect(formatDayPill('2026-08-04', today)).toBe('Yesterday')
+    expect(formatDayPill('2026-08-06', today)).toBe('Tomorrow')
+  })
+
+  it('uses the weekday inside the surrounding week', () => {
+    // An athlete reads their week in weekdays — "Sat" says more about how close
+    // a workout is than "Aug 8" does.
+    expect(formatDayPill('2026-08-08', today)).toBe('Sat')
+    expect(formatDayPill('2026-08-01', today)).toBe('Sat')
+  })
+
+  it('falls back to the date once a weekday stops being unambiguous', () => {
+    expect(formatDayPill('2026-08-12', today)).toBe('Aug 12')
+    expect(formatDayPill('2026-07-29', today)).toBe('Jul 29')
+  })
+
+  it('does not shift a day in negative-offset zones (timezone-safe)', () => {
+    // new Date('2026-08-05') is UTC midnight → Aug 4 locally in the US, which
+    // would render every "Today" as "Yesterday".
+    expect(formatDayPill('2026-08-05', '2026-08-05')).toBe('Today')
+  })
+
+  it('falls back to the raw string when unparseable', () => {
+    expect(formatDayPill('nope', today)).toBe('nope')
   })
 })

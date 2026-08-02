@@ -68,6 +68,44 @@ export const formatDayMonth = (dateOnly: string): string => {
   return `${name} ${day}`
 }
 
+/** Local midnight for a date-only 'YYYY-MM-DD' — never `new Date(str)`, which
+ *  reads it as UTC and lands on the day before west of Greenwich. */
+const localMidnight = (dateOnly: string): Date | null => {
+  const [y, m, d] = dateOnly.split('-').map(Number)
+  if (!y || !m || !d) return null
+  const date = new Date(y, m - 1, d)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+/** Today as 'YYYY-MM-DD', in the athlete's own timezone. */
+export const todayLocalISO = (): string => {
+  const now = new Date()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${m}-${d}`
+}
+
+/**
+ * The short "when" a training row wears (SB-530): 'Today', 'Yesterday', a
+ * weekday inside the surrounding week, else 'Jul 20'.
+ *
+ * An athlete reads their week in weekdays — "Thu" says more about whether a
+ * workout is close than "Aug 6" does — but a weekday alone is ambiguous beyond
+ * seven days, where the date is the honest answer.
+ */
+export const formatDayPill = (dateOnly: string, today = todayLocalISO()): string => {
+  const then = localMidnight(dateOnly)
+  const now = localMidnight(today)
+  if (!then || !now) return dateOnly
+  const days = Math.round((then.getTime() - now.getTime()) / 86_400_000)
+  if (days === 0) return 'Today'
+  if (days === -1) return 'Yesterday'
+  if (days === 1) return 'Tomorrow'
+  if (days > 1 && days < 7) return WEEKDAYS[then.getDay()]
+  if (days < -1 && days > -7) return WEEKDAYS[then.getDay()]
+  return formatDayMonth(dateOnly)
+}
+
 export const formatDate = (iso: string): string => {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso

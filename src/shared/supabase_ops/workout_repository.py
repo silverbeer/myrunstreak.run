@@ -309,14 +309,21 @@ class WorkoutTemplatesRepository:
             .execute()
         )
         last_by_template: dict[str, str] = {}
+        count_by_template: dict[str, int] = {}
         for s in cast(list[dict[str, Any]], sessions.data):
             tid, d = s.get("template_id"), s.get("session_date")
-            if tid and d and (tid not in last_by_template or d > last_by_template[tid]):
+            if not tid:
+                continue
+            # Counted per session, not per distinct date: doing the same plan
+            # twice in a day is twice done (SB-530).
+            count_by_template[tid] = count_by_template.get(tid, 0) + 1
+            if d and (tid not in last_by_template or d > last_by_template[tid]):
                 last_by_template[tid] = d
         for t in templates:
             last = last_by_template.get(t["id"])
             t["has_session"] = last is not None
             t["last_session_date"] = last
+            t["session_count"] = count_by_template.get(t["id"], 0)
         return templates
 
     def list_for_athletes(self, athlete_ids: Sequence[UUID]) -> list[dict[str, Any]]:
@@ -407,7 +414,34 @@ class WorkoutSessionsRepository:
         if date_to is not None:
             query = query.lte("session_date", date_to.isoformat())
         result = query.order("session_date", desc=True).limit(limit).execute()
-        return cast(list[dict[str, Any]], result.data)
+        sessions = cast(list[dict[str, Any]], result.data)
+        if not sessions:
+            return sessions
+
+        # Attach what was logged (SB-530) without dragging every set across the
+        # wire: "22 exercises logged" is the whole point of the Completed list,
+        # but a hundred sessions' worth of full set rows is not. One batched
+        # query over two columns answers it.
+        ids = [s["id"] for s in sessions]
+        rows = (
+            self.supabase.table("exercise_sets")
+            .select("session_id, exercise_key")
+            .in_("session_id", ids)
+            .execute()
+        )
+        sets_by_session: dict[str, int] = {}
+        exercises_by_session: dict[str, set[str]] = {}
+        for r in cast(list[dict[str, Any]], rows.data):
+            sid = str(r.get("session_id"))
+            sets_by_session[sid] = sets_by_session.get(sid, 0) + 1
+            exercises_by_session.setdefault(sid, set()).add(r.get("exercise_key"))
+        for s in sessions:
+            sid = str(s["id"])
+            s["set_count"] = sets_by_session.get(sid, 0)
+            # Distinct movements, not sets: three rounds of push-ups is one
+            # exercise, and that is the number the prescription is written in.
+            s["exercise_count"] = len(exercises_by_session.get(sid, ()))
+        return sessions
 
     def list_for_athletes(
         self, athlete_ids: Sequence[UUID], limit: int = 10
