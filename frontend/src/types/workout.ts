@@ -17,6 +17,16 @@ export type MovementPattern =
 
 export type ExerciseCategory = 'strength' | 'speed' | 'power' | 'mobility' | 'cardio' | 'test'
 
+/** A circuit within a template: its own rounds and trailing rest (SB-527). */
+export interface TemplateBlock {
+  id: string
+  template_id: string
+  label: string
+  position: number
+  rounds: number
+  rest_after_seconds: number | null
+}
+
 export interface Exercise {
   key: string
   display_name: string
@@ -133,7 +143,8 @@ export interface TemplateItem {
   // null = mandatory. The label is read from any member of the group.
   option_group?: string | null
   option_group_label?: string | null
-  notes: string | null
+  notes: string | null  /** Circuit membership (SB-527); null when outside any circuit. */
+  block_id?: string | null
 }
 
 export interface WorkoutTemplate {
@@ -153,7 +164,8 @@ export interface WorkoutTemplate {
   scheduled_for?: string | null
   // Completion (SB-334): a logged session references this template.
   has_session?: boolean
-  last_session_date?: string | null
+  last_session_date?: string | null  /** Circuits, in position order (SB-527). Empty for simple templates. */
+  blocks?: TemplateBlock[]
 }
 
 /** One row while building — loads are entered in lb (US coach), stored as kg. */
