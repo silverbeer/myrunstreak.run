@@ -8,6 +8,7 @@ import type {
   WorkoutType,
 } from '@/types/workout'
 import { lbToKg } from '@/utils/workoutPayload'
+import { groupByBlock, roundsFor } from '@/utils/circuits'
 
 /** Felt options: emoji shown to the coach → stored how_felt string. */
 export const FELT_OPTIONS: { emoji: string; value: string; label: string }[] = [
@@ -67,9 +68,10 @@ export function defaultSessionName(dateOnly: string): string {
   return `${WEEKDAYS_LONG[date.getDay()]} ${d} ${MONTHS_SHORT[m - 1]}`
 }
 
-/** A fresh empty attempt (one set of an exercise). */
-export function blankAttempt(): LoggerAttempt {
+/** A fresh empty attempt (one set of an exercise), optionally in a round. */
+export function blankAttempt(round: number | null = null): LoggerAttempt {
   return {
+    round_number: round,
     reps: null,
     duration_s: null,
     load_lb: null,
@@ -84,6 +86,8 @@ export function blankAttempt(): LoggerAttempt {
 
 /** An attempt with no measurable value — dropped from the payload. */
 function isEmptyAttempt(a: LoggerAttempt): boolean {
+  // round_number is structure, not a measurement — an attempt carrying only
+  // its round number is still an attempt nobody filled in.
   return (
     a.reps == null &&
     a.duration_s == null &&
@@ -125,7 +129,8 @@ export function buildSessionPayload(meta: SessionMeta, rows: LoggerRow[]): Worko
     if (filled.length === 0 && row.exercise.measures.length === 0) {
       sets.push({
         exercise_key: row.exercise.key,
-        round_number: row.round_number,
+        template_item_id: row.template_item_id,
+        round_number: row.attempts[0]?.round_number ?? null,
         set_index: null,
         variant: row.variant?.trim() || null,
         notes: row.notes?.trim() || null,
@@ -136,7 +141,10 @@ export function buildSessionPayload(meta: SessionMeta, rows: LoggerRow[]): Worko
     filled.forEach((a, i) => {
       sets.push({
         exercise_key: row.exercise.key,
-        round_number: row.round_number,
+        // The link SB-527 added and nothing ever wrote (SB-545). Without it
+        // "did he do what was prescribed?" is not answerable by query.
+        template_item_id: row.template_item_id,
+        round_number: a.round_number,
         set_index: multi ? i + 1 : null,
         variant: row.variant?.trim() || null,
         reps: a.reps,
@@ -167,26 +175,48 @@ export function buildSessionPayload(meta: SessionMeta, rows: LoggerRow[]): Worko
 }
 
 /**
- * Prefill logger rows from a template's items (ordered by position), one blank
- * attempt each. The coach logs actuals against the prescription. `byKey` maps
- * exercise_key → catalog Exercise (for display name + which measures to show).
+ * Prefill logger rows from a template's items, in position order.
+ *
+ * An exercise in a circuit done twice arrives with two attempts, already
+ * numbered R1 and R2 (SB-545). Before this the athlete got one empty box and an
+ * empty "Round" field, and recording the prescription as written meant tapping
+ * "+ Add set" on eleven cards and typing twenty-two round numbers — so the
+ * rounds simply never got logged.
+ *
+ * Every row carries the `template_item_id` it answers, which is what makes
+ * "did he do what was prescribed?" a query rather than a guess (SB-527).
+ *
+ * `byKey` maps exercise_key → catalog Exercise (display name + which measures
+ * to show).
  */
 export function templateToRows(
   tpl: WorkoutTemplate,
   byKey: Map<string, Exercise>,
   startUid: number,
 ): LoggerRow[] {
-  return tpl.items
-    .slice()
-    .sort((a, b) => a.position - b.position)
-    .map((it, i) => ({
+  const items = [...tpl.items].sort((a, b) => a.position - b.position)
+  const roundsByItem = new Map<string, number>()
+  for (const group of groupByBlock(items, tpl.blocks ?? [])) {
+    const rounds = roundsFor(group, tpl.rounds)
+    for (const it of group.items) roundsByItem.set(it.id, rounds)
+  }
+
+  return items.map((it, i) => {
+    const rounds = roundsByItem.get(it.id) ?? 1
+    return {
       uid: startUid + i,
       exercise:
         byKey.get(it.exercise_key) ??
         ({ key: it.exercise_key, display_name: it.exercise_key, measures: [] } as unknown as Exercise),
-      round_number: null,
+      template_item_id: it.id,
       variant: it.variant,
       notes: null,
-      attempts: [blankAttempt()],
-    }))
+      // One attempt per round, numbered. A single-round exercise keeps a null
+      // round — there is no round 1 of 1 worth stating.
+      attempts:
+        rounds > 1
+          ? Array.from({ length: rounds }, (_, r) => blankAttempt(r + 1))
+          : [blankAttempt()],
+    }
+  })
 }

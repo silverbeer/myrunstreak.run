@@ -240,6 +240,10 @@ export interface BuilderItem {
 /** One logged set in the API payload. Only the used dimensions are filled. */
 export interface SessionSetInput {
   exercise_key: string
+  // Which prescribed item this set answers (SB-527). Null for an ad-hoc set
+  // with no prescription behind it. Without it "lunge, round 1, 45s" cannot be
+  // attributed — `lunge` appears several times in one template (SB-545).
+  template_item_id?: string | null
   // Measured HR / cadence / speed (SB-447). Speed is canonical kph.
   hr_bpm_avg?: number | null
   hr_bpm_max?: number | null
@@ -276,6 +280,11 @@ export interface WorkoutSessionInput {
  * Loads are entered in lb (US coach), stored as kg.
  */
 export interface LoggerAttempt {
+  // Which round of the circuit this attempt is (SB-545). Rounds live on the
+  // attempt rather than the row because a set is what happens in a round —
+  // one exercise done twice is two sets with different round numbers, which is
+  // exactly the R1/R2 columns the print sheet has always had.
+  round_number: number | null
   reps: number | null
   duration_s: number | null
   load_lb: number | null
@@ -293,7 +302,9 @@ export interface LoggerAttempt {
 export interface LoggerRow {
   uid: number
   exercise: Exercise
-  round_number: number | null
+  // The prescribed item this row answers; null for anything the athlete added
+  // themselves, and for ad-hoc logging with no template behind it (SB-531).
+  template_item_id: string | null
   variant: string | null
   notes: string | null
   attempts: LoggerAttempt[]

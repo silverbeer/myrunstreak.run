@@ -36,7 +36,7 @@ const attempt = (over: Partial<LoggerAttempt> = {}): LoggerAttempt => ({ ...blan
 const row = (key: string, over: Partial<LoggerRow> = {}): LoggerRow => ({
   uid: uid++,
   exercise: ex(key),
-  round_number: null,
+  template_item_id: null,
   variant: null,
   notes: null,
   attempts: [blankAttempt()],
@@ -127,16 +127,18 @@ describe('buildSessionPayload', () => {
     expect(p.sets).toHaveLength(0)
   })
 
-  it('carries round_number + trims variant, notes on first set only', () => {
+  it('carries each attempt\'s round + trims variant, notes on first set only', () => {
+    // Rounds moved onto the attempt (SB-545): one exercise done twice is two
+    // sets in different rounds, not two sets sharing one round.
     const p = buildSessionPayload(meta, [
       row('pushups', {
-        round_number: 2,
         variant: '  left  ',
         notes: '  felt strong  ',
-        attempts: [attempt({ reps: 10 }), attempt({ reps: 9 })],
+        attempts: [attempt({ reps: 10, round_number: 1 }), attempt({ reps: 9, round_number: 2 })],
       }),
     ])
-    expect(p.sets[0]).toMatchObject({ round_number: 2, variant: 'left', notes: 'felt strong' })
+    expect(p.sets[0]).toMatchObject({ round_number: 1, variant: 'left', notes: 'felt strong' })
+    expect(p.sets[1]).toMatchObject({ round_number: 2 })
     expect(p.sets[1].notes).toBeNull()
   })
 })
@@ -165,7 +167,85 @@ describe('templateToRows', () => {
     expect(rows[0].exercise.measures).toEqual(['reps']) // resolved from catalog
     expect(rows[1].exercise.display_name).toBe('plank') // fallback (not in catalog)
     expect(rows[1].variant).toBe('front') // carried from template item
-    expect(rows.every((r) => r.attempts.length === 1)).toBe(true)
+    // The template says three rounds, so each exercise arrives with three
+    // numbered attempts (SB-545) rather than one empty box and a Round field
+    // nobody filled in.
+    expect(rows.every((r) => r.attempts.length === 3)).toBe(true)
+    expect(rows[0].attempts.map((a) => a.round_number)).toEqual([1, 2, 3])
+    // And every row names the prescribed item it answers (SB-527).
+    expect(rows.map((r) => r.template_item_id)).toEqual(['i1', 'i2'])
+  })
+})
+
+describe('templateToRows — circuits (SB-545)', () => {
+  const circuitTpl: WorkoutTemplate = {
+    id: 't1',
+    name: 'Monday At-Home',
+    type: 'circuit',
+    rounds: 1,
+    source: null,
+    notes: null,
+    created_at: null,
+    blocks: [
+      { id: 'b1', template_id: 't1', label: 'Circuit A', position: 0, rounds: 2, rest_after_seconds: 240 },
+      { id: 'b2', template_id: 't1', label: 'Circuit B', position: 1, rounds: 1, rest_after_seconds: null },
+    ],
+    items: [
+      { id: 'w1', exercise_key: 'easy_jog', section: 'warmup', position: 0, block_id: null, target_reps: null, target_duration_seconds: 480, target_load_kg: null, target_distance_m: null, rest_seconds: null, variant: null, notes: null },
+      { id: 'a1', exercise_key: 'lunge', section: 'main', position: 1, block_id: 'b1', target_reps: null, target_duration_seconds: 60, target_load_kg: null, target_distance_m: null, rest_seconds: null, variant: null, notes: null },
+      { id: 'b1i', exercise_key: 'bird_dog', section: 'main', position: 2, block_id: 'b2', target_reps: null, target_duration_seconds: 60, target_load_kg: null, target_distance_m: null, rest_seconds: null, variant: null, notes: null },
+    ],
+  }
+
+  it('lays out a two-round circuit as two numbered attempts', () => {
+    const rows = templateToRows(circuitTpl, new Map(), 1)
+    const lunge = rows.find((r) => r.exercise.key === 'lunge')!
+    expect(lunge.attempts.map((a) => a.round_number)).toEqual([1, 2])
+  })
+
+  it('leaves a single-round circuit with one unnumbered attempt', () => {
+    // There is no "round 1 of 1" worth stating.
+    const rows = templateToRows(circuitTpl, new Map(), 1)
+    const birdDog = rows.find((r) => r.exercise.key === 'bird_dog')!
+    expect(birdDog.attempts).toHaveLength(1)
+    expect(birdDog.attempts[0].round_number).toBeNull()
+  })
+
+  it('does not give the warm-up the circuit\'s rounds', () => {
+    const rows = templateToRows(circuitTpl, new Map(), 1)
+    const jog = rows.find((r) => r.exercise.key === 'easy_jog')!
+    expect(jog.attempts).toHaveLength(1)
+  })
+
+  it('links every prefilled row to the item it answers', () => {
+    // The whole point: `lunge` appears several times in one template, so a set
+    // is unattributable without this (SB-527).
+    const rows = templateToRows(circuitTpl, new Map(), 1)
+    expect(rows.map((r) => r.template_item_id)).toEqual(['w1', 'a1', 'b1i'])
+  })
+})
+
+describe('buildSessionPayload — the prescribed item (SB-545)', () => {
+  it('sends template_item_id on every set of a prefilled row', () => {
+    const p = buildSessionPayload(meta, [
+      row('lunge', {
+        template_item_id: 'a1',
+        attempts: [attempt({ reps: 10, round_number: 1 }), attempt({ reps: 9, round_number: 2 })],
+      }),
+    ])
+    expect(p.sets.map((s) => s.template_item_id)).toEqual(['a1', 'a1'])
+  })
+
+  it('leaves it null for something the athlete added themselves', () => {
+    const p = buildSessionPayload(meta, [row('pushups', { attempts: [attempt({ reps: 8 })] })])
+    expect(p.sets[0].template_item_id).toBeNull()
+  })
+
+  it('carries it on a tick-box movement too', () => {
+    const p = buildSessionPayload(meta, [
+      { ...row('skywalker', { template_item_id: 'w2' }), exercise: ex('skywalker', []) },
+    ])
+    expect(p.sets[0].template_item_id).toBe('w2')
   })
 })
 
