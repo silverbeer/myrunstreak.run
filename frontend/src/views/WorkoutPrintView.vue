@@ -58,62 +58,82 @@
       <div v-for="section in sections" :key="section.key" class="section">
         <div class="section-bar">
           <span class="section-chip">{{ section.label }}</span>
-          <span v-if="section.key === 'main' && template.rounds > 1" class="section-note">
-            Complete {{ template.rounds }} rounds
-          </span>
         </div>
 
-        <table class="sheet-table">
-          <thead>
-            <tr>
-              <th class="col-ex">Exercise</th>
-              <th class="col-target">Target / details</th>
-              <th class="col-done">Done</th>
-              <th class="col-times">Times / reps</th>
-              <th class="col-notes">Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template v-for="row in section.rows" :key="row.kind === 'group' ? row.key : row.item.id">
-              <tr v-if="row.kind === 'group'" class="option-head">
-                <td colspan="5">{{ row.label }} — do <strong>one</strong>, circle which</td>
-              </tr>
-              <tr
-                v-for="item in row.kind === 'group' ? row.items : [row.item]"
-                :key="item.id"
-                :class="{ 'option-item': row.kind === 'group' }"
-              >
-              <td class="col-ex font-bold uppercase">
-                <span v-if="row.kind === 'group'" class="option-mark">○</span>
-                {{ exerciseName(item.exercise_key) }}
-                <span v-if="item.variant" class="variant">({{ item.variant }})</span>
-              </td>
-              <td class="col-target">
-                <div>{{ targetText(item) }}</div>
-                <div v-for="cue in cuesFor(item.exercise_key)" :key="cue" class="cue">· {{ cue }}</div>
-                <div v-if="item.notes" class="cue">{{ item.notes }}</div>
-              </td>
-              <td class="col-done"><span class="checkbox" /></td>
-              <td class="col-times">
-                <table v-if="timeRows(item).length" class="attempts">
-                  <tr>
-                    <th>{{ item.segments?.length ? 'Segment' : 'Attempt' }}</th>
-                    <th>Time</th>
-                  </tr>
-                  <tr v-for="row in timeRows(item)" :key="row.label">
-                    <td>{{ row.label }}<span v-if="row.goal" class="goal"> ({{ row.goal }})</span></td>
-                    <td><span class="blank w-16" /></td>
-                  </tr>
-                </table>
-              </td>
-              <td class="col-notes"></td>
-            </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
+        <!-- One table per circuit: Circuit A is two rounds and Circuit B one,
+             and a single table cannot carry both sets of columns (SB-528). -->
+        <template v-for="(g, gi) in section.groups" :key="g.block?.id ?? `loose-${gi}`">
+          <div v-if="g.block" class="block-bar" data-testid="circuit-bar">
+            {{ g.block.label.toUpperCase() }}
+            <span v-if="g.rounds > 1"> — COMPLETE {{ g.rounds }} ROUNDS</span>
+          </div>
 
-      <div v-if="format === 'full'" class="fold">— — — — — — — — — — <span>fold here</span> — — — — — — — — — —</div>
+          <table class="sheet-table">
+            <thead>
+              <tr>
+                <th class="col-ex">Exercise</th>
+                <th class="col-target">Target / details</th>
+                <!-- A box per round beats repeating every exercise N times. -->
+                <th v-for="r in roundCols(g.rounds)" :key="r" class="col-round">{{ r }}</th>
+                <th v-if="!roundCols(g.rounds).length" class="col-done">Done</th>
+                <th class="col-times">Times / reps</th>
+                <th class="col-notes">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="row in g.rows" :key="row.kind === 'group' ? row.key : row.item.id">
+                <tr v-if="row.kind === 'group'" class="option-head">
+                  <td :colspan="4 + Math.max(roundCols(g.rounds).length, 1)">
+                    {{ row.label }} — do <strong>one</strong>, circle which
+                  </td>
+                </tr>
+                <tr
+                  v-for="item in row.kind === 'group' ? row.items : [row.item]"
+                  :key="item.id"
+                  :class="{ 'option-item': row.kind === 'group' }"
+                >
+                  <td class="col-ex font-bold uppercase">
+                    <span v-if="row.kind === 'group'" class="option-mark">○</span>
+                    {{ exerciseName(item.exercise_key) }}
+                    <!-- (L) / (R): these are distinct movements, not repeats. -->
+                    <span v-if="item.variant" class="variant">({{ variantLabel(item.variant) }})</span>
+                  </td>
+                  <td class="col-target">
+                    <div>{{ targetText(item) }}</div>
+                    <div v-for="cue in cuesFor(item.exercise_key)" :key="cue" class="cue">· {{ cue }}</div>
+                    <div v-if="item.notes" class="cue">{{ item.notes }}</div>
+                  </td>
+                  <td v-for="r in roundCols(g.rounds)" :key="r" class="col-round"></td>
+                  <td v-if="!roundCols(g.rounds).length" class="col-done"><span class="checkbox" /></td>
+                  <td class="col-times">
+                    <table v-if="timeRows(item).length" class="attempts">
+                      <tr>
+                        <th>{{ item.segments?.length ? 'Segment' : 'Attempt' }}</th>
+                        <th>Time</th>
+                      </tr>
+                      <tr v-for="tr in timeRows(item)" :key="tr.label">
+                        <td>{{ tr.label }}<span v-if="tr.goal" class="goal"> ({{ tr.goal }})</span></td>
+                        <td><span class="blank w-16" /></td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td class="col-notes"></td>
+                </tr>
+              </template>
+              <!-- Rest is a step in the sequence, not a footnote on the last
+                   exercise, which is where it used to hide. -->
+              <tr v-if="g.restAfter" class="rest-row" data-testid="rest-row">
+                <td class="col-ex font-bold uppercase">Rest</td>
+                <td class="col-target">{{ fmtSecs(g.restAfter) }} — water</td>
+                <td v-for="r in roundCols(g.rounds)" :key="r" class="col-round"></td>
+                <td v-if="!roundCols(g.rounds).length" class="col-done"></td>
+                <td class="col-times"></td>
+                <td class="col-notes"></td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+      </div>
 
       <div class="sheet-footer">
         <span>Total time: <span class="blank w-24" /></span>
@@ -129,7 +149,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import { apiCall } from '@/config/api'
-import type { Exercise, TemplateItem, WorkoutTemplate } from '@/types/workout'
+import type { Exercise, TemplateBlock, TemplateItem, WorkoutTemplate } from '@/types/workout'
 import type { Athlete } from '@/types/coach'
 import { groupOptionItems } from '@/utils/optionGroups'
 import { fmtRange, hrZoneText, restText } from '@/utils/targets'
@@ -178,8 +198,18 @@ const SECTION_LABELS: Record<string, string> = {
   cooldown: 'Cool-down',
 }
 
+/**
+ * The sheet's structure: sections, each split into circuits (SB-528).
+ *
+ * A circuit gets its own table so it can carry its own round columns — Circuit
+ * A is two rounds while Circuit B is one, and a single table cannot have both.
+ * Items outside any circuit (the warm-up, the cool-down) form an unlabelled
+ * group that renders exactly as before.
+ */
 const sections = computed(() => {
   const items = [...(template.value?.items ?? [])].sort((a, b) => a.position - b.position)
+  const blocksById = new Map((template.value?.blocks ?? []).map((b) => [b.id, b]))
+
   const order: string[] = []
   const by: Record<string, TemplateItem[]> = {}
   for (const item of items) {
@@ -190,15 +220,41 @@ const sections = computed(() => {
     }
     by[key].push(item)
   }
-  return order.map((key) => ({
-    key,
-    label: SECTION_LABELS[key] ?? key.replace(/_/g, ' '),
-    items: by[key],
-    // "Pick one of N" alternatives fold into a single block (SB-448) — printed
-    // flat, the aerobic day told Gabe to do all three.
-    rows: groupOptionItems(by[key]),
-  }))
+
+  return order.map((key) => {
+    // Partition in position order, so a circuit stays contiguous on the page.
+    const groups: { block: TemplateBlock | null; items: TemplateItem[] }[] = []
+    for (const item of by[key]) {
+      const block = (item.block_id && blocksById.get(item.block_id)) || null
+      const last = groups[groups.length - 1]
+      if (last && last.block?.id === block?.id) last.items.push(item)
+      else groups.push({ block, items: [item] })
+    }
+    return {
+      key,
+      label: SECTION_LABELS[key] ?? key.replace(/_/g, ' '),
+      items: by[key],
+      groups: groups.map((g) => ({
+        block: g.block,
+        // Rounds live on the circuit; fall back to the template for the
+        // blockless case, which is every template until SB-527 backfilled.
+        rounds: g.block?.rounds ?? (template.value?.rounds ?? 1),
+        restAfter: g.block?.rest_after_seconds ?? null,
+        // "Pick one of N" alternatives fold into a single row (SB-448) —
+        // printed flat, the aerobic day told Gabe to do all three.
+        rows: groupOptionItems(g.items),
+      })),
+    }
+  })
 })
+
+/** R1, R2, ... — a box per round. One round needs no columns, just "Done". */
+const roundCols = (rounds: number): string[] =>
+  rounds > 1 ? Array.from({ length: rounds }, (_, i) => `R${i + 1}`) : []
+
+/** "left" -> "L". The sheet is narrow; the full word costs a line break. */
+const SHORT_VARIANT: Record<string, string> = { left: 'L', right: 'R' }
+const variantLabel = (v: string): string => SHORT_VARIANT[v.toLowerCase()] ?? v
 
 const exerciseName = (key: string) => exercises.value.get(key)?.display_name ?? key
 
@@ -414,6 +470,20 @@ onMounted(load)
 .col-ex { width: 18%; }
 .col-target { width: 34%; }
 .col-done { width: 7%; text-align: center; }
+/* Narrow, so the round boxes cost little width and Notes keeps room to
+   actually write in (SB-528). */
+.col-round { width: 5%; text-align: center; }
+.block-bar {
+  background: #e9e9e9;
+  border: 1px solid #000;
+  border-bottom: 0;
+  padding: 0.25em 0.5em;
+  font-weight: 700;
+  font-size: 0.9em;
+  letter-spacing: 0.02em;
+  margin-top: 0.6em;
+}
+.rest-row td { background: #f7f7f7; }
 .col-times { width: 22%; }
 .col-notes { width: 19%; }
 .variant { font-weight: 400; text-transform: none; }
@@ -452,14 +522,6 @@ onMounted(load)
   font-size: 0.75em;
 }
 .goal { color: #444; }
-.fold {
-  text-align: center;
-  color: #555;
-  font-style: italic;
-  margin: 1.5em 0;
-  white-space: nowrap;
-  overflow: hidden;
-}
 .sheet-footer {
   display: flex;
   justify-content: space-between;
