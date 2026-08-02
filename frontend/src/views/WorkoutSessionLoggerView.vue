@@ -175,17 +175,37 @@
     </div>
 
     <!-- Save -->
-    <div class="mt-6 flex items-center gap-3">
-      <button
-        type="button"
-        class="btn-primary"
-        :disabled="!canSave || saving"
-        data-testid="save"
-        @click="save"
+    <div class="mt-6">
+      <div class="flex items-center gap-3">
+        <button
+          type="button"
+          class="btn-primary"
+          :disabled="!canSave || saving"
+          data-testid="save"
+          @click="save"
+        >
+          {{ saving ? 'Saving…' : 'Save session' }}
+        </button>
+        <!-- A disabled button with no reason is a dead end (SB-501). -->
+        <span v-if="blockedReason" class="text-sm text-gray-500" data-testid="save-blocked">
+          {{ blockedReason }}
+        </span>
+      </div>
+
+      <div
+        v-if="error"
+        class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2"
+        data-testid="save-error"
       >
-        {{ saving ? 'Saving…' : 'Save session' }}
-      </button>
-      <span v-if="error" class="text-sm text-red-600">{{ error }}</span>
+        <p class="text-sm font-medium text-red-800">Couldn't save this session</p>
+        <p class="mt-1 text-sm text-red-700">{{ explainStatus(errorStatus, 'save it') }}</p>
+        <!-- The thing an athlete most needs to know mid-workout: nothing was
+             lost, so do not redo the whole session. -->
+        <p class="mt-1 text-sm text-red-700">
+          Everything you logged is still on this page — press Save session to try again.
+        </p>
+        <p class="mt-2 text-xs text-red-400">{{ error }}</p>
+      </div>
     </div>
   </div>
 </template>
@@ -208,6 +228,7 @@ import {
 } from '@/utils/sessionPayload'
 import type { Exercise, LoggerRow, WorkoutType } from '@/types/workout'
 import { useActingAthlete } from '@/composables/useActingAthlete'
+import { explainStatus, statusOf } from '@/utils/apiErrors'
 
 const route = useRoute()
 const router = useRouter()
@@ -226,6 +247,7 @@ const sessionType = ref<WorkoutType>('circuit')
 const picking = ref(false)
 const saving = ref(false)
 const error = ref<string | null>(null)
+const errorStatus = ref<number | null>(null)
 
 let nextUid = 1
 
@@ -311,15 +333,25 @@ const payload = computed(() =>
 
 const canSave = computed(() => sessionDate.value.length > 0 && payload.value.sets.length > 0)
 
+/** Why Save is unavailable, so the button is never just dead (SB-501). */
+const blockedReason = computed<string | null>(() => {
+  if (saving.value || canSave.value) return null
+  if (!sessionDate.value) return 'Pick a date first.'
+  if (!rows.value.length) return 'Add an exercise to log.'
+  return 'Fill in at least one value — reps, time or weight.'
+})
+
 const save = async (): Promise<void> => {
   if (!canSave.value) return
   saving.value = true
   error.value = null
+  errorStatus.value = null
   try {
     await createSession(payload.value, athleteId.value!)
     router.push(homePath.value)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save session'
+    errorStatus.value = statusOf(e)
   } finally {
     saving.value = false
   }

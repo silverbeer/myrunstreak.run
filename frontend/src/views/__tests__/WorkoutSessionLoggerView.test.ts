@@ -196,3 +196,69 @@ describe('WorkoutSessionLoggerView', () => {
     expect(w.find('[data-testid="row-pushups"]').exists()).toBe(false)
   })
 })
+
+describe('WorkoutSessionLoggerView — save failure and dead ends (SB-501)', () => {
+  const addPushups = async (w: Awaited<ReturnType<typeof mountLogger>>) => {
+    await w.find('[data-testid="add-exercise"]').trigger('click')
+    await w.find('[data-testid="ex-pushups"]').trigger('click')
+    await w.find('[data-testid="reps-pushups-0"]').setValue(20)
+  }
+
+  it('says why Save is unavailable instead of offering a dead button', async () => {
+    // A disabled control with no explanation is the worst kind of friction
+    // mid-workout: nothing to read, nothing to fix.
+    const w = await mountLogger()
+    expect(w.get('[data-testid="save"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="save-blocked"]').text()).toContain('Add an exercise')
+  })
+
+  it('drops the explanation once the session can be saved', async () => {
+    const w = await mountLogger()
+    await addPushups(w)
+    expect(w.find('[data-testid="save-blocked"]').exists()).toBe(false)
+    expect(w.get('[data-testid="save"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('explains a failed save in words, not a status code', async () => {
+    const w = await mountLogger()
+    await addPushups(w)
+    h.createSession.mockRejectedValueOnce(Object.assign(new Error('HTTP 500'), { status: 500 }))
+    await w.get('[data-testid="save"]').trigger('click')
+    await flushPromises()
+
+    const panel = w.get('[data-testid="save-error"]')
+    expect(panel.text()).toContain("Couldn't save this session")
+    expect(panel.text()).toContain('The server had a problem')
+    expect(panel.text()).toContain('HTTP 500') // raw detail still available
+  })
+
+  it('tells the athlete their work was not lost', async () => {
+    // The thing that actually matters when a save fails mid-session: do not
+    // make a kid think he has to log the whole workout again.
+    const w = await mountLogger()
+    await addPushups(w)
+    h.createSession.mockRejectedValueOnce(Object.assign(new Error('nope'), { status: 500 }))
+    await w.get('[data-testid="save"]').trigger('click')
+    await flushPromises()
+
+    expect(w.get('[data-testid="save-error"]').text()).toContain('still on this page')
+    // And it genuinely is not lost — the row survives.
+    expect(w.find('[data-testid="reps-pushups-0"]').exists()).toBe(true)
+    expect(h.push).not.toHaveBeenCalled()
+  })
+
+  it('lets a retry succeed after a failure', async () => {
+    const w = await mountLogger()
+    await addPushups(w)
+    h.createSession.mockRejectedValueOnce(Object.assign(new Error('nope'), { status: 500 }))
+    await w.get('[data-testid="save"]').trigger('click')
+    await flushPromises()
+
+    h.createSession.mockResolvedValueOnce({ id: 's1' })
+    await w.get('[data-testid="save"]').trigger('click')
+    await flushPromises()
+
+    expect(w.find('[data-testid="save-error"]').exists()).toBe(false)
+    expect(h.push).toHaveBeenCalled()
+  })
+})
