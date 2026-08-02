@@ -98,11 +98,19 @@ export interface WorkoutSession {
   id: string
   athlete_id: string | null
   session_date: string
+  // Which plan was performed, or null for an ad-hoc session with none behind
+  // it (SB-531) — what "my own" on the Completed list is read from.
+  template_id: string | null
   type: WorkoutType
   total_minutes: number | null
   how_felt: string | null
   notes: string | null
   sets: ExerciseSet[]
+  // What was logged (SB-530). The list endpoint returns no sets, so these carry
+  // the "22 exercises logged" line; a single-session read leaves them at 0 and
+  // `sets` answers instead.
+  set_count?: number
+  exercise_count?: number
 }
 
 // ---- Coach home aggregate (SB-266) ----

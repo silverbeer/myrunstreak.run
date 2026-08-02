@@ -86,7 +86,9 @@
             </p>
           </div>
           <div class="text-right text-sm text-gray-600">
-            <p>{{ s.sets.length }} {{ s.sets.length === 1 ? 'set' : 'sets' }}</p>
+            <!-- The list endpoint returns no sets, so this read "0 sets" on
+                 every session; `set_count` is what it always meant (SB-530). -->
+            <p>{{ setCount(s) }} {{ setCount(s) === 1 ? 'set' : 'sets' }}</p>
             <p v-if="s.total_minutes" class="text-xs text-gray-400">{{ s.total_minutes }} min</p>
           </div>
         </div>
@@ -105,7 +107,7 @@ import AthleteAccessPanel from '@/components/AthleteAccessPanel.vue'
 import WorkoutTemplateCard from '@/components/WorkoutTemplateCard.vue'
 import type { WorkoutTemplate } from '@/types/workout'
 import { deleteTemplate } from '@/composables/useWorkoutTemplates'
-import type { Athlete } from '@/types/coach'
+import type { Athlete, WorkoutSession } from '@/types/coach'
 
 const route = useRoute()
 const router = useRouter()
@@ -122,6 +124,9 @@ const authoredBy = (t: WorkoutTemplate): string | null => {
   if (!linked || !t.created_by || t.created_by !== linked) return null
   return `Added by ${athlete.value?.display_name ?? 'athlete'}`
 }
+/** Sets logged in a session, from the count the list carries (SB-530). */
+const setCount = (s: WorkoutSession): number => s.set_count ?? s.sets?.length ?? 0
+
 const { exercises, load: loadExercises } = useExercises()
 
 const editing = ref(false)

@@ -36,10 +36,35 @@ const template = {
   created_at: '2026-07-20T00:00:00Z',
 }
 
+/** Today in the athlete's own zone — the view compares date-only strings. */
+const todayISO = (): string => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const daysFromNow = (n: number): string => {
+  const d = new Date()
+  d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * Serve the three calls the athlete's home makes. Everything defaults to empty,
+ * so each test names only the data it is about.
+ */
+const serve = (opts: { templates?: unknown[]; sessions?: unknown[] } = {}) => {
+  apiCallMock.mockImplementation((path: string) => {
+    if (path === '/me/workouts') return Promise.resolve(opts.templates ?? [])
+    if (path === '/workouts/exercises') return Promise.resolve([])
+    if (path.startsWith('/workouts/sessions')) return Promise.resolve(opts.sessions ?? [])
+    return Promise.reject(new Error(`unexpected: ${path}`))
+  })
+}
+
 beforeEach(() => {
   apiCallMock.mockReset()
   loadMyAthlete.mockClear()
   replaceMock.mockClear()
+  pushMock.mockClear()
   myAthlete.value = null
 })
 
@@ -54,13 +79,11 @@ describe('MyWorkoutsView (SB-332)', () => {
 
   it('renders assigned workouts for a linked athlete', async () => {
     myAthlete.value = { id: 'a1', display_name: 'Gabe' }
-    apiCallMock.mockImplementation((path: string) => {
-      if (path === '/me/workouts') return Promise.resolve([template])
-      if (path === '/workouts/exercises') return Promise.resolve([])
-      return Promise.reject(new Error(`unexpected: ${path}`))
-    })
+    serve({ templates: [template] })
     const w = mount(MyWorkoutsView)
     await flushPromises()
+    // Plans is where the plans live now (SB-530).
+    await w.get('[data-testid="tab-plans"]').trigger('click')
     expect(w.text()).toContain('Monday At-Home')
     expect(w.text()).toContain('Coached by Matthew')
     expect(replaceMock).not.toHaveBeenCalled()
@@ -68,13 +91,10 @@ describe('MyWorkoutsView (SB-332)', () => {
 
   it('shows the empty state when nothing is assigned', async () => {
     myAthlete.value = { id: 'a1', display_name: 'Gabe' }
-    apiCallMock.mockImplementation((path: string) => {
-      if (path === '/me/workouts') return Promise.resolve([])
-      if (path === '/workouts/exercises') return Promise.resolve([])
-      return Promise.reject(new Error('unexpected'))
-    })
+    serve()
     const w = mount(MyWorkoutsView)
     await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
     expect(w.text()).toContain('No workouts yet')
   })
 })
@@ -82,7 +102,7 @@ describe('MyWorkoutsView (SB-332)', () => {
 describe('MyWorkoutsView — ad-hoc entry (SB-531)', () => {
   it('offers logging a workout with no plan behind it', async () => {
     myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
-    apiCallMock.mockResolvedValue([])
+    serve()
     const w = mount(MyWorkoutsView)
     await flushPromises()
     const link = w.get('[data-testid="log-adhoc"]')
@@ -92,10 +112,293 @@ describe('MyWorkoutsView — ad-hoc entry (SB-531)', () => {
 
   it('demotes building a plan — it was the loudest control and the wrong verb', async () => {
     myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
-    apiCallMock.mockResolvedValue([])
+    serve()
     const w = mount(MyWorkoutsView)
     await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
     expect(w.text()).toContain('+ Build a workout')
     expect(w.text()).not.toContain('+ New workout')
+  })
+})
+
+describe('MyWorkoutsView — Training | Plans tabs (SB-530)', () => {
+  beforeEach(() => {
+    myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
+  })
+
+  it('opens on Training, where building a plan is not offered at all', async () => {
+    serve({ templates: [template] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    // The reported confusion was two verbs competing for one button; the split
+    // is only worth anything if "+ Build" is absent from the doing screen.
+    expect(w.text()).not.toContain('+ Build a workout')
+    expect(w.get('[data-testid="tab-training"]').attributes('aria-selected')).toBe('true')
+  })
+
+  it('keeps building on Plans and nowhere else', async () => {
+    serve({ templates: [template] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    expect(w.find('[data-testid="build-workout"]').exists()).toBe(false)
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+    expect(w.get('[data-testid="build-workout"]').attributes('href')).toBe('/my/workouts/build')
+  })
+
+  it('points at the plans from Training while nothing is scheduled', async () => {
+    // Otherwise the plans are a tab away with nothing saying so, which is the
+    // same "built but no door" failure the split is meant to end.
+    serve({ templates: [template] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    const jump = w.get('[data-testid="go-to-plans"]')
+    expect(jump.text()).toContain('Or start one of your 1 plans')
+    await jump.trigger('click')
+    expect(w.get('[data-testid="tab-plans"]').attributes('aria-selected')).toBe('true')
+    expect(w.find('[data-testid="build-workout"]').exists()).toBe(true)
+  })
+
+  it('does not send you to the plans when one is already due', async () => {
+    serve({ templates: [{ ...template, scheduled_for: todayISO() }] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    expect(w.find('[data-testid="go-to-plans"]').exists()).toBe(false)
+  })
+
+  it('loads the athlete\'s own sessions with the act-as header', async () => {
+    serve()
+    mount(MyWorkoutsView)
+    await flushPromises()
+    const call = apiCallMock.mock.calls.find((c) => String(c[0]).startsWith('/workouts/sessions'))
+    expect(call).toBeDefined()
+    expect((call![1] as { headers: Record<string, string> }).headers).toEqual({
+      'X-Act-As-Athlete': 'ath1',
+    })
+  })
+})
+
+describe('MyWorkoutsView — Completed (SB-530)', () => {
+  beforeEach(() => {
+    myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
+  })
+
+  it('counts what has been done and says what each session logged', async () => {
+    serve({
+      templates: [template],
+      sessions: [
+        {
+          id: 's1',
+          template_id: 't1',
+          session_date: daysFromNow(-1),
+          type: 'circuit',
+          sets: [],
+          exercise_count: 22,
+        },
+      ],
+    })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    // The count is the reward, and the row has to say what it was.
+    expect(w.text()).toContain('Completed (1)')
+    expect(w.text()).toContain('Monday At-Home')
+    expect(w.text()).toContain('22 exercises logged')
+  })
+
+  it('marks an ad-hoc session "my own" without demoting it', async () => {
+    serve({
+      templates: [template],
+      sessions: [
+        {
+          id: 's1',
+          template_id: null,
+          session_date: daysFromNow(-1),
+          type: 'circuit',
+          sets: [],
+          exercise_count: 4,
+        },
+        {
+          id: 's2',
+          template_id: 't1',
+          session_date: daysFromNow(-2),
+          type: 'circuit',
+          sets: [],
+          exercise_count: 12,
+        },
+      ],
+    })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    const [adhoc, coached] = w.findAll('[data-testid="completed-row"]')
+    expect(adhoc.text()).toContain('4 exercises · my own')
+    expect(coached.text()).toContain('12 exercises logged')
+    // Noted, not demoted: it gets the same row treatment as the coach's.
+    expect(adhoc.classes()).toEqual(coached.classes())
+  })
+
+  it('says so honestly when nothing has been logged', async () => {
+    serve({ templates: [template] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    expect(w.text()).toContain('Completed (0)')
+    expect(w.find('[data-testid="completed-empty"]').exists()).toBe(true)
+  })
+
+  it('previews four and offers the rest behind "See all"', async () => {
+    serve({
+      sessions: Array.from({ length: 6 }, (_, i) => ({
+        id: `s${i}`,
+        template_id: null,
+        session_date: daysFromNow(-i - 1),
+        type: 'circuit',
+        sets: [],
+        exercise_count: 3,
+      })),
+    })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    expect(w.findAll('[data-testid="completed-row"]')).toHaveLength(4)
+    await w.get('[data-testid="see-all-completed"]').trigger('click')
+    expect(w.findAll('[data-testid="completed-row"]')).toHaveLength(6)
+  })
+})
+
+describe('MyWorkoutsView — Coming up (SB-530)', () => {
+  beforeEach(() => {
+    myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
+  })
+
+  it('is absent entirely while nothing carries a scheduled date', async () => {
+    // `scheduled_for` is unset on every template and what should schedule one is
+    // an open product decision — so the section renders only when the data
+    // exists, and the screen is honest in the meantime.
+    serve({ templates: [template] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    expect(w.find('[data-testid="coming-up"]').exists()).toBe(false)
+    expect(w.find('[data-testid="start-card"]').exists()).toBe(false)
+  })
+
+  it('promotes the workout due today to a labelled Start card', async () => {
+    serve({
+      templates: [
+        { ...template, scheduled_for: todayISO() },
+        { ...template, id: 't2', name: 'Track Thursday', scheduled_for: daysFromNow(3) },
+      ],
+    })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    const card = w.get('[data-testid="start-card"]')
+    expect(card.text()).toContain('Monday At-Home')
+    expect(card.text()).toContain('Today')
+    await card.get('[data-testid="start-workout"]').trigger('click')
+    expect(pushMock).toHaveBeenCalledWith('/my/workouts/log/t1')
+    // The one still ahead stays in Coming up rather than doubling up.
+    const coming = w.get('[data-testid="coming-up"]')
+    expect(coming.text()).toContain('Track Thursday')
+    expect(coming.text()).not.toContain('Monday At-Home')
+  })
+
+  it('drops the ad-hoc entry to a quiet line when something is due', async () => {
+    serve({ templates: [{ ...template, scheduled_for: todayISO() }] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    const adhoc = w.get('[data-testid="log-adhoc"]')
+    expect(adhoc.text()).toContain('+ Log something I just did')
+    expect(adhoc.attributes('href')).toBe('/my/workouts/log')
+  })
+
+  it('names what is next when nothing is due today', async () => {
+    serve({ templates: [{ ...template, name: 'Track Thursday', scheduled_for: daysFromNow(3) }] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    expect(w.text()).toContain('Nothing scheduled today')
+    expect(w.text()).toContain('Next up: Track Thursday')
+    // Logging is still the primary control when nothing is due.
+    expect(w.get('[data-testid="log-adhoc"]').text()).toContain('+ Log a workout')
+  })
+
+  it('ignores a date that has already passed', async () => {
+    serve({ templates: [{ ...template, scheduled_for: daysFromNow(-2) }] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    expect(w.find('[data-testid="start-card"]').exists()).toBe(false)
+    expect(w.find('[data-testid="coming-up"]').exists()).toBe(false)
+  })
+})
+
+describe('MyWorkoutsView — Plans grouping (SB-530)', () => {
+  beforeEach(() => {
+    myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
+  })
+
+  it('separates the coach\'s plans from the athlete\'s own', async () => {
+    serve({
+      templates: [
+        { ...template, session_count: 5 },
+        {
+          ...template,
+          id: 't2',
+          name: 'Saturday garage circuit',
+          created_by: 'u1',
+          source: null,
+          session_count: 0,
+        },
+      ],
+    })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+
+    const fromCoach = w.get('[data-testid="group-from-coach"]')
+    expect(fromCoach.text()).toContain('From Matthew')
+    expect(fromCoach.text()).toContain('Monday At-Home')
+    expect(fromCoach.text()).not.toContain('Saturday garage circuit')
+
+    const mine = w.get('[data-testid="group-mine"]')
+    expect(mine.text()).toContain('Saturday garage circuit')
+    // Athlete-authored workouts shipped and nobody found them (SB-486); the
+    // empty prompt only belongs on an account that has none.
+    expect(w.find('[data-testid="mine-empty"]').exists()).toBe(false)
+  })
+
+  it('shows how often each plan has been done', async () => {
+    serve({ templates: [{ ...template, session_count: 5 }, { ...template, id: 't2', name: 'Speed Endurance', session_count: 0 }] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+    const counts = w.findAll('[data-testid="usage-count"]').map((n) => n.text())
+    expect(counts).toContain('done 5×')
+    expect(counts).toContain('not yet')
+  })
+
+  it('offers a labelled Start workout on every plan, not an icon tooltip', async () => {
+    serve({ templates: [template] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+    // The old control was an unlabelled icon with a `title`, which does not
+    // exist on touch — the most frequent action was the least visible one.
+    expect(w.find('[data-testid="log-this"]').exists()).toBe(false)
+    await w.get('[data-testid="start-workout"]').trigger('click')
+    expect(pushMock).toHaveBeenCalledWith('/my/workouts/log/t1')
+  })
+
+  it('prompts an athlete who has authored nothing to build something', async () => {
+    serve({ templates: [template] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+    expect(w.find('[data-testid="group-mine"]').exists()).toBe(false)
+    expect(w.get('[data-testid="mine-empty"]').text()).toContain('Made something up at practice?')
+  })
+
+  it('falls back to a generic coach label when the plans disagree on authorship', async () => {
+    serve({
+      templates: [template, { ...template, id: 't2', name: 'Bike day', source: 'Coach Dana' }],
+    })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+    expect(w.get('[data-testid="group-from-coach"]').text()).toContain('From my coach')
   })
 })

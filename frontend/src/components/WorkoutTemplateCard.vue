@@ -26,8 +26,21 @@
           >
             {{ authorLabel }}
           </span>
+          <!-- On a list of plans, how often it has been done says more than
+               whether it ever was — "done 5×" gives the library a history, and
+               "not yet" reads as a nudge rather than a failure (SB-530). The
+               coach views pass no count and keep the completion pill. -->
           <span
-            v-if="template.has_session"
+            v-if="showUsage"
+            class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
+            :class="usageCount > 0 ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'"
+            data-testid="usage-count"
+          >
+            <Check v-if="usageCount > 0" class="w-3 h-3" />
+            {{ usageCount > 0 ? `done ${usageCount}×` : 'not yet' }}
+          </span>
+          <span
+            v-else-if="template.has_session"
             class="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700"
           >
             <Check class="w-3 h-3" /> Completed<template v-if="template.last_session_date"> · {{ formatDayMonth(template.last_session_date) }}</template>
@@ -171,12 +184,25 @@ const props = withDefaults(
     canEdit?: boolean
     // e.g. "Added by Gabe" — the caller knows the names, the card just shows it.
     authoredBy?: string | null
+    // Show "done N×" / "not yet" instead of the completion pill (SB-530).
+    // Opt-in so the coach views are untouched: `false` is a real count.
+    showUsage?: boolean
   }>(),
-  { canLog: undefined, canPrint: undefined, canEdit: undefined, authoredBy: null },
+  {
+    canLog: undefined,
+    canPrint: undefined,
+    canEdit: undefined,
+    authoredBy: null,
+    showUsage: false,
+  },
 )
 
 /** Shown when a caller supplies it — the coach view labels athlete-authored rows. */
 const authorLabel = computed(() => props.authoredBy ?? null)
+
+/** How many sessions were logged against this plan (SB-530). */
+const showUsage = computed(() => props.showUsage)
+const usageCount = computed(() => props.template.session_count ?? 0)
 
 const mayLog = computed(() => props.canLog ?? !props.readonly)
 const mayPrint = computed(() => props.canPrint ?? !props.readonly)

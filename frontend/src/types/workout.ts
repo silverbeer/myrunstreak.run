@@ -164,6 +164,8 @@ export interface WorkoutTemplate {
   scheduled_for?: string | null
   // Completion (SB-334): a logged session references this template.
   has_session?: boolean
+  // How many times it has been done (SB-530) — "done 5×" / "not yet" on Plans.
+  session_count?: number
   last_session_date?: string | null  /** Circuits, in position order (SB-527). Empty for simple templates. */
   blocks?: TemplateBlock[]
 }
