@@ -184,6 +184,33 @@ export interface WorkoutScheduleEntry {
   scheduled_for: string
   notes: string | null
   created_at?: string | null
+  // The pattern that produced it (SB-535); null when scheduled by hand.
+  recurrence_id?: string | null
+}
+
+/**
+ * A weekly pattern that generates occasions (SB-535). The rule is what repeats;
+ * the occasions it produces are ordinary schedule rows, so everything reading
+ * Coming up needs no knowledge that recurrence exists.
+ */
+export interface WorkoutRecurrence {
+  id: string
+  template_id: string
+  athlete_id: string | null
+  created_by: string | null
+  // 0 = Sunday .. 6 = Saturday — the same numbers `Date.getDay()` returns.
+  byweekday: number[]
+  starts_on: string
+  ends_on: string | null
+  active: boolean
+  generated_through: string | null
+}
+
+export interface WorkoutRecurrenceInput {
+  template_id: string
+  byweekday: number[]
+  starts_on: string
+  ends_on?: string | null
 }
 
 export interface WorkoutScheduleInput {

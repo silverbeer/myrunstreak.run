@@ -17,7 +17,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ExerciseCategory(StrEnum):
@@ -337,6 +337,53 @@ class WorkoutSchedule(BaseModel):
     template_id: UUID
     scheduled_for: date
     notes: str | None = None
+    created_at: datetime | None = None
+    # The pattern that produced it (SB-535); None when scheduled by hand. The
+    # screens do not branch on this — a generated occasion is an occasion.
+    recurrence_id: UUID | None = None
+
+
+class WorkoutRecurrenceCreate(BaseModel):
+    """Input for a weekly pattern (SB-535)."""
+
+    template_id: UUID
+    # 0 = Sunday .. 6 = Saturday, the convention the UI produces.
+    byweekday: list[int] = Field(min_length=1, max_length=7)
+    starts_on: date
+    ends_on: date | None = None
+
+    @field_validator("byweekday")
+    @classmethod
+    def _real_weekdays(cls, v: list[int]) -> list[int]:
+        if any(d < 0 or d > 6 for d in v):
+            raise ValueError("byweekday values must be 0 (Sunday) to 6 (Saturday)")
+        return sorted(set(v))
+
+
+class WorkoutRecurrenceUpdate(BaseModel):
+    """Partial patch. Turning a rule off is the common one — it stops future
+    occasions and leaves everything already generated (and logged) alone."""
+
+    byweekday: list[int] | None = None
+    ends_on: date | None = None
+    active: bool | None = None
+
+
+class WorkoutRecurrence(BaseModel):
+    """A stored weekly pattern."""
+
+    id: UUID
+    user_id: UUID
+    athlete_id: UUID | None = None
+    created_by: UUID | None = None
+    template_id: UUID
+    byweekday: list[int]
+    starts_on: date
+    ends_on: date | None = None
+    active: bool = True
+    # Last date already generated. Generation moves forward from here and never
+    # revisits, which is what stops a skipped occasion from coming back.
+    generated_through: date | None = None
     created_at: datetime | None = None
 
 
