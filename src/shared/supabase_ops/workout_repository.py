@@ -542,6 +542,29 @@ class WorkoutSessionsRepository:
         session["sets"] = cast(list[dict[str, Any]], sets.data)
         return session
 
+    def update(
+        self,
+        user_id: UUID,
+        session_id: UUID,
+        payload: dict[str, Any],
+        athlete_id: UUID | None = None,
+    ) -> dict[str, Any] | None:
+        """Patch a session's own fields — not its sets (SB-536).
+
+        Renaming is the only caller so far, and it must not disturb what was
+        logged: the sets are the record, the name is a label on it.
+        """
+        if not payload:
+            return self.get(user_id, session_id, athlete_id)
+        query = _scope(
+            self.supabase.table("workout_sessions").update(payload).eq("id", str(session_id)),
+            user_id,
+            athlete_id,
+        )
+        if not cast(list[dict[str, Any]], query.execute().data):
+            return None
+        return self.get(user_id, session_id, athlete_id)
+
     def delete(self, user_id: UUID, session_id: UUID, athlete_id: UUID | None = None) -> bool:
         query = _scope(
             self.supabase.table("workout_sessions").delete().eq("id", str(session_id)),

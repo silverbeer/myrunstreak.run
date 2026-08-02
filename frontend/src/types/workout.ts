@@ -232,6 +232,9 @@ export interface SessionSetInput {
 
 export interface WorkoutSessionInput {
   session_date: string
+  // What the athlete calls it (SB-536). null = unnamed; the row falls back to
+  // the template name, then the type.
+  name?: string | null
   template_id?: string | null
   type: WorkoutType
   total_minutes?: number | null

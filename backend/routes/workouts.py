@@ -24,6 +24,7 @@ from src.shared.models.workout import (
     WorkoutScheduleCreate,
     WorkoutSession,
     WorkoutSessionCreate,
+    WorkoutSessionUpdate,
     WorkoutTemplate,
     WorkoutTemplateCreate,
 )
@@ -413,6 +414,36 @@ def get_session(
     )
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+    return WorkoutSession(**row)
+
+
+@router.patch("/sessions/{session_id}", response_model=WorkoutSession)
+async def update_session(
+    session_id: UUID,
+    body: WorkoutSessionUpdate,
+    user_id: UUID = Depends(authenticate_request),
+    athlete_id: UUID | None = Depends(acting_athlete),
+) -> WorkoutSession:
+    """Rename a logged session (SB-536).
+
+    Same rule as deleting one: editable by whoever logged it, and by the coach
+    for any of their athlete's. A name is a label on the record, so this never
+    touches the sets — those are the record itself.
+    """
+    repo = WorkoutSessionsRepository(get_supabase_client())
+    existing = repo.get(user_id, session_id, athlete_id=athlete_id)
+    if existing is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+    _require_may_modify(user_id, athlete_id, existing, "session")
+
+    # exclude_unset, not exclude_none: clearing the name back to the default is
+    # a legitimate edit, and indistinguishable from "not sent" otherwise.
+    row = repo.update(
+        user_id, session_id, body.model_dump(mode="json", exclude_unset=True), athlete_id=athlete_id
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+    await invalidate_user(user_id)
     return WorkoutSession(**row)
 
 

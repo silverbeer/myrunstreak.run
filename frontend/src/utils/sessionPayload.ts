@@ -21,6 +21,52 @@ export function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+const WEEKDAYS_LONG = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+]
+const MONTHS_SHORT = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+]
+
+/**
+ * What an unnamed session is called until someone says otherwise (SB-536):
+ * "Sunday 2 Aug". The weekday is what he recognises; the date is what tells two
+ * Sundays apart on the Completed list.
+ *
+ * Read entirely from the session's own date, never the clock. A workout done on
+ * Sunday but entered on Tuesday evening must not be called "Tuesday" — and not
+ * "Sunday evening" either: SB-531's version took the weekday from the session
+ * and the time of day from `new Date()`, which is only right when you log the
+ * moment you finish.
+ *
+ * Parsed part-wise, because `new Date('2026-08-02')` is UTC midnight and lands
+ * on the day before west of Greenwich — every name would be off by one.
+ */
+export function defaultSessionName(dateOnly: string): string {
+  const [y, m, d] = dateOnly.split('-').map(Number)
+  if (!y || !m || !d) return 'Workout'
+  const date = new Date(y, m - 1, d)
+  if (Number.isNaN(date.getTime())) return 'Workout'
+  return `${WEEKDAYS_LONG[date.getDay()]} ${d} ${MONTHS_SHORT[m - 1]}`
+}
+
 /** A fresh empty attempt (one set of an exercise). */
 export function blankAttempt(): LoggerAttempt {
   return {
@@ -53,6 +99,7 @@ function isEmptyAttempt(a: LoggerAttempt): boolean {
 
 export interface SessionMeta {
   session_date: string
+  name: string | null
   type: WorkoutType
   total_minutes: number | null
   how_felt: string | null
@@ -107,6 +154,9 @@ export function buildSessionPayload(meta: SessionMeta, rows: LoggerRow[]): Worko
   }
   return {
     session_date: meta.session_date,
+    // Blank means "no name given" — the row falls back to the template name,
+    // then the type. An empty string would be a name that reads as nothing.
+    name: meta.name?.trim() || null,
     template_id: meta.template_id,
     type: meta.type,
     total_minutes: meta.total_minutes,

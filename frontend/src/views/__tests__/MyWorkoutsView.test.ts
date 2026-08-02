@@ -276,6 +276,86 @@ describe('MyWorkoutsView — Completed (SB-530)', () => {
   })
 })
 
+describe('MyWorkoutsView — session names (SB-536)', () => {
+  beforeEach(() => {
+    myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
+  })
+
+  const adhoc = (o: Partial<Record<string, unknown>> = {}) => ({
+    id: 's1',
+    template_id: null,
+    session_date: daysFromNow(-1),
+    type: 'circuit',
+    name: null,
+    sets: [],
+    exercise_count: 4,
+    ...o,
+  })
+
+  it('calls a session what the athlete called it', async () => {
+    serve({ sessions: [adhoc({ name: 'Garage circuit' })] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    expect(w.get('[data-testid="completed-row"]').text()).toContain('Garage circuit')
+  })
+
+  it('falls back to the plan name, then to the kind of workout', async () => {
+    // Sessions logged before naming existed have no name and must still read.
+    serve({
+      templates: [template],
+      sessions: [adhoc({ id: 's1', template_id: 't1' }), adhoc({ id: 's2' })],
+    })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    const rows = w.findAll('[data-testid="completed-row"]')
+    expect(rows.map((r) => r.text()).join(' ')).toContain('Monday At-Home')
+    expect(rows.map((r) => r.text()).join(' ')).toContain('Circuit')
+  })
+
+  it('renames one from the list, keeping what was logged', async () => {
+    serve({ sessions: [adhoc({ name: 'Sunday 1 Aug' })] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+
+    await w.get('[data-testid="rename-open"]').trigger('click')
+    await w.get('[data-testid="rename-input"]').setValue('Garage circuit')
+    await w.get('[data-testid="rename-save"]').trigger('click')
+    await flushPromises()
+
+    const patch = apiCallMock.mock.calls.find(
+      (c) => c[1] && (c[1] as { method?: string }).method === 'PATCH',
+    )
+    expect(String(patch![0])).toBe('/workouts/sessions/s1')
+    // Only the name — the sets are the record, not a label on it.
+    expect(JSON.parse((patch![1] as { body: string }).body)).toEqual({ name: 'Garage circuit' })
+    expect(w.get('[data-testid="completed-row"]').text()).toContain('Garage circuit')
+  })
+
+  it('clearing the name falls back to the date rather than to nothing', async () => {
+    serve({ sessions: [adhoc({ name: 'Garage circuit', session_date: '2026-08-02' })] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+
+    await w.get('[data-testid="rename-open"]').trigger('click')
+    await w.get('[data-testid="rename-input"]').setValue('   ')
+    await w.get('[data-testid="rename-save"]').trigger('click')
+    await flushPromises()
+
+    const patch = apiCallMock.mock.calls.find(
+      (c) => c[1] && (c[1] as { method?: string }).method === 'PATCH',
+    )
+    expect(JSON.parse((patch![1] as { body: string }).body)).toEqual({ name: 'Sunday 2 Aug' })
+  })
+
+  it('offers no rename on a session logged against a plan', async () => {
+    // That one is called what the coach called the workout.
+    serve({ templates: [template], sessions: [adhoc({ template_id: 't1' })] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    expect(w.find('[data-testid="rename-open"]').exists()).toBe(false)
+  })
+})
+
 describe('MyWorkoutsView — Coming up (SB-530, SB-534)', () => {
   beforeEach(() => {
     myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
