@@ -54,36 +54,42 @@
 
     <!-- ------------------------------------------------------------- Training -->
     <div v-else-if="tab === 'training'" class="space-y-5">
-      <!-- Due today gets the Start card. With nothing scheduled — which is every
-           template today, `scheduled_for` being unset on all of them — logging
-           what you just did IS the primary action, not a quiet link under an
-           empty section (SB-531). -->
+      <!-- Due today gets the Start card. When nothing is scheduled, logging what
+           you just did IS the primary action, not a quiet link under an empty
+           section (SB-531). -->
       <div
         v-if="dueToday"
         class="rounded-2xl border border-brand-300 bg-white p-5 shadow-sm"
         data-testid="start-card"
       >
         <div class="flex items-start justify-between gap-3">
-          <h2 class="text-lg font-bold text-gray-900 leading-tight">{{ dueToday.name }}</h2>
+          <h2 class="text-lg font-bold text-gray-900 leading-tight">
+            {{ dueToday.template.name }}
+          </h2>
           <span
             class="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-amber-700"
           >
-            {{ formatDayPill(dueToday.scheduled_for!) }}
+            {{ formatDayPill(dueToday.scheduled_for) }}
           </span>
         </div>
-        <p class="mt-1 text-sm text-gray-500">{{ planSummary(dueToday) }}</p>
+        <!-- Who put it on the day. Either side may schedule (SB-534), and a
+             workout Gabe planned himself reads differently from one his coach
+             expects of him — same vocabulary as the Plans grouping. -->
+        <p class="mt-1 text-sm text-gray-500">
+          <span data-testid="scheduled-by">{{ dueToday.by }}</span> · {{ planSummary(dueToday.template) }}
+        </p>
         <button
           type="button"
           class="mt-3 w-full rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
           data-testid="start-workout"
-          @click="router.push(`/my/workouts/log/${dueToday.id}`)"
+          @click="router.push(`/my/workouts/log/${dueToday.template.id}`)"
         >
           Start workout
         </button>
         <button
           type="button"
           class="mt-2 w-full rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-brand-700 hover:bg-gray-50"
-          @click="router.push(`/my/workouts/print/${dueToday.id}`)"
+          @click="router.push(`/my/workouts/print/${dueToday.template.id}`)"
         >
           Print sheet
         </button>
@@ -94,7 +100,7 @@
           {{ nextUp ? 'Nothing scheduled today' : 'Did a workout on your own?' }}
         </p>
         <p v-if="nextUp" class="mt-1 text-sm text-brand-700">
-          Next up: {{ nextUp.name }}, {{ formatDayPill(nextUp.scheduled_for!) }}
+          Next up: {{ nextUp.template.name }}, {{ formatDayPill(nextUp.scheduled_for) }}
         </p>
         <p v-else class="mt-1 text-sm text-brand-700">Log it and get the credit — no plan needed.</p>
         <RouterLink
@@ -133,30 +139,50 @@
         + Log something I just did
       </RouterLink>
 
-      <!-- Renders when scheduling data exists and is simply absent when it does
-           not: `scheduled_for` is set on none of the templates, and what should
-           put a workout here (coach assigns days? a weekly pattern?) is an open
-           product decision, not something this screen should invent (SB-530). -->
+      <!-- Scheduled work, soonest first. Every row says who put it there — a
+           coach's Thursday and one the athlete planned themselves are not the
+           same thing (SB-534). -->
       <section v-if="laterUp.length" data-testid="coming-up">
         <h2 class="group-label">Coming up</h2>
         <div class="rounded-2xl border border-gray-100 bg-white shadow-sm divide-y divide-gray-100">
-          <button
-            v-for="t in laterUp"
-            :key="t.id"
-            type="button"
-            class="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50"
-            @click="router.push(`/my/workouts/log/${t.id}`)"
+          <div
+            v-for="o in laterUp"
+            :key="o.id"
+            class="flex items-center gap-2 pr-2 hover:bg-gray-50"
+            data-testid="coming-up-row"
           >
-            <span class="min-w-0">
-              <span class="block font-semibold text-gray-900 truncate">{{ t.name }}</span>
-              <span class="block text-xs text-gray-500">{{ planSummary(t) }}</span>
-            </span>
-            <span
-              class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500"
+            <button
+              type="button"
+              class="min-w-0 flex-1 flex items-center justify-between gap-3 px-4 py-3 text-left"
+              @click="router.push(`/my/workouts/log/${o.template.id}`)"
             >
-              {{ formatDayPill(t.scheduled_for!) }}
-            </span>
-          </button>
+              <span class="min-w-0">
+                <span class="block font-semibold text-gray-900 truncate">
+                  {{ o.template.name }}
+                </span>
+                <span class="block text-xs text-gray-500">
+                  <span data-testid="scheduled-by">{{ o.by }}</span> · {{ planSummary(o.template) }}
+                </span>
+              </span>
+              <span
+                class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500"
+              >
+                {{ formatDayPill(o.scheduled_for) }}
+              </span>
+            </button>
+            <!-- Only what you put there yourself. The API enforces the same
+                 rule; this keeps the button honest (SB-486). -->
+            <button
+              v-if="o.mine"
+              type="button"
+              class="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+              :aria-label="`Unschedule ${o.template.name}`"
+              data-testid="unschedule"
+              @click="unschedule(o)"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </section>
 
@@ -258,6 +284,15 @@
             >
               Start workout
             </button>
+            <!-- Gabe plans his own week too — scheduling is not a coach-only
+                 verb (SB-534). -->
+            <ScheduleWorkout
+              v-if="athleteId"
+              class="mt-2"
+              :template-id="t.id"
+              :athlete-id="athleteId"
+              @scheduled="reloadSchedule"
+            />
           </div>
         </div>
       </section>
@@ -288,6 +323,15 @@
             >
               Start workout
             </button>
+            <!-- Gabe plans his own week too — scheduling is not a coach-only
+                 verb (SB-534). -->
+            <ScheduleWorkout
+              v-if="athleteId"
+              class="mt-2"
+              :template-id="t.id"
+              :athlete-id="athleteId"
+              @scheduled="reloadSchedule"
+            />
           </div>
         </div>
       </section>
@@ -317,14 +361,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
+import { X } from 'lucide-vue-next'
 import { useMyAthlete } from '@/composables/useCoach'
 import { useMyWorkouts } from '@/composables/useMyWorkouts'
 import { useWorkoutSessions } from '@/composables/useWorkoutSessions'
+import { useWorkoutSchedule, deleteSchedule } from '@/composables/useWorkoutSchedule'
 import { deleteTemplate } from '@/composables/useWorkoutTemplates'
+import ScheduleWorkout from '@/components/ScheduleWorkout.vue'
 import WorkoutTemplateCard from '@/components/WorkoutTemplateCard.vue'
 import { formatDayPill, todayLocalISO } from '@/utils/format'
 import { prettifyKey } from '@/utils/workoutPayload'
-import type { WorkoutTemplate } from '@/types/workout'
+import type { WorkoutScheduleEntry, WorkoutTemplate } from '@/types/workout'
 
 const router = useRouter()
 const { myAthlete, loadMyAthlete } = useMyAthlete()
@@ -334,6 +381,7 @@ const {
   error: sessionsError,
   load: loadSessions,
 } = useWorkoutSessions()
+const { schedule, load: loadSchedule } = useWorkoutSchedule()
 
 const tab = ref<'training' | 'plans'>('training')
 
@@ -348,6 +396,10 @@ const tab = ref<'training' | 'plans'>('training')
  */
 const isMine = (t: WorkoutTemplate): boolean =>
   !!t.created_by && t.created_by === myAthlete.value?.linked_user_id
+
+/** The athlete this screen is about — read once rather than reached through
+ *  `myAthlete` in the template, which relies on ref unwrapping. */
+const athleteId = computed(() => myAthlete.value?.id ?? null)
 
 const mine = computed(() => templates.value.filter(isMine))
 const fromCoach = computed(() => templates.value.filter((t) => !isMine(t)))
@@ -368,22 +420,68 @@ const planSummary = (t: WorkoutTemplate): string => {
 }
 
 // ---- Coming up -----------------------------------------------------------
-// Scheduled work, soonest first. Nothing has a `scheduled_for` today, so this
-// is empty and the sections below simply do not render — deliberately, until
-// what schedules a workout is decided (SB-530).
-const upcoming = computed(() => {
+
+/** A plan on a day, with the plan resolved and the author already read. */
+interface Occasion {
+  id: string
+  template: WorkoutTemplate
+  scheduled_for: string
+  by: string
+  mine: boolean
+}
+
+const templatesById = computed<Record<string, WorkoutTemplate>>(() => {
+  const map: Record<string, WorkoutTemplate> = {}
+  for (const t of templates.value) map[t.id] = t
+  return map
+})
+
+/**
+ * Scheduled work, soonest first (SB-534).
+ *
+ * Read from occasions rather than `workout_templates.scheduled_for`: a plan is
+ * reused and an occasion happens once, so the same workout can sit on two days
+ * — and only a row can record who put it there.
+ *
+ * An occasion whose template has since been deleted is dropped rather than
+ * rendered as a blank card.
+ */
+const upcoming = computed<Occasion[]>(() => {
   const today = todayLocalISO()
-  return templates.value
-    .filter((t) => !!t.scheduled_for && t.scheduled_for >= today)
-    .sort((a, b) => (a.scheduled_for! < b.scheduled_for! ? -1 : 1))
+  const linked = myAthlete.value?.linked_user_id
+  return schedule.value
+    .filter((s) => s.scheduled_for >= today && templatesById.value[s.template_id])
+    .sort((a, b) => (a.scheduled_for < b.scheduled_for ? -1 : 1))
+    .map((s) => {
+      const mine = !!s.created_by && s.created_by === linked
+      return {
+        id: s.id,
+        template: templatesById.value[s.template_id],
+        scheduled_for: s.scheduled_for,
+        // Same words as the Plans grouping — one vocabulary, not two.
+        by: mine ? 'Mine' : coachGroupLabel.value,
+        mine,
+      }
+    })
 })
 const dueToday = computed(() => {
   const today = todayLocalISO()
-  return upcoming.value.find((t) => t.scheduled_for === today) ?? null
+  return upcoming.value.find((o) => o.scheduled_for === today) ?? null
 })
 /** Everything still ahead once the due one has been promoted to the Start card. */
-const laterUp = computed(() => upcoming.value.filter((t) => t.id !== dueToday.value?.id))
+const laterUp = computed(() => upcoming.value.filter((o) => o.id !== dueToday.value?.id))
 const nextUp = computed(() => laterUp.value[0] ?? null)
+
+const reloadSchedule = async (): Promise<void> => {
+  if (!myAthlete.value) return
+  await loadSchedule(myAthlete.value.id, todayLocalISO())
+}
+
+const unschedule = async (o: Occasion): Promise<void> => {
+  if (!myAthlete.value) return
+  await deleteSchedule(o.id, myAthlete.value.id)
+  await reloadSchedule()
+}
 
 // ---- Completed -----------------------------------------------------------
 const COMPLETED_PREVIEW = 4
@@ -459,9 +557,15 @@ onMounted(async () => {
     router.replace('/dashboard')
     return
   }
-  // Sessions are loaded alongside the plans, not on tab switch: Completed is
-  // the first thing the Training tab shows, and it is the default tab.
-  await Promise.all([load(), loadSessions(myAthlete.value.id)])
+  // Sessions and the schedule load alongside the plans, not on tab switch:
+  // Coming up and Completed are what the Training tab shows, and it is the
+  // default tab. Only occasions from today forward — the past is Completed's
+  // job, and an unmet Thursday lingering is a decision nobody has made.
+  await Promise.all([
+    load(),
+    loadSessions(myAthlete.value.id),
+    loadSchedule(myAthlete.value.id, todayLocalISO()),
+  ])
 })
 </script>
 

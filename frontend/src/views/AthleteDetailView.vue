@@ -53,17 +53,20 @@
         No workouts yet. Click <span class="font-semibold">+ Build workout</span> to create one.
       </div>
       <div v-else class="space-y-3 mb-6">
-        <WorkoutTemplateCard
-          v-for="t in templates"
-          :key="t.id"
-          :template="t"
-          :exercises="exercises"
-          :authored-by="authoredBy(t)"
-          @edit="router.push(`/coach/${athleteId}/build/${t.id}`)"
-          @log="router.push(`/coach/${athleteId}/log/${t.id}`)"
-          @print="router.push(`/coach/${athleteId}/print/${t.id}`)"
-          @delete="onDeleteTemplate(t.id)"
-        />
+        <div v-for="t in templates" :key="t.id">
+          <WorkoutTemplateCard
+            :template="t"
+            :exercises="exercises"
+            :authored-by="authoredBy(t)"
+            @edit="router.push(`/coach/${athleteId}/build/${t.id}`)"
+            @log="router.push(`/coach/${athleteId}/log/${t.id}`)"
+            @print="router.push(`/coach/${athleteId}/print/${t.id}`)"
+            @delete="onDeleteTemplate(t.id)"
+          />
+          <!-- Assign it to a day (SB-534). The athlete can schedule too, from
+               their own Plans tab — same component, same endpoint. -->
+          <ScheduleWorkout class="mt-2" :template-id="t.id" :athlete-id="athleteId" />
+        </div>
       </div>
 
       <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">
@@ -104,6 +107,7 @@ import { useAthleteDetail } from '@/composables/useCoach'
 import { useExercises } from '@/composables/useExercises'
 import AthleteProfileForm from '@/components/AthleteProfileForm.vue'
 import AthleteAccessPanel from '@/components/AthleteAccessPanel.vue'
+import ScheduleWorkout from '@/components/ScheduleWorkout.vue'
 import WorkoutTemplateCard from '@/components/WorkoutTemplateCard.vue'
 import type { WorkoutTemplate } from '@/types/workout'
 import { deleteTemplate } from '@/composables/useWorkoutTemplates'
