@@ -199,3 +199,87 @@ describe('WorkoutTemplateCard — full prescription (SB-484)', () => {
     expect(render484(items).findAll('li')).toHaveLength(12)
   })
 })
+
+describe('WorkoutTemplateCard — exercise descriptions (SB-525)', () => {
+  // Gabe hit "Aquaman" mid-workout with no way to find out what it was, while
+  // its cues sat in the catalog. The card now reveals them in place.
+  const aquaman = {
+    key: 'aquaman',
+    display_name: 'Aquaman',
+    measures: [],
+    cues: ['Prone: lift opposite arm + leg', 'Long through the spine'],
+    instructions: null,
+  } as unknown as Exercise
+
+  const withAquaman = {
+    ...template,
+    items: [ti({ id: 'a1', exercise_key: 'aquaman', position: 0, target_duration_seconds: 60 })],
+  }
+
+  const render = () =>
+    mount(WorkoutTemplateCard, {
+      props: { template: withAquaman, exercises: [aquaman] },
+    })
+
+  it('hides the description until asked — the list stays scannable', () => {
+    const w = render()
+    expect(w.text()).toContain('Aquaman')
+    expect(w.find('[data-testid="exercise-description"]').exists()).toBe(false)
+  })
+
+  it('reveals the cues when the exercise name is tapped', async () => {
+    const w = render()
+    await w.get('[data-testid="describe-aquaman"]').trigger('click')
+    const panel = w.get('[data-testid="exercise-description"]')
+    expect(panel.text()).toContain('Prone: lift opposite arm + leg')
+    expect(panel.text()).toContain('Long through the spine')
+  })
+
+  it('closes again on a second tap', async () => {
+    const w = render()
+    const trigger = w.get('[data-testid="describe-aquaman"]')
+    await trigger.trigger('click')
+    await trigger.trigger('click')
+    expect(w.find('[data-testid="exercise-description"]').exists()).toBe(false)
+  })
+
+  it('exposes the open state to screen readers', async () => {
+    const w = render()
+    const trigger = w.get('[data-testid="describe-aquaman"]')
+    expect(trigger.attributes('aria-expanded')).toBe('false')
+    await trigger.trigger('click')
+    expect(trigger.attributes('aria-expanded')).toBe('true')
+  })
+
+  it('opens each item independently, so L and R can be compared', async () => {
+    // Closing one to read the other is friction mid-workout.
+    const w = mount(WorkoutTemplateCard, {
+      props: {
+        template: {
+          ...template,
+          items: [
+            ti({ id: 'l', exercise_key: 'side_plank', position: 0, variant: 'left' }),
+            ti({ id: 'r', exercise_key: 'side_plank', position: 1, variant: 'right' }),
+          ],
+        },
+        exercises: [{ key: 'side_plank', display_name: 'Side plank', measures: [], cues: ['Stack the hips'], instructions: null } as unknown as Exercise],
+      },
+    })
+    const triggers = w.findAll('[data-testid="describe-side_plank"]')
+    expect(triggers).toHaveLength(2)
+    await triggers[0].trigger('click')
+    await triggers[1].trigger('click')
+    expect(w.findAll('[data-testid="exercise-description"]')).toHaveLength(2)
+  })
+
+  it('is honest when an exercise has no description yet', async () => {
+    const w = mount(WorkoutTemplateCard, {
+      props: {
+        template: withAquaman,
+        exercises: [{ ...aquaman, cues: [], instructions: null } as unknown as Exercise],
+      },
+    })
+    await w.get('[data-testid="describe-aquaman"]').trigger('click')
+    expect(w.get('[data-testid="exercise-description"]').text()).toContain('No description added')
+  })
+})

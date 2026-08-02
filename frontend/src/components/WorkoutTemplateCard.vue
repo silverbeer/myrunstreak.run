@@ -94,33 +94,49 @@
           <li
             v-for="item in row.kind === 'group' ? row.items : [row.item]"
             :key="item.id"
-            class="group flex items-center justify-between gap-3 py-1.5 px-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors print:hover:bg-transparent"
+            class="group py-1.5 px-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors print:hover:bg-transparent"
             :class="row.kind === 'group' ? 'pl-6' : ''"
           >
-            <span class="flex items-center gap-2 min-w-0">
-              <span
-                v-if="row.kind === 'group'"
-                class="w-5 h-5 shrink-0 grid place-items-center text-gray-300 text-[11px]"
+            <div class="flex items-center justify-between gap-3">
+              <!-- The name itself is the tap target (SB-525): a line of text is
+                   a far better target mid-workout than a small icon would be. -->
+              <button
+                type="button"
+                class="flex items-center gap-2 min-w-0 text-left py-1 -my-1 print:pointer-events-none"
+                :aria-expanded="isOpen(item.id)"
+                :data-testid="`describe-${item.exercise_key}`"
+                @click="toggle(item.id)"
               >
-                ○
+                <span
+                  v-if="row.kind === 'group'"
+                  class="w-5 h-5 shrink-0 grid place-items-center text-gray-300 text-[11px]"
+                >
+                  ○
+                </span>
+                <span
+                  v-else-if="sec.key === 'main'"
+                  class="w-5 h-5 shrink-0 grid place-items-center rounded-full bg-brand-50 text-brand-700 text-[11px] font-semibold tabular-nums"
+                >
+                  {{ ri + 1 }}
+                </span>
+                <span class="text-sm text-gray-900 truncate">{{ nameFor(item.exercise_key) }}</span>
+                <span
+                  v-if="item.variant"
+                  class="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 capitalize"
+                >
+                  {{ item.variant }}
+                </span>
+                <Info class="w-3.5 h-3.5 shrink-0 text-gray-300 print:hidden" aria-hidden="true" />
+              </button>
+              <span class="flex items-center gap-1.5 shrink-0">
+                <span v-for="p in pills(item)" :key="p.text" class="pill" :class="p.cls">{{ p.text }}</span>
               </span>
-              <span
-                v-else-if="sec.key === 'main'"
-                class="w-5 h-5 shrink-0 grid place-items-center rounded-full bg-brand-50 text-brand-700 text-[11px] font-semibold tabular-nums"
-              >
-                {{ ri + 1 }}
-              </span>
-              <span class="text-sm text-gray-900 truncate">{{ nameFor(item.exercise_key) }}</span>
-              <span
-                v-if="item.variant"
-                class="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 capitalize"
-              >
-                {{ item.variant }}
-              </span>
-            </span>
-            <span class="flex items-center gap-1.5 shrink-0">
-              <span v-for="p in pills(item)" :key="p.text" class="pill" :class="p.cls">{{ p.text }}</span>
-            </span>
+            </div>
+            <ExerciseDescription
+              v-if="isOpen(item.id)"
+              class="mt-1.5 ml-7 print:hidden"
+              :exercise="byKey[item.exercise_key]"
+            />
           </li>
           </template>
         </ul>
@@ -131,8 +147,9 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Calendar, Check, ClipboardCheck, Pencil, Printer, Repeat, Trash2 } from 'lucide-vue-next'
+import { Calendar, Check, ClipboardCheck, Info, Pencil, Printer, Repeat, Trash2 } from 'lucide-vue-next'
 import type { Exercise, TemplateItem, WorkoutSectionKey, WorkoutTemplate } from '@/types/workout'
+import ExerciseDescription from '@/components/ExerciseDescription.vue'
 import { SECTIONS, prettifyKey } from '@/utils/workoutPayload'
 import { groupOptionItems } from '@/utils/optionGroups'
 import { targetPills } from '@/utils/targets'
@@ -215,6 +232,17 @@ const sections = computed(() => {
 })
 
 const pills = targetPills
+
+// Which exercises have their description open. Per-item rather than one at a
+// time: an athlete comparing "Side plank (L)" with "(R)" should be able to see
+// both, and closing one to read another is friction mid-workout (SB-525).
+const openItems = ref(new Set<string>())
+const isOpen = (id: string) => openItems.value.has(id)
+const toggle = (id: string) => {
+  const next = new Set(openItems.value)
+  next.has(id) ? next.delete(id) : next.add(id)
+  openItems.value = next
+}
 
 const rootEl = ref<HTMLElement | null>(null)
 
