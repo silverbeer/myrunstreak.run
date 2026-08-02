@@ -61,7 +61,17 @@
       :data-testid="`row-${row.exercise.key}`"
     >
       <div class="flex items-start justify-between gap-2">
-        <span class="text-sm font-medium text-gray-900">{{ row.exercise.display_name }}</span>
+        <!-- Tap the name to see what the movement is (SB-525). -->
+        <button
+          type="button"
+          class="flex items-center gap-1.5 text-left text-sm font-medium text-gray-900"
+          :aria-expanded="isOpen(row.uid)"
+          :data-testid="`describe-${row.exercise.key}`"
+          @click="toggleInfo(row.uid)"
+        >
+          {{ row.exercise.display_name }}
+          <Info class="w-3.5 h-3.5 shrink-0 text-gray-300" aria-hidden="true" />
+        </button>
         <button
           type="button"
           class="icon-btn text-red-500"
@@ -72,6 +82,7 @@
           ✕
         </button>
       </div>
+      <ExerciseDescription v-if="isOpen(row.uid)" class="mt-2" :exercise="row.exercise" />
 
       <div class="mt-2 flex flex-wrap gap-2 text-xs">
         <label class="field">
@@ -182,7 +193,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Info } from 'lucide-vue-next'
 import ExercisePicker from '@/components/ExercisePicker.vue'
+import ExerciseDescription from '@/components/ExerciseDescription.vue'
 import { useExercises } from '@/composables/useExercises'
 import { getTemplate } from '@/composables/useWorkoutTemplates'
 import { createSession } from '@/composables/useWorkoutSessions'
@@ -266,6 +279,16 @@ const onPick = (ex: Exercise): void => {
 
 const removeRow = (row: LoggerRow): void => {
   rows.value = rows.value.filter((r) => r.uid !== row.uid)
+}
+
+// Which rows have their description showing (SB-525). Keyed by row uid, not
+// exercise key, so the same movement logged twice expands independently.
+const openInfo = ref(new Set<number>())
+const isOpen = (uid: number): boolean => openInfo.value.has(uid)
+const toggleInfo = (uid: number): void => {
+  const next = new Set(openInfo.value)
+  next.has(uid) ? next.delete(uid) : next.add(uid)
+  openInfo.value = next
 }
 
 const removeAttempt = (row: LoggerRow, i: number): void => {
