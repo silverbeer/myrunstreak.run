@@ -9,7 +9,13 @@
         <h3 class="text-lg font-bold text-gray-900 leading-tight">{{ template.name }}</h3>
         <div class="mt-1.5 flex flex-wrap items-center gap-2">
           <span class="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700 capitalize">
-            <Repeat class="w-3 h-3" /> {{ template.type }} · {{ template.rounds }} {{ template.rounds === 1 ? 'round' : 'rounds' }}
+            <!-- Rounds only when the template's own count still means something:
+                 a circuit template keeps rounds = 1 while its real counts live
+                 on its blocks, so this read "1 Round" on a workout done twice
+                 (SB-543). -->
+            <Repeat class="w-3 h-3" /> {{ template.type
+            }}<template v-if="showTemplateRounds">
+              · {{ template.rounds }} {{ template.rounds === 1 ? 'round' : 'rounds' }}</template>
           </span>
           <span
             v-if="template.scheduled_for"
@@ -95,8 +101,21 @@
           {{ sec.title }}
           <span class="text-gray-300 font-medium">· {{ sec.items.length }}</span>
         </h4>
+        <!-- Circuits, where the athlete actually looks. They have been data
+             since SB-527 and visible only on the print sheet since SB-528, so
+             the screen has been saying "1 Round" about a workout done twice
+             (SB-543). -->
+        <div v-for="(g, gi) in sec.groups" :key="g.block?.id ?? `loose-${gi}`">
+          <div
+            v-if="g.block"
+            class="mt-2 mb-1 flex items-baseline gap-2 text-[11px] font-bold uppercase tracking-wide text-brand-700"
+            data-testid="circuit-bar"
+          >
+            {{ g.block.label }}
+            <span v-if="g.rounds > 1" class="text-gray-400">×{{ g.rounds }}</span>
+          </div>
         <ul>
-          <template v-for="(row, ri) in sec.rows" :key="row.kind === 'group' ? row.key : row.item.id">
+          <template v-for="(row, ri) in g.rows" :key="row.kind === 'group' ? row.key : row.item.id">
             <!-- Alternatives are one choice, not a checklist (SB-448). -->
             <li
               v-if="row.kind === 'group'"
@@ -153,6 +172,15 @@
           </li>
           </template>
         </ul>
+          <!-- The four-minute water break is prescription, not decoration. -->
+          <p
+            v-if="g.restAfter"
+            class="mt-1 mb-1 text-[11px] font-medium text-gray-400"
+            data-testid="circuit-rest"
+          >
+            Rest {{ fmtRest(g.restAfter) }}
+          </p>
+        </div>
       </section>
     </div>
   </div>
@@ -165,6 +193,7 @@ import type { Exercise, TemplateItem, WorkoutSectionKey, WorkoutTemplate } from 
 import ExerciseDescription from '@/components/ExerciseDescription.vue'
 import { SECTIONS, prettifyKey } from '@/utils/workoutPayload'
 import { groupOptionItems } from '@/utils/optionGroups'
+import { groupByBlock, roundsFor, templateRoundsAreMeaningful } from '@/utils/circuits'
 import { targetPills } from '@/utils/targets'
 import { formatDayMonth, formatRelativeTime } from '@/utils/format'
 
@@ -252,12 +281,35 @@ const sections = computed(() => {
     key,
     title: SECTIONS.find((s) => s.key === key)?.label ?? prettifyKey(key),
     ...(ACCENT[key as WorkoutSectionKey] ?? FALLBACK_ACCENT),
-    rows: groupOptionItems(byKey.get(key)!),
+    // Circuits first, then alternatives within each — the same order the print
+    // sheet resolves them in, via the same helper (SB-543).
+    groups: groupByBlock(byKey.get(key)!, props.template.blocks ?? []).map((g) => ({
+      block: g.block,
+      rounds: roundsFor(g, props.template.rounds),
+      restAfter: g.block?.rest_after_seconds ?? null,
+      rows: groupOptionItems(g.items),
+    })),
     items: byKey.get(key)!,
   }))
 })
 
 const pills = targetPills
+
+/**
+ * Whether to show the template's own round count in the header.
+ *
+ * A template whose rounds live on its blocks keeps `rounds = 1`, so the pill
+ * read "Circuit · 1 Round" on a workout that is two circuits done twice —
+ * stating the opposite of the prescription (SB-543).
+ */
+const showTemplateRounds = computed(() => templateRoundsAreMeaningful(props.template.blocks))
+
+/** "4:00" — the rest between circuits, as the coach wrote it. */
+const fmtRest = (seconds: number): string => {
+  const m = Math.floor(seconds / 60)
+  const s = Math.round(seconds % 60)
+  return m ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`
+}
 
 // Which exercises have their description open. Per-item rather than one at a
 // time: an athlete comparing "Side plank (L)" with "(R)" should be able to see

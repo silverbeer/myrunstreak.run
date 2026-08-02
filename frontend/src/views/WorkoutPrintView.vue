@@ -152,6 +152,7 @@ import { apiCall } from '@/config/api'
 import type { Exercise, TemplateBlock, TemplateItem, WorkoutTemplate } from '@/types/workout'
 import type { Athlete } from '@/types/coach'
 import { groupOptionItems } from '@/utils/optionGroups'
+import { groupByBlock, roundsFor } from '@/utils/circuits'
 import { fmtRange, hrZoneText, restText } from '@/utils/targets'
 import { useActingAthlete } from '@/composables/useActingAthlete'
 
@@ -208,7 +209,6 @@ const SECTION_LABELS: Record<string, string> = {
  */
 const sections = computed(() => {
   const items = [...(template.value?.items ?? [])].sort((a, b) => a.position - b.position)
-  const blocksById = new Map((template.value?.blocks ?? []).map((b) => [b.id, b]))
 
   const order: string[] = []
   const by: Record<string, TemplateItem[]> = {}
@@ -222,23 +222,17 @@ const sections = computed(() => {
   }
 
   return order.map((key) => {
-    // Partition in position order, so a circuit stays contiguous on the page.
-    const groups: { block: TemplateBlock | null; items: TemplateItem[] }[] = []
-    for (const item of by[key]) {
-      const block = (item.block_id && blocksById.get(item.block_id)) || null
-      const last = groups[groups.length - 1]
-      if (last && last.block?.id === block?.id) last.items.push(item)
-      else groups.push({ block, items: [item] })
-    }
+    // Partitioned in position order so a circuit stays contiguous on the page.
+    // Shared with the card, which has to agree with the paper about what the
+    // workout is (SB-543).
+    const groups = groupByBlock(by[key], template.value?.blocks ?? [])
     return {
       key,
       label: SECTION_LABELS[key] ?? key.replace(/_/g, ' '),
       items: by[key],
       groups: groups.map((g) => ({
         block: g.block,
-        // Rounds live on the circuit; fall back to the template for the
-        // blockless case, which is every template until SB-527 backfilled.
-        rounds: g.block?.rounds ?? (template.value?.rounds ?? 1),
+        rounds: roundsFor(g, template.value?.rounds),
         restAfter: g.block?.rest_after_seconds ?? null,
         // "Pick one of N" alternatives fold into a single row (SB-448) —
         // printed flat, the aerobic day told Gabe to do all three.

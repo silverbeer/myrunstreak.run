@@ -318,3 +318,67 @@ describe('WorkoutTemplateCard — exercise descriptions (SB-525)', () => {
     expect(w.get('[data-testid="exercise-description"]').text()).toContain('No description added')
   })
 })
+
+
+// --- SB-543: circuits on the card, not only on the print sheet --------------
+
+const circuitTemplate: WorkoutTemplate = {
+  ...template,
+  // A circuit template keeps rounds = 1; the real counts live on its blocks.
+  rounds: 1,
+  blocks: [
+    { id: 'b1', template_id: 't1', label: 'Circuit A', position: 0, rounds: 2, rest_after_seconds: 240 },
+    { id: 'b2', template_id: 't1', label: 'Circuit B', position: 1, rounds: 1, rest_after_seconds: null },
+  ],
+  items: [
+    ti({ exercise_key: 'easy_jog', section: 'warmup', position: 0, target_duration_seconds: 480 }),
+    ti({ exercise_key: 'lunge', section: 'main', position: 1, block_id: 'b1', target_duration_seconds: 60 }),
+    ti({ exercise_key: 'side_plank', section: 'main', position: 2, block_id: 'b1', target_duration_seconds: 60 }),
+    ti({ exercise_key: 'bird_dog', section: 'main', position: 3, block_id: 'b2', target_duration_seconds: 60 }),
+  ],
+}
+
+describe('WorkoutTemplateCard — circuits (SB-543)', () => {
+  it('shows each circuit by name', () => {
+    // They have been data since SB-527 and visible only on paper since SB-528.
+    const w = mount(WorkoutTemplateCard, { props: { template: circuitTemplate } })
+    const bars = w.findAll('[data-testid="circuit-bar"]').map((b) => b.text())
+    expect(bars).toHaveLength(2)
+    expect(bars[0]).toContain('Circuit A')
+    expect(bars[0]).toContain('×2')
+    expect(bars[1]).toContain('Circuit B')
+  })
+
+  it('does not mark a single-round circuit with a multiplier', () => {
+    const w = mount(WorkoutTemplateCard, { props: { template: circuitTemplate } })
+    expect(w.findAll('[data-testid="circuit-bar"]')[1].text()).not.toContain('×')
+  })
+
+  it('shows the rest between circuits — it is prescription, not decoration', () => {
+    const w = mount(WorkoutTemplateCard, { props: { template: circuitTemplate } })
+    const rests = w.findAll('[data-testid="circuit-rest"]').map((r) => r.text())
+    expect(rests).toHaveLength(1)
+    expect(rests[0]).toContain('4:00')
+  })
+
+  it('never claims "1 Round" about a workout done twice', () => {
+    // The bug: workout_templates.rounds stays 1 once rounds live on blocks, so
+    // the header stated the opposite of the prescription.
+    const w = mount(WorkoutTemplateCard, { props: { template: circuitTemplate } })
+    expect(w.text()).not.toContain('1 round')
+    expect(w.text()).toContain('circuit')
+  })
+
+  it('leaves the warm-up ungrouped', () => {
+    const w = mount(WorkoutTemplateCard, { props: { template: circuitTemplate } })
+    // Four items, two circuit bars — the warm-up gets no bar of its own.
+    expect(w.findAll('[data-testid="circuit-bar"]')).toHaveLength(2)
+    expect(w.text()).toContain('Warm-up')
+  })
+
+  it('renders a blockless template exactly as before', () => {
+    const w = mount(WorkoutTemplateCard, { props: { template } })
+    expect(w.find('[data-testid="circuit-bar"]').exists()).toBe(false)
+    expect(w.text()).toContain('2 rounds')
+  })
+})
