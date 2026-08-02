@@ -70,7 +70,6 @@ describe('WorkoutPrintView (SB-231)', () => {
     expect(w.text()).toContain('Warm-up')
     expect(w.text()).toContain('Workout')
     expect(w.text()).toContain('Great work!')
-    expect(w.text()).toContain('fold here')
   })
 
   it('renders attempt rows for timed reps and segment goals for broken reps', async () => {
@@ -239,18 +238,115 @@ describe('WorkoutPrintView rounds (SB-529)', () => {
     })
   }
 
-  it('tells the athlete how many rounds to complete', async () => {
+  it('gives each round its own column to write in', async () => {
+    // SB-528 turned rounds from a sentence into columns: three rounds is three
+    // boxes per exercise, not the same exercise printed three times.
     withRounds(3)
     const w = mount(WorkoutPrintView)
     await flushPromises()
-    expect(w.text()).toContain('Complete 3 rounds')
+    const heads = w.findAll('th').map((h) => h.text())
+    expect(heads).toContain('R1')
+    expect(heads).toContain('R2')
+    expect(heads).toContain('R3')
+    expect(heads).not.toContain('Done')
   })
 
-  it('stays quiet for a single-round workout', async () => {
+  it('one round needs no columns, just a tick box', async () => {
     withRounds(1)
     const w = mount(WorkoutPrintView)
     await flushPromises()
-    expect(w.text()).not.toContain('Complete 1 rounds')
-    expect(w.text()).not.toContain('rounds')
+    const heads = w.findAll('th').map((h) => h.text())
+    expect(heads).toContain('Done')
+    expect(heads).not.toContain('R1')
+  })
+
+  it('prints one row per exercise however many rounds there are', async () => {
+    // The complaint that started this: a two-round circuit read as duplicated
+    // rows. Row count must not scale with rounds.
+    withRounds(1)
+    const one = mount(WorkoutPrintView)
+    await flushPromises()
+    const rowsAtOne = one.findAll('tbody tr').length
+
+    withRounds(4)
+    const four = mount(WorkoutPrintView)
+    await flushPromises()
+    expect(four.findAll('tbody tr').length).toBe(rowsAtOne)
+  })
+})
+
+describe('WorkoutPrintView circuits (SB-528)', () => {
+  // Gabe's Monday shape, now that SB-527 makes it data: Circuit A twice with a
+  // four-minute water break, then Circuit B once.
+  const blocks = [
+    { id: 'bA', template_id: 't1', label: 'Circuit A', position: 0, rounds: 2, rest_after_seconds: 240 },
+    { id: 'bB', template_id: 't1', label: 'Circuit B', position: 1, rounds: 1, rest_after_seconds: null },
+  ]
+  const items = [
+    { id: 'w', exercise_key: 'easy_jog', section: 'warmup', position: 0, block_id: null, target_distance_m: 804, target_reps: null, target_duration_seconds: null, target_load_kg: null, rest_seconds: null, variant: null, notes: null },
+    { id: 'a1', exercise_key: 'interval_run', section: 'main', position: 1, block_id: 'bA', target_duration_seconds: 60, target_reps: null, target_load_kg: null, target_distance_m: null, rest_seconds: null, variant: 'left', notes: null },
+    { id: 'a2', exercise_key: 'interval_run', section: 'main', position: 2, block_id: 'bA', target_duration_seconds: 60, target_reps: null, target_load_kg: null, target_distance_m: null, rest_seconds: null, variant: 'right', notes: null },
+    { id: 'b1', exercise_key: 'easy_jog', section: 'main', position: 3, block_id: 'bB', target_duration_seconds: 60, target_reps: null, target_load_kg: null, target_distance_m: null, rest_seconds: null, variant: null, notes: null },
+  ]
+
+  const render = async () => {
+    apiCallMock.mockReset()
+    apiCallMock.mockImplementation((path: string) => {
+      if (path.startsWith('/workouts/templates/'))
+        return Promise.resolve({ ...template, rounds: 1, blocks, items })
+      if (path.startsWith('/athletes/')) return Promise.resolve({ id: 'a1', display_name: 'Gabe' })
+      if (path === '/workouts/exercises') return Promise.resolve(exercises)
+      return Promise.reject(new Error(`unexpected: ${path}`))
+    })
+    const w = mount(WorkoutPrintView)
+    await flushPromises()
+    return w
+  }
+
+  it('heads each circuit with its own round count', async () => {
+    const w = await render()
+    const bars = w.findAll('[data-testid="circuit-bar"]').map((b) => b.text())
+    expect(bars[0]).toContain('CIRCUIT A')
+    expect(bars[0]).toContain('COMPLETE 2 ROUNDS')
+    expect(bars[1]).toContain('CIRCUIT B')
+    // One round is the default; saying so would be noise.
+    expect(bars[1]).not.toContain('ROUNDS')
+  })
+
+  it('gives each circuit its own columns, since their rounds differ', async () => {
+    // The reason a circuit gets its own table: A needs R1/R2, B needs neither.
+    const w = await render()
+    const tables = w.findAll('table.sheet-table')
+    const heads = tables.map((t) => t.findAll('th').map((h) => h.text()))
+    expect(heads[1]).toContain('R1')
+    expect(heads[1]).toContain('R2')
+    expect(heads[2]).toContain('Done')
+    expect(heads[2]).not.toContain('R1')
+  })
+
+  it('renders rest as a row in the sequence, not a note on the last exercise', async () => {
+    const w = await render()
+    const rest = w.get('[data-testid="rest-row"]')
+    expect(rest.text()).toContain('Rest')
+    expect(rest.text()).toContain('4:00')
+    expect(rest.text()).toContain('water')
+  })
+
+  it('marks left and right as the distinct movements they are', async () => {
+    const w = await render()
+    expect(w.text()).toContain('(L)')
+    expect(w.text()).toContain('(R)')
+  })
+
+  it('keeps the warm-up out of any circuit', async () => {
+    const w = await render()
+    // Three tables: loose warm-up, Circuit A, Circuit B.
+    expect(w.findAll('table.sheet-table')).toHaveLength(3)
+    expect(w.findAll('[data-testid="circuit-bar"]')).toHaveLength(2)
+  })
+
+  it('no longer prints a fold line', async () => {
+    const w = await render()
+    expect(w.text()).not.toContain('fold here')
   })
 })
