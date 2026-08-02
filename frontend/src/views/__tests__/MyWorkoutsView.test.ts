@@ -16,7 +16,8 @@ const pushMock = vi.fn()
 // to provide RouterLink as well as the router itself.
 vi.mock('vue-router', () => ({
   useRouter: () => ({ replace: replaceMock, push: pushMock }),
-  RouterLink: { template: '<a><slot /></a>' },
+  // `to` is forwarded so tests can assert where a link actually goes.
+  RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 }))
 
 import MyWorkoutsView from '../MyWorkoutsView.vue'
@@ -75,5 +76,26 @@ describe('MyWorkoutsView (SB-332)', () => {
     const w = mount(MyWorkoutsView)
     await flushPromises()
     expect(w.text()).toContain('No workouts yet')
+  })
+})
+
+describe('MyWorkoutsView — ad-hoc entry (SB-531)', () => {
+  it('offers logging a workout with no plan behind it', async () => {
+    myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
+    apiCallMock.mockResolvedValue([])
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    const link = w.get('[data-testid="log-adhoc"]')
+    expect(link.attributes('href')).toBe('/my/workouts/log')
+    expect(w.text()).toContain('Did a workout on your own?')
+  })
+
+  it('demotes building a plan — it was the loudest control and the wrong verb', async () => {
+    myAthlete.value = { id: 'ath1', linked_user_id: 'u1' }
+    apiCallMock.mockResolvedValue([])
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    expect(w.text()).toContain('+ Build a workout')
+    expect(w.text()).not.toContain('+ New workout')
   })
 })
