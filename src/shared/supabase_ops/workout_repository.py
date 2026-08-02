@@ -178,21 +178,53 @@ class ExercisesRepository:
 
 
 class WorkoutTemplatesRepository:
-    """Per-user workout templates (the coach's plan) + their items."""
+    """Per-user workout templates (the coach's plan) + their blocks and items."""
 
     def __init__(self, supabase: Client):
         self.supabase = supabase
+
+    def _write_blocks_and_items(
+        self,
+        template_id: str,
+        blocks: Sequence[dict[str, Any]],
+        items: Sequence[dict[str, Any]],
+        owner: dict[str, Any],
+    ) -> None:
+        """Insert a template's circuits, then its items pointing at them.
+
+        Items arrive referencing blocks by `block_index` because on create the
+        blocks have no ids yet (SB-527). Resolve that here — the index is a
+        payload convenience and must never reach the database.
+        """
+        block_ids: list[str] = []
+        if blocks:
+            rows = [
+                {**b, **owner, "template_id": template_id, "position": b.get("position", i)}
+                for i, b in enumerate(blocks)
+            ]
+            created = self.supabase.table("template_blocks").insert(rows).execute()
+            block_ids = [b["id"] for b in cast(list[dict[str, Any]], created.data)]
+
+        if not items:
+            return
+        item_rows = []
+        for it in items:
+            row = {**it, **owner, "template_id": template_id}
+            idx = row.pop("block_index", None)
+            if idx is not None and idx < len(block_ids):
+                row["block_id"] = block_ids[idx]
+            item_rows.append(row)
+        self.supabase.table("template_items").insert(item_rows).execute()
 
     def create(
         self, user_id: UUID, payload: dict[str, Any], athlete_id: UUID | None = None
     ) -> dict[str, Any]:
         items: Sequence[dict[str, Any]] = payload.pop("items", []) or []
+        blocks: Sequence[dict[str, Any]] = payload.pop("blocks", []) or []
         owner = _owner_fields(user_id, athlete_id)
         row = self.supabase.table("workout_templates").insert({**payload, **owner}).execute()
         template = cast(list[dict[str, Any]], row.data)[0]
-        if items:
-            item_rows = [{**it, **owner, "template_id": template["id"]} for it in items]
-            self.supabase.table("template_items").insert(item_rows).execute()
+        self._write_blocks_and_items(template["id"], blocks, items, owner)
         got = self.get(user_id, UUID(template["id"]), athlete_id)
         assert got is not None
         return got
@@ -210,20 +242,25 @@ class WorkoutTemplatesRepository:
             return None
 
         items: Sequence[dict[str, Any]] | None = payload.pop("items", None)
+        blocks: Sequence[dict[str, Any]] | None = payload.pop("blocks", None)
         if payload:
             self.supabase.table("workout_templates").update(payload).eq(
                 "id", str(template_id)
             ).execute()
 
         if items is not None:
-            # Replace the item set wholesale (simplest correct edit).
+            # Replace items and circuits together (simplest correct edit).
+            # Blocks go after items so the FK from template_items is clear
+            # first; ON DELETE SET NULL would otherwise strand memberships.
             self.supabase.table("template_items").delete().eq(
                 "template_id", str(template_id)
             ).execute()
-            if items:
-                owner = _owner_fields(user_id, athlete_id)
-                item_rows = [{**it, **owner, "template_id": str(template_id)} for it in items]
-                self.supabase.table("template_items").insert(item_rows).execute()
+            self.supabase.table("template_blocks").delete().eq(
+                "template_id", str(template_id)
+            ).execute()
+            self._write_blocks_and_items(
+                str(template_id), blocks or [], items, _owner_fields(user_id, athlete_id)
+            )
 
         return self.get(user_id, template_id, athlete_id)
 
@@ -248,6 +285,19 @@ class WorkoutTemplatesRepository:
             by_template.setdefault(it["template_id"], []).append(it)
         for t in templates:
             t["items"] = by_template.get(t["id"], [])
+
+        blocks = (
+            self.supabase.table("template_blocks")
+            .select("*")
+            .in_("template_id", ids)
+            .order("position")
+            .execute()
+        )
+        blocks_by_template: dict[str, list[dict[str, Any]]] = {}
+        for b in cast(list[dict[str, Any]], blocks.data):
+            blocks_by_template.setdefault(b["template_id"], []).append(b)
+        for t in templates:
+            t["blocks"] = blocks_by_template.get(t["id"], [])
 
         # Attach completion state (SB-334): a template is "done" when a logged
         # session references it. One batched query; keep the latest session_date
@@ -304,6 +354,14 @@ class WorkoutTemplatesRepository:
             .execute()
         )
         template["items"] = cast(list[dict[str, Any]], items.data)
+        blocks = (
+            self.supabase.table("template_blocks")
+            .select("*")
+            .eq("template_id", str(template_id))
+            .order("position")
+            .execute()
+        )
+        template["blocks"] = cast(list[dict[str, Any]], blocks.data)
         return template
 
     def delete(self, user_id: UUID, template_id: UUID, athlete_id: UUID | None = None) -> bool:

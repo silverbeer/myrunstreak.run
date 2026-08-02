@@ -203,6 +203,11 @@ class TemplateItemCreate(BaseModel):
     # mandatory. The label is read from any member of the group.
     option_group: str | None = None
     option_group_label: str | None = None
+    # Which circuit this item belongs to (SB-527). On CREATE the blocks do not
+    # have ids yet, so the payload references them by index into `blocks` and
+    # the repository resolves it to a real block_id. Deliberately transient —
+    # persisting another string key is the pattern this table is escaping.
+    block_index: int | None = Field(default=None, ge=0)
     notes: str | None = None
 
     @model_validator(mode="after")
@@ -230,6 +235,29 @@ class TemplateItem(TemplateItemCreate):
     id: UUID
     user_id: UUID
     template_id: UUID
+    # Resolved circuit membership (SB-527); None for items outside any circuit.
+    block_id: UUID | None = None
+
+
+class TemplateBlockCreate(BaseModel):
+    """A circuit within a template (SB-527).
+
+    Rounds belong here, not on the template. Gabe's Monday workout is "Circuit A
+    twice, then four minutes water, then Circuit B once" — one number on the
+    template could not say that, so the real prescription lived in prose and
+    nothing could render or track it.
+    """
+
+    label: str
+    position: int = 0
+    rounds: int = Field(default=1, ge=1)
+    rest_after_seconds: float | None = Field(default=None, ge=0)
+
+
+class TemplateBlock(TemplateBlockCreate):
+    id: UUID
+    user_id: UUID
+    template_id: UUID
 
 
 class WorkoutTemplateCreate(BaseModel):
@@ -241,7 +269,20 @@ class WorkoutTemplateCreate(BaseModel):
     source: str | None = None
     notes: str | None = None
     scheduled_for: date | None = None  # optional date the workout is for (SB-335)
+    # Circuits, in order. Items reference them by `block_index` (SB-527).
+    blocks: list[TemplateBlockCreate] = Field(default_factory=list)
     items: list[TemplateItemCreate] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _block_index_in_range(self) -> WorkoutTemplateCreate:
+        """A dangling block_index would silently orphan the item."""
+        for it in self.items:
+            if it.block_index is not None and it.block_index >= len(self.blocks):
+                raise ValueError(
+                    f"block_index {it.block_index} has no matching block "
+                    f"(there {'is' if len(self.blocks) == 1 else 'are'} {len(self.blocks)})"
+                )
+        return self
 
 
 class WorkoutTemplate(BaseModel):
@@ -257,6 +298,7 @@ class WorkoutTemplate(BaseModel):
     source: str | None = None
     notes: str | None = None
     scheduled_for: date | None = None  # optional date the workout is for (SB-335)
+    blocks: list[TemplateBlock] = Field(default_factory=list)
     items: list[TemplateItem] = Field(default_factory=list)
     created_at: datetime | None = None
     # Completion (SB-334), populated by the list query: a template is "done"
@@ -272,6 +314,10 @@ class ExerciseSetCreate(BaseModel):
     """One logged set. Fills only the dimensions the exercise uses."""
 
     exercise_key: str
+    # Which prescribed item this set answers (SB-527). None for ad-hoc sets with
+    # no prescription behind them. Without it "lunge, round 1, 45s" cannot be
+    # attributed — `lunge` appears five times in one of Matthew's templates.
+    template_item_id: UUID | None = None
     round_number: int | None = Field(default=None, ge=1)
     set_index: int | None = Field(default=None, ge=1)
     variant: str | None = None
