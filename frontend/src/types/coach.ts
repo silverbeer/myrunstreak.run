@@ -98,6 +98,8 @@ export interface WorkoutSession {
   id: string
   athlete_id: string | null
   session_date: string
+  // What the athlete calls it (SB-536); null falls back to the plan's name.
+  name: string | null
   // Which plan was performed, or null for an ad-hoc session with none behind
   // it (SB-531) — what "my own" on the Completed list is read from.
   template_id: string | null

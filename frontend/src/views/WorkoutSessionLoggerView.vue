@@ -17,6 +17,22 @@
 
     <!-- Session meta -->
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mt-4 space-y-3">
+      <!-- Named, not asked for (SB-536). It arrives filled in from the date, so
+           nothing stands between the work and the credit — but two ad-hoc
+           workouts in a week have to be tellable apart on the Completed list,
+           and only he knows which was the garage circuit. -->
+      <label v-if="!templateId" class="flex flex-col gap-1 text-sm text-gray-600">
+        Call it
+        <input
+          v-model="sessionName"
+          type="text"
+          maxlength="80"
+          class="form-input"
+          :placeholder="defaultName"
+          data-testid="session-name"
+        />
+      </label>
+
       <div class="grid grid-cols-2 gap-3">
         <label class="flex flex-col gap-1 text-sm text-gray-600">
           Date
@@ -264,6 +280,7 @@ import {
   FELT_OPTIONS,
   blankAttempt,
   buildSessionPayload,
+  defaultSessionName,
   templateToRows,
   todayISO,
 } from '@/utils/sessionPayload'
@@ -279,6 +296,9 @@ const templateId = (route.params.templateId as string | undefined) || null
 const { exercises, load } = useExercises()
 
 const sessionDate = ref(todayISO())
+// Left blank until he types: the placeholder shows what it will be called, and
+// an untouched field stays the default even if he changes the date (SB-536).
+const sessionName = ref('')
 const totalMinutes = ref<number | null>(null)
 const howFelt = ref<string | null>(null)
 const notes = ref<string | null>(null)
@@ -365,6 +385,7 @@ const payload = computed(() =>
   buildSessionPayload(
     {
       session_date: sessionDate.value,
+      name: sessionName.value || defaultName.value,
       type: sessionType.value,
       total_minutes: totalMinutes.value,
       how_felt: howFelt.value,
@@ -415,7 +436,9 @@ const keepAsPlan = async (): Promise<void> => {
   try {
     await createTemplate(
       {
-        name: sessionName(),
+        // The plan inherits the session's name, so a workout he just liked
+        // arrives in Plans already called what he called it (SB-531).
+        name: sessionName.value || defaultName.value,
         type: 'circuit',
         rounds: 1,
         items: rows.value.map((r, i) => ({
@@ -435,14 +458,11 @@ const keepAsPlan = async (): Promise<void> => {
   }
 }
 
-/** "Sunday morning" — a name he never had to stop and type. */
-const sessionName = (): string => {
-  const d = new Date(`${sessionDate.value}T12:00:00`)
-  const day = d.toLocaleDateString(undefined, { weekday: 'long' })
-  const hour = new Date().getHours()
-  const part = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
-  return `${day} ${part}`
-}
+/**
+ * What it will be called if he types nothing — shown as the placeholder so the
+ * name is never a surprise (SB-536).
+ */
+const defaultName = computed(() => defaultSessionName(sessionDate.value))
 
 const prefillFrom = (id: string): Promise<void> =>
   getTemplate(id, athleteId.value!).then((tpl) => {

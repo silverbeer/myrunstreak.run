@@ -222,15 +222,60 @@
             class="flex items-center justify-between gap-3 px-4 py-3"
             data-testid="completed-row"
           >
-            <div class="min-w-0">
-              <p class="font-semibold text-gray-900 truncate">{{ row.title }}</p>
-              <p class="text-xs text-gray-500">{{ row.detail }}</p>
+            <!-- Renaming after the fact (SB-536): the default is read off the
+                 date, and only he knows which one was the garage circuit. -->
+            <div v-if="renamingId === row.id" class="flex min-w-0 flex-1 items-center gap-2">
+              <input
+                v-model="renameText"
+                type="text"
+                maxlength="80"
+                class="min-w-0 flex-1 rounded-lg border border-gray-200 px-2 py-1 text-sm"
+                data-testid="rename-input"
+                @keyup.enter="saveRename(row)"
+              />
+              <button
+                type="button"
+                class="shrink-0 rounded-lg bg-brand-600 px-3 py-1 text-xs font-semibold text-white"
+                data-testid="rename-save"
+                @click="saveRename(row)"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                class="shrink-0 rounded-lg border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600"
+                data-testid="rename-cancel"
+                @click="renamingId = null"
+              >
+                Cancel
+              </button>
             </div>
-            <span
-              class="shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700"
-            >
-              {{ row.when }}
-            </span>
+
+            <template v-else>
+              <div class="min-w-0">
+                <p class="font-semibold text-gray-900 truncate">{{ row.title }}</p>
+                <p class="text-xs text-gray-500">{{ row.detail }}</p>
+              </div>
+              <span class="flex shrink-0 items-center gap-1">
+                <!-- Only sessions with no plan behind them: one logged against
+                     Matthew's workout is called what Matthew called it. -->
+                <button
+                  v-if="row.adhoc"
+                  type="button"
+                  class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                  :aria-label="`Rename ${row.title}`"
+                  data-testid="rename-open"
+                  @click="startRename(row)"
+                >
+                  <Pencil class="w-3.5 h-3.5" />
+                </button>
+                <span
+                  class="rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700"
+                >
+                  {{ row.when }}
+                </span>
+              </span>
+            </template>
           </div>
           <button
             v-if="completed.length > COMPLETED_PREVIEW && !showAllCompleted"
@@ -361,15 +406,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
-import { X } from 'lucide-vue-next'
+import { Pencil, X } from 'lucide-vue-next'
 import { useMyAthlete } from '@/composables/useCoach'
 import { useMyWorkouts } from '@/composables/useMyWorkouts'
-import { useWorkoutSessions } from '@/composables/useWorkoutSessions'
+import { renameSession, useWorkoutSessions } from '@/composables/useWorkoutSessions'
 import { useWorkoutSchedule, deleteSchedule } from '@/composables/useWorkoutSchedule'
 import { deleteTemplate } from '@/composables/useWorkoutTemplates'
 import ScheduleWorkout from '@/components/ScheduleWorkout.vue'
 import WorkoutTemplateCard from '@/components/WorkoutTemplateCard.vue'
 import { formatDayPill, todayLocalISO } from '@/utils/format'
+import { defaultSessionName } from '@/utils/sessionPayload'
 import { prettifyKey } from '@/utils/workoutPayload'
 import type { WorkoutScheduleEntry, WorkoutTemplate } from '@/types/workout'
 
@@ -498,6 +544,8 @@ interface CompletedRow {
   title: string
   detail: string
   when: string
+  // Only a session with no plan behind it is the athlete's to name (SB-536).
+  adhoc: boolean
 }
 
 /**
@@ -518,10 +566,11 @@ const completed = computed<CompletedRow[]>(() =>
       const logged = count > 0 ? `${count} ${count === 1 ? 'exercise' : 'exercises'}` : null
       return {
         id: s.id,
-        // No name is stored for an ad-hoc session, and asking for one before
-        // giving credit is friction in the wrong place — the kind of workout
-        // it was is the honest fallback.
-        title: name ?? prettifyKey(s.type),
+        // What he called it, then the plan's name, then the kind of workout it
+        // was. The last is the honest fallback for sessions logged before
+        // naming existed (SB-536).
+        title: s.name?.trim() || name || prettifyKey(s.type),
+        adhoc,
         detail: adhoc
           ? [logged, 'my own'].filter(Boolean).join(' · ')
           : logged
@@ -542,6 +591,29 @@ const thisWeekCount = computed(() => {
   const since = cutoff.toISOString().slice(0, 10)
   return sessions.value.filter((s) => s.session_date > since).length
 })
+
+// ---- Renaming -----------------------------------------------------------
+const renamingId = ref<string | null>(null)
+const renameText = ref('')
+
+const startRename = (row: CompletedRow): void => {
+  renamingId.value = row.id
+  renameText.value = row.title
+}
+
+/**
+ * Save the new name, or fall back to the date-derived default when it is
+ * cleared — an empty label on the Completed list would read as nothing.
+ */
+const saveRename = async (row: CompletedRow): Promise<void> => {
+  if (!myAthlete.value) return
+  const session = sessions.value.find((s) => s.id === row.id)
+  const next =
+    renameText.value.trim() || defaultSessionName(session?.session_date ?? todayLocalISO())
+  renamingId.value = null
+  await renameSession(row.id, next, myAthlete.value.id)
+  if (session) session.name = next
+}
 
 const remove = async (t: WorkoutTemplate): Promise<void> => {
   if (!myAthlete.value) return

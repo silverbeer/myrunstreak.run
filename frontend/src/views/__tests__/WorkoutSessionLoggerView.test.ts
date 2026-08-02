@@ -272,12 +272,15 @@ describe('WorkoutSessionLoggerView — save failure and dead ends (SB-501)', () 
 
 describe('WorkoutSessionLoggerView — ad-hoc workout (SB-531)', () => {
   // Gabe wakes up, does four exercises, wants credit. No plan involved.
-  const logSomething = async () => {
+  const logSomething = async (name?: string) => {
     h.createSession.mockResolvedValue({ id: 's9' })
     const w = await mountLogger()
     await w.find('[data-testid="add-exercise"]').trigger('click')
     await w.find('[data-testid="ex-pushups"]').trigger('click')
     await w.find('[data-testid="reps-pushups-0"]').setValue(20)
+    // A fixed date so the default name is an exact string, not today's.
+    await w.find('[data-testid="session-date"]').setValue('2026-08-02')
+    if (name !== undefined) await w.find('[data-testid="session-name"]').setValue(name)
     await w.find('[data-testid="save"]').trigger('click')
     await flushPromises()
     return w
@@ -305,17 +308,41 @@ describe('WorkoutSessionLoggerView — ad-hoc workout (SB-531)', () => {
     expect(offer.text()).toContain('Do this one again?')
   })
 
-  it('keeping it creates a reusable workout named after the day', async () => {
+  it('keeping it creates a reusable workout under the session\'s own name', async () => {
     h.createTemplate.mockResolvedValue({ id: 't9' })
-    const w = await logSomething()
+    const w = await logSomething('Garage circuit')
     await w.get('[data-testid="keep-yes"]').trigger('click')
     await flushPromises()
 
     const [payload, athleteId] = h.createTemplate.mock.calls[0]
     expect(athleteId).toBe('ath1')
-    expect(payload.name).toMatch(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) (morning|afternoon|evening)$/)
+    // The plan arrives called what he called the session (SB-536), rather than
+    // being renamed a second time.
+    expect(payload.name).toBe('Garage circuit')
     expect(payload.items[0]).toMatchObject({ exercise_key: 'pushups', position: 0 })
     expect(h.push).toHaveBeenCalledWith('/coach/ath1')
+  })
+
+  it('arrives already named, so nothing blocks the credit', async () => {
+    const w = await mountLogger()
+    await w.find('[data-testid="session-date"]').setValue('2026-08-02')
+    // Shown as a placeholder, not typed in: the name is never a surprise, and
+    // never a field he has to fill before getting the tick (SB-536).
+    const field = w.get('[data-testid="session-name"]')
+    expect(field.attributes('placeholder')).toBe('Sunday 2 Aug')
+    expect((field.element as HTMLInputElement).value).toBe('')
+  })
+
+  it('saves the default name when he types none', async () => {
+    await logSomething()
+    const [payload] = h.createSession.mock.calls[0]
+    expect(payload.name).toBe('Sunday 2 Aug')
+  })
+
+  it('saves what he calls it instead, when he says', async () => {
+    await logSomething('Garage circuit')
+    const [payload] = h.createSession.mock.calls[0]
+    expect(payload.name).toBe('Garage circuit')
   })
 
   it('declining just goes home — the session is already saved', async () => {

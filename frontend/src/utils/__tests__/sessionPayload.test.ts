@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   blankAttempt,
   buildSessionPayload,
+  defaultSessionName,
   templateToRows,
   type SessionMeta,
 } from '@/utils/sessionPayload'
@@ -44,6 +45,7 @@ const row = (key: string, over: Partial<LoggerRow> = {}): LoggerRow => ({
 
 const meta: SessionMeta = {
   session_date: '2026-07-06',
+  name: null,
   type: 'circuit',
   total_minutes: 45,
   how_felt: 'good',
@@ -164,5 +166,50 @@ describe('templateToRows', () => {
     expect(rows[1].exercise.display_name).toBe('plank') // fallback (not in catalog)
     expect(rows[1].variant).toBe('front') // carried from template item
     expect(rows.every((r) => r.attempts.length === 1)).toBe(true)
+  })
+})
+
+
+describe('defaultSessionName (SB-536)', () => {
+  it('names a session after its own day and date', () => {
+    // The weekday is what he recognises; the date is what tells two Sundays
+    // apart on the Completed list.
+    expect(defaultSessionName('2026-08-02')).toBe('Sunday 2 Aug')
+    expect(defaultSessionName('2026-01-01')).toBe('Thursday 1 Jan')
+  })
+
+  it('reads the session date, never the clock', () => {
+    // A workout done Sunday but entered on Tuesday must not be called Tuesday,
+    // and must carry no time of day — SB-531's version took the weekday from
+    // the session and the hour from `new Date()`.
+    const name = defaultSessionName('2026-08-02')
+    expect(name).toBe('Sunday 2 Aug')
+    expect(name).not.toMatch(/morning|afternoon|evening/)
+  })
+
+  it('does not shift a day in negative-offset zones (timezone-safe)', () => {
+    // new Date('2026-08-01') is UTC midnight → Jul 31 locally in the US.
+    expect(defaultSessionName('2026-08-01')).toBe('Saturday 1 Aug')
+  })
+
+  it('falls back to something printable when the date is unusable', () => {
+    expect(defaultSessionName('')).toBe('Workout')
+    expect(defaultSessionName('nope')).toBe('Workout')
+  })
+})
+
+describe('buildSessionPayload — naming (SB-536)', () => {
+  const rows = [row('pushups', { attempts: [attempt({ reps: 10 })] })]
+
+  it('carries the name through', () => {
+    const p = buildSessionPayload({ ...meta, name: 'Garage circuit' }, rows)
+    expect(p.name).toBe('Garage circuit')
+  })
+
+  it('treats a blank name as no name at all', () => {
+    // An empty string is a label that reads as nothing; null falls the row back
+    // to the plan name, then the type.
+    expect(buildSessionPayload({ ...meta, name: '   ' }, rows).name).toBeNull()
+    expect(buildSessionPayload({ ...meta, name: null }, rows).name).toBeNull()
   })
 })

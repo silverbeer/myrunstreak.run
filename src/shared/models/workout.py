@@ -392,12 +392,22 @@ class WorkoutSessionCreate(BaseModel):
     """Input for logging a session, optionally with its sets inline."""
 
     session_date: date
+    # Optional on purpose (SB-536): a required name before the work is recorded
+    # is friction in the wrong place. The client defaults one from the date.
+    name: str | None = None
     template_id: UUID | None = None
     type: WorkoutType = WorkoutType.circuit
     total_minutes: float | None = Field(default=None, ge=0)
     how_felt: str | None = None
     notes: str | None = None
     sets: list[ExerciseSetCreate] = Field(default_factory=list)
+
+
+class WorkoutSessionUpdate(BaseModel):
+    """Partial patch of a stored session. Only the name so far (SB-536) — a
+    session can be renamed long after it was logged, from the Completed list."""
+
+    name: str | None = None
 
 
 class WorkoutSession(BaseModel):
@@ -408,6 +418,8 @@ class WorkoutSession(BaseModel):
     athlete_id: UUID | None = None
     created_by: UUID | None = None
     session_date: date
+    # NULL falls back to the template's name, then to the type (SB-536).
+    name: str | None = None
     template_id: UUID | None = None
     type: WorkoutType
     total_minutes: float | None = None

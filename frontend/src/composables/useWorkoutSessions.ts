@@ -8,6 +8,22 @@ import type { WorkoutSessionInput } from '@/types/workout'
  * the athlete's behalf via X-Act-As-Athlete (the backend verifies the coach
  * actually coaches that athlete). Mirrors useWorkoutTemplates.createTemplate.
  */
+/**
+ * Rename a logged session (SB-536). Only the name — the sets are the record,
+ * and relabelling one must never disturb what was logged.
+ */
+export async function renameSession(
+  sessionId: string,
+  name: string | null,
+  athleteId: string,
+): Promise<WorkoutSession> {
+  return apiCall<WorkoutSession>(`/workouts/sessions/${sessionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+    headers: { 'X-Act-As-Athlete': athleteId },
+  })
+}
+
 export async function createSession(
   payload: WorkoutSessionInput,
   athleteId: string,
