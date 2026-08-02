@@ -75,10 +75,22 @@
       />
     </div>
 
-    <!-- Logged exercises -->
+    <!-- Logged exercises, under the circuit that prescribed them (SB-545).
+         The card and the print sheet both say "Circuit A ×2"; this screen said
+         nothing, so the structure of the workout vanished at the moment of
+         doing it. -->
+    <template v-for="(row, ri) in rows" :key="row.uid">
+      <div
+        v-if="circuitLabelAt(ri)"
+        class="mt-4 flex items-baseline gap-2 text-[11px] font-bold uppercase tracking-wide text-brand-700"
+        data-testid="logger-circuit-bar"
+      >
+        {{ circuitLabelAt(ri)!.label }}
+        <span v-if="circuitLabelAt(ri)!.rounds > 1" class="text-gray-400">
+          ×{{ circuitLabelAt(ri)!.rounds }}
+        </span>
+      </div>
     <div
-      v-for="row in rows"
-      :key="row.uid"
       class="bg-white rounded-xl border border-gray-200 p-3 mt-3"
       :data-testid="`row-${row.exercise.key}`"
     >
@@ -107,11 +119,10 @@
       <ExerciseDescription v-if="isOpen(row.uid)" class="mt-2" :exercise="row.exercise" />
 
       <div class="mt-2 flex flex-wrap gap-2 text-xs">
-        <label class="field">
-          Round
-          <input v-model.number="row.round_number" type="number" min="1" class="w-14 num"
-            :data-testid="`round-${row.exercise.key}`" />
-        </label>
+        <!-- The "Round" box is gone (SB-545). It was empty on every row, so
+             recording a two-round circuit as written meant typing twenty-two
+             round numbers — which is why no round ever got logged. Rounds now
+             arrive on the attempts, from the circuit that prescribed them. -->
         <label class="field">
           Variant
           <input v-model="row.variant" placeholder="e.g. left" class="w-20 num"
@@ -136,7 +147,11 @@
         class="mt-2 flex flex-wrap items-center gap-2 text-xs"
         :data-testid="`attempt-${row.exercise.key}-${i}`"
       >
-        <span v-if="row.attempts.length > 1" class="w-8 text-gray-400 tabular-nums">#{{ i + 1 }}</span>
+        <span
+          v-if="row.attempts.length > 1"
+          class="w-8 text-gray-400 tabular-nums"
+          :data-testid="`attempt-label-${row.exercise.key}-${i}`"
+        >{{ a.round_number ? `R${a.round_number}` : `#${i + 1}` }}</span>
         <label v-for="f in fieldsFor(row)" :key="f.model" class="field">
           {{ f.label }}
           <input
@@ -175,6 +190,7 @@
         + Add set
       </button>
     </div>
+    </template>
 
     <!-- Add exercise -->
     <div class="mt-4">
@@ -284,7 +300,13 @@ import {
   templateToRows,
   todayISO,
 } from '@/utils/sessionPayload'
-import type { Exercise, LoggerRow, WorkoutTemplateInput, WorkoutType } from '@/types/workout'
+import type {
+  Exercise,
+  LoggerRow,
+  TemplateBlock,
+  WorkoutTemplateInput,
+  WorkoutType,
+} from '@/types/workout'
 import { useActingAthlete } from '@/composables/useActingAthlete'
 import { explainStatus, statusOf } from '@/utils/apiErrors'
 
@@ -304,6 +326,14 @@ const howFelt = ref<string | null>(null)
 const notes = ref<string | null>(null)
 const rows = ref<LoggerRow[]>([])
 const templateName = ref<string | null>(null)
+// The prescription's circuits, kept so the logger can show what the card and
+// the sheet show (SB-545).
+const blocks = ref<TemplateBlock[]>([])
+const itemBlockIds = ref<Record<string, string | null>>({})
+const blockForItem = (itemId: string): TemplateBlock | null => {
+  const blockId = itemBlockIds.value[itemId]
+  return blocks.value.find((b) => b.id === blockId) ?? null
+}
 const sessionType = ref<WorkoutType>('circuit')
 const picking = ref(false)
 const saving = ref(false)
@@ -356,11 +386,30 @@ const onPick = (ex: Exercise): void => {
   rows.value.push({
     uid: nextUid++,
     exercise: ex,
-    round_number: null,
+    // Added by hand: it answers no prescribed item, so the link stays null.
+    template_item_id: null,
     variant: null,
     notes: null,
     attempts: [blankAttempt()],
   })
+}
+
+/**
+ * The circuit heading to show above row `index`, or null.
+ *
+ * Derived from the prescription rather than stored on the row: the logger's
+ * rows are the athlete's working state and may be added to or removed, while
+ * the circuits belong to the template.
+ */
+const circuitLabelAt = (index: number): { label: string; rounds: number } | null => {
+  const row = rows.value[index]
+  if (!row?.template_item_id) return null
+  const block = blockForItem(row.template_item_id)
+  if (!block) return null
+  const prev = rows.value[index - 1]
+  const prevBlock = prev?.template_item_id ? blockForItem(prev.template_item_id) : null
+  if (prevBlock?.id === block.id) return null
+  return { label: block.label, rounds: block.rounds }
 }
 
 const removeRow = (row: LoggerRow): void => {
@@ -468,6 +517,8 @@ const prefillFrom = (id: string): Promise<void> =>
   getTemplate(id, athleteId.value!).then((tpl) => {
     templateName.value = tpl.name
     sessionType.value = tpl.type
+    blocks.value = tpl.blocks ?? []
+    itemBlockIds.value = Object.fromEntries(tpl.items.map((i) => [i.id, i.block_id ?? null]))
     const byKey = new Map(exercises.value.map((e) => [e.key, e]))
     rows.value = templateToRows(tpl, byKey, nextUid)
     nextUid += rows.value.length

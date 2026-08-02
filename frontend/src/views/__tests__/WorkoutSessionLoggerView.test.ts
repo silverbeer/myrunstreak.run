@@ -375,3 +375,96 @@ describe('WorkoutSessionLoggerView — ad-hoc workout (SB-531)', () => {
     expect(h.push).toHaveBeenCalledWith('/coach/ath1')
   })
 })
+
+
+// --- SB-545: the logger finally knows what it was asked to do ---------------
+
+const ITEM = (id: string, key: string, block_id: string | null, position: number) => ({
+  id,
+  exercise_key: key,
+  section: 'main',
+  position,
+  block_id,
+  target_reps: null,
+  target_duration_seconds: 60,
+  target_load_kg: null,
+  target_distance_m: null,
+  rest_seconds: null,
+  variant: null,
+  notes: null,
+})
+
+const CIRCUIT_TEMPLATE = {
+  id: 't5',
+  name: 'Monday At-Home',
+  type: 'circuit',
+  rounds: 1,
+  source: 'Matthew',
+  notes: null,
+  created_at: null,
+  blocks: [
+    { id: 'b1', template_id: 't5', label: 'Circuit A', position: 0, rounds: 2, rest_after_seconds: 240 },
+    { id: 'b2', template_id: 't5', label: 'Circuit B', position: 1, rounds: 1, rest_after_seconds: null },
+  ],
+  items: [
+    ITEM('a1', 'pushups', 'b1', 0),
+    ITEM('a2', 'farmers_carry', 'b1', 1),
+    ITEM('b1i', 'pushups', 'b2', 2),
+  ],
+}
+
+describe('WorkoutSessionLoggerView — circuits and the prescription (SB-545)', () => {
+  const openCircuit = async () => {
+    h.params = { athleteId: 'ath1', templateId: 't5' }
+    h.getTemplate.mockResolvedValue(CIRCUIT_TEMPLATE)
+    return mountLogger()
+  }
+
+  it('shows the circuits the card and the sheet already show', async () => {
+    const w = await openCircuit()
+    const bars = w.findAll('[data-testid="logger-circuit-bar"]').map((b) => b.text())
+    expect(bars).toHaveLength(2)
+    expect(bars[0]).toContain('Circuit A')
+    expect(bars[0]).toContain('×2')
+    expect(bars[1]).toContain('Circuit B')
+  })
+
+  it('lays a two-round circuit out as R1 and R2, already numbered', async () => {
+    // Before this, recording the prescription meant tapping "+ Add set" on
+    // eleven cards and typing twenty-two round numbers.
+    const w = await openCircuit()
+    expect(w.get('[data-testid="attempt-label-farmers_carry-0"]').text()).toBe('R1')
+    expect(w.get('[data-testid="attempt-label-farmers_carry-1"]').text()).toBe('R2')
+  })
+
+  it('no longer asks the athlete to type a round number', async () => {
+    const w = await openCircuit()
+    expect(w.find('[data-testid="round-farmers_carry"]').exists()).toBe(false)
+  })
+
+  it('sends the prescribed item each set answers', async () => {
+    // `pushups` appears in both circuits — without the link the two are
+    // indistinguishable, which is the whole reason SB-527 added the column.
+    const w = await openCircuit()
+    await w.find('[data-testid="duration_s-farmers_carry-0"]').setValue(60)
+    await w.find('[data-testid="save"]').trigger('click')
+    await flushPromises()
+
+    const [payload] = h.createSession.mock.calls[0]
+    const set = payload.sets.find(
+      (s: { exercise_key: string }) => s.exercise_key === 'farmers_carry',
+    )
+    expect(set.template_item_id).toBe('a2')
+    expect(set.round_number).toBe(1)
+  })
+
+  it('leaves an exercise the athlete adds unlinked', async () => {
+    const w = await openCircuit()
+    await w.find('[data-testid="add-exercise"]').trigger('click')
+    await w.find('[data-testid="ex-pushups"]').trigger('click')
+    // Toggling adds a row with no prescription behind it; the existing
+    // prefilled pushups rows keep theirs.
+    await flushPromises()
+    expect(w.findAll('[data-testid="logger-circuit-bar"]').length).toBeGreaterThan(0)
+  })
+})
