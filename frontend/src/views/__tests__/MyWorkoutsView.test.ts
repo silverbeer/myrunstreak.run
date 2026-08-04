@@ -89,12 +89,45 @@ beforeEach(() => {
 })
 
 describe('MyWorkoutsView (SB-332)', () => {
-  it('redirects a non-athlete to the dashboard without fetching', async () => {
+  // Being nobody's athlete used to bounce you to the dashboard, which made
+  // training something only a coach's creation could record — including the
+  // workout-count goal every user can set (SB-578).
+  it('lets a user who is nobody’s athlete use the screen', async () => {
     myAthlete.value = null
+    serve({ templates: [{ ...template, athlete_id: null, created_by: null }] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+
+    expect(replaceMock).not.toHaveBeenCalled()
+    expect(w.find('[data-testid="log-adhoc"]').exists()).toBe(true)
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+    expect(w.text()).toContain('Monday At-Home')
+  })
+
+  it('sends no act-as header when the workouts are the user’s own', async () => {
+    myAthlete.value = null
+    serve()
     mount(MyWorkoutsView)
     await flushPromises()
-    expect(replaceMock).toHaveBeenCalledWith('/dashboard')
-    expect(apiCallMock).not.toHaveBeenCalled()
+
+    // An athlete id it does not have must not be invented — omitting the header
+    // is what tells the API the rows are the caller's own.
+    for (const [, opts] of apiCallMock.mock.calls) {
+      const headers = (opts as { headers?: Record<string, string> } | undefined)?.headers ?? {}
+      expect(headers['X-Act-As-Athlete']).toBeUndefined()
+    }
+  })
+
+  it('calls a self-owned plan mine, not the coach’s', async () => {
+    // Nothing in the list can belong to anyone else, so authorship needs no
+    // comparison — and created_by is null on a self-owned row anyway.
+    myAthlete.value = null
+    serve({ templates: [{ ...template, athlete_id: null, created_by: null }] })
+    const w = mount(MyWorkoutsView)
+    await flushPromises()
+    await w.get('[data-testid="tab-plans"]').trigger('click')
+    expect(w.text()).toContain('Mine')
+    expect(w.text()).not.toContain('From my coach')
   })
 
   it('renders assigned workouts for a linked athlete', async () => {

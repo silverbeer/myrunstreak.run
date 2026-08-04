@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { apiCall } from '@/config/api'
+import { actAs } from '@/utils/actAs'
 import type { WorkoutRecurrence, WorkoutRecurrenceInput } from '@/types/workout'
 
 /** Sunday-first, matching `Date.getDay()` and the stored `byweekday` values. */
@@ -29,12 +30,12 @@ export function describeRecurrence(byweekday: number[]): string {
  */
 export async function createRecurrence(
   payload: WorkoutRecurrenceInput,
-  athleteId: string,
+  athleteId: string | null,
 ): Promise<WorkoutRecurrence> {
   return apiCall<WorkoutRecurrence>('/workouts/recurrence', {
     method: 'POST',
     body: JSON.stringify(payload),
-    headers: { 'X-Act-As-Athlete': athleteId },
+    headers: actAs(athleteId),
   })
 }
 
@@ -42,12 +43,12 @@ export async function createRecurrence(
  *  and anything logged against it — is left alone. */
 export async function stopRecurrence(
   recurrenceId: string,
-  athleteId: string,
+  athleteId: string | null,
 ): Promise<WorkoutRecurrence> {
   return apiCall<WorkoutRecurrence>(`/workouts/recurrence/${recurrenceId}`, {
     method: 'PATCH',
     body: JSON.stringify({ active: false }),
-    headers: { 'X-Act-As-Athlete': athleteId },
+    headers: actAs(athleteId),
   })
 }
 
@@ -56,12 +57,12 @@ export function useWorkoutRecurrence() {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  const load = async (athleteId: string): Promise<void> => {
+  const load = async (athleteId: string | null): Promise<void> => {
     loading.value = true
     error.value = null
     try {
       recurrences.value = await apiCall<WorkoutRecurrence[]>('/workouts/recurrence', {
-        headers: { 'X-Act-As-Athlete': athleteId },
+        headers: actAs(athleteId),
       })
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load repeats'

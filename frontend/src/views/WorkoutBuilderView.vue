@@ -202,8 +202,8 @@ const save = async (): Promise<void> => {
       items.value,
       scheduledFor.value,
     )
-    if (editingId) await updateTemplate(editingId, payload, athleteId.value!)
-    else await createTemplate(payload, athleteId.value!)
+    if (editingId) await updateTemplate(editingId, payload, athleteId.value)
+    else await createTemplate(payload, athleteId.value)
     router.push(homePath.value)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save workout'
@@ -214,7 +214,7 @@ const save = async (): Promise<void> => {
 
 // Load an existing template into the builder state (kg → lb, key → Exercise).
 const prefillFrom = (templateId: string): Promise<void> =>
-  getTemplate(templateId, athleteId.value!).then((tpl) => {
+  getTemplate(templateId, athleteId.value).then((tpl) => {
     name.value = tpl.name
     type.value = tpl.type
     rounds.value = tpl.rounds
@@ -238,13 +238,9 @@ const prefillFrom = (templateId: string): Promise<void> =>
   })
 
 onMounted(async () => {
-  // Coach or athlete — the gate is having an athlete to build for, not a role.
-  // Athletes author their own workouts too (SB-486).
+  // Coach, linked athlete, or a user building their own plan — all three are
+  // valid here. A null athlete id means the last one (SB-578).
   await resolveAthlete()
-  if (!athleteId.value) {
-    router.replace('/dashboard')
-    return
-  }
   await load()
   if (editingId) await prefillFrom(editingId)
 })

@@ -350,7 +350,6 @@
               </button>
             </div>
             <ScheduleWorkout
-              v-if="athleteId"
               class="mt-2"
               :template-id="t.id"
               :athlete-id="athleteId"
@@ -407,7 +406,6 @@
               </button>
             </div>
             <ScheduleWorkout
-              v-if="athleteId"
               class="mt-2"
               :template-id="t.id"
               :athlete-id="athleteId"
@@ -483,11 +481,24 @@ const tab = ref<'training' | 'plans'>('training')
  * of a Pinia dependency it otherwise would not need.
  */
 const isMine = (t: WorkoutTemplate): boolean =>
-  !!t.created_by && t.created_by === myAthlete.value?.linked_user_id
+  isSelf.value || (!!t.created_by && t.created_by === myAthlete.value?.linked_user_id)
 
-/** The athlete this screen is about — read once rather than reached through
- *  `myAthlete` in the template, which relies on ref unwrapping. */
+/**
+ * The athlete this screen is about, or **null when it is about the user
+ * themselves** (SB-578). Null is not a missing value here: it omits the
+ * act-as header, and the API then reads and writes the caller's own
+ * self-owned rows. A user who is nobody's athlete uses this screen exactly
+ * as a linked athlete does.
+ */
 const athleteId = computed(() => myAthlete.value?.id ?? null)
+
+/**
+ * No athlete record → this screen is about the user themselves, and every row
+ * it can see is their own: `/me/workouts` and the act-as-less reads return only
+ * self-owned rows. So authorship needs no comparison in that mode — there is
+ * nobody else's work in the list to distinguish it from.
+ */
+const isSelf = computed(() => athleteId.value === null)
 
 const mine = computed(() => templates.value.filter(isMine))
 const fromCoach = computed(() => templates.value.filter((t) => !isMine(t)))
@@ -541,7 +552,7 @@ const upcoming = computed<Occasion[]>(() => {
     .filter((s) => s.scheduled_for >= today && templatesById.value[s.template_id])
     .sort((a, b) => (a.scheduled_for < b.scheduled_for ? -1 : 1))
     .map((s) => {
-      const mine = !!s.created_by && s.created_by === linked
+      const mine = isSelf.value || (!!s.created_by && s.created_by === linked)
       return {
         id: s.id,
         template: templatesById.value[s.template_id],
@@ -561,11 +572,10 @@ const laterUp = computed(() => upcoming.value.filter((o) => o.id !== dueToday.va
 const nextUp = computed(() => laterUp.value[0] ?? null)
 
 const reloadSchedule = async (): Promise<void> => {
-  if (!myAthlete.value) return
   // Both: a new pattern generates occasions, so the schedule changed too.
   await Promise.all([
-    loadSchedule(myAthlete.value.id, todayLocalISO()),
-    loadRecurrence(myAthlete.value.id),
+    loadSchedule(athleteId.value, todayLocalISO()),
+    loadRecurrence(athleteId.value),
   ])
 }
 
@@ -576,16 +586,14 @@ const repeatFor = (templateId: string) =>
 const describeRepeat = describeRecurrence
 
 const stopRepeat = async (recurrenceId: string): Promise<void> => {
-  if (!myAthlete.value) return
   // Turning it off stops future occasions and leaves the ones already on the
   // calendar — and anything logged against them — alone.
-  await stopRecurrence(recurrenceId, myAthlete.value.id)
+  await stopRecurrence(recurrenceId, athleteId.value)
   await reloadSchedule()
 }
 
 const unschedule = async (o: Occasion): Promise<void> => {
-  if (!myAthlete.value) return
-  await deleteSchedule(o.id, myAthlete.value.id)
+  await deleteSchedule(o.id, athleteId.value)
   await reloadSchedule()
 }
 
@@ -666,38 +674,34 @@ const startRename = (row: CompletedRow): void => {
  * cleared — an empty label on the Completed list would read as nothing.
  */
 const saveRename = async (row: CompletedRow): Promise<void> => {
-  if (!myAthlete.value) return
   const session = sessions.value.find((s) => s.id === row.id)
   const next =
     renameText.value.trim() || defaultSessionName(session?.session_date ?? todayLocalISO())
   renamingId.value = null
-  await renameSession(row.id, next, myAthlete.value.id)
+  await renameSession(row.id, next, athleteId.value)
   if (session) session.name = next
 }
 
 const remove = async (t: WorkoutTemplate): Promise<void> => {
-  if (!myAthlete.value) return
   if (!window.confirm(`Delete "${t.name}"?`)) return
-  await deleteTemplate(t.id, myAthlete.value.id)
+  await deleteTemplate(t.id, athleteId.value)
   await load()
 }
 
 onMounted(async () => {
+  // No athlete record is not a dead end (SB-578): the screen is then about the
+  // user themselves, and `athleteId` stays null so every call omits the act-as
+  // header and reads their own self-owned rows.
   await loadMyAthlete(true)
-  // Not a linked athlete → no workouts to show here.
-  if (!myAthlete.value) {
-    router.replace('/dashboard')
-    return
-  }
   // Sessions and the schedule load alongside the plans, not on tab switch:
   // Coming up and Completed are what the Training tab shows, and it is the
   // default tab. Only occasions from today forward — the past is Completed's
   // job, and an unmet Thursday lingering is a decision nobody has made.
   await Promise.all([
     load(),
-    loadSessions(myAthlete.value.id),
-    loadSchedule(myAthlete.value.id, todayLocalISO()),
-    loadRecurrence(myAthlete.value.id),
+    loadSessions(athleteId.value),
+    loadSchedule(athleteId.value, todayLocalISO()),
+    loadRecurrence(athleteId.value),
   ])
 })
 </script>

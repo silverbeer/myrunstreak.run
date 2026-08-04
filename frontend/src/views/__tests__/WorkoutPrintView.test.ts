@@ -118,16 +118,18 @@ describe('WorkoutPrintView on /my/workouts/print (SB-522)', () => {
     expect(call?.[1]?.headers).toEqual({ 'X-Act-As-Athlete': 'my-athlete-row' })
   })
 
-  it('says so when the account has no linked athlete row', async () => {
+  it('prints the caller’s own plan when they have no athlete row', async () => {
+    // Used to refuse with "No athlete profile". A user who is nobody's athlete
+    // still has plans of their own (SB-578) — the template is fetched with no
+    // act-as header, which is what asks for their self-owned row.
     routeParams = { ...OWN_ROUTE }
     myAthlete.value = null
-    const w = mount(WorkoutPrintView)
+    mount(WorkoutPrintView)
     await flushPromises()
-    expect(w.get('[data-testid="print-error"]').text()).toContain('No athlete profile')
-    // Nothing athlete-scoped should have been attempted.
-    expect(apiCallMock.mock.calls.some((c) => String(c[0]).includes('/workouts/templates/'))).toBe(
-      false,
-    )
+
+    const call = apiCallMock.mock.calls.find((c) => c[0] === '/workouts/templates/t1')
+    expect(call).toBeDefined()
+    expect(call?.[1]?.headers).toEqual({})
   })
 
   it('never sends the string "undefined" anywhere', async () => {

@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { apiCall } from '@/config/api'
+import { actAs } from '@/utils/actAs'
 import type { WorkoutScheduleEntry, WorkoutScheduleInput } from '@/types/workout'
 
 /**
@@ -12,19 +13,19 @@ import type { WorkoutScheduleEntry, WorkoutScheduleInput } from '@/types/workout
  */
 export async function createSchedule(
   payload: WorkoutScheduleInput,
-  athleteId: string,
+  athleteId: string | null,
 ): Promise<WorkoutScheduleEntry> {
   return apiCall<WorkoutScheduleEntry>('/workouts/schedule', {
     method: 'POST',
     body: JSON.stringify(payload),
-    headers: { 'X-Act-As-Athlete': athleteId },
+    headers: actAs(athleteId),
   })
 }
 
-export async function deleteSchedule(scheduleId: string, athleteId: string): Promise<void> {
+export async function deleteSchedule(scheduleId: string, athleteId: string | null): Promise<void> {
   await apiCall(`/workouts/schedule/${scheduleId}`, {
     method: 'DELETE',
-    headers: { 'X-Act-As-Athlete': athleteId },
+    headers: actAs(athleteId),
   })
 }
 
@@ -34,13 +35,13 @@ export function useWorkoutSchedule() {
   const error = ref<string | null>(null)
 
   /** Occasions from `from` onwards, soonest first. Coming up asks from today. */
-  const load = async (athleteId: string, from?: string): Promise<void> => {
+  const load = async (athleteId: string | null, from?: string): Promise<void> => {
     loading.value = true
     error.value = null
     try {
       const query = from ? `?date_from=${from}` : ''
       schedule.value = await apiCall<WorkoutScheduleEntry[]>(`/workouts/schedule${query}`, {
-        headers: { 'X-Act-As-Athlete': athleteId },
+        headers: actAs(athleteId),
       })
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load the schedule'

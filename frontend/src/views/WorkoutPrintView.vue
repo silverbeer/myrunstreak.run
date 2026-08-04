@@ -149,6 +149,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import { apiCall } from '@/config/api'
+import { actAs } from '@/utils/actAs'
 import type { Exercise, TemplateBlock, TemplateItem, WorkoutTemplate } from '@/types/workout'
 import type { Athlete } from '@/types/coach'
 import { groupOptionItems } from '@/utils/optionGroups'
@@ -350,15 +351,11 @@ const load = async () => {
   errorStatus.value = null
   try {
     // On the athlete route the scope id is not in the URL — resolve it first.
-    if (scopeAthleteId.value === null) {
-      await resolveAthlete()
-      if (scopeAthleteId.value === null) {
-        throw Object.assign(new Error('No athlete profile is linked to this account.'), {
-          status: 404,
-        })
-      }
-    }
-    const headers = { 'X-Act-As-Athlete': scopeAthleteId.value as string }
+    // Still null afterwards means the caller is printing their own plan and is
+    // nobody's athlete (SB-578); actAs omits the header and the API serves
+    // their self-owned template.
+    if (scopeAthleteId.value === null) await resolveAthlete()
+    const headers = actAs(scopeAthleteId.value)
     const [tpl, catalog] = await Promise.all([
       apiCall<WorkoutTemplate>(`/workouts/templates/${templateId}`, { headers }),
       apiCall<Exercise[]>('/workouts/exercises'),
