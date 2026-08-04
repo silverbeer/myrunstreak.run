@@ -8,6 +8,8 @@ const KG_TO_LB = 2.20462
 export function displayUnit(storedUnit: string): string {
   if (storedUnit === 'km') return 'mi'
   if (storedUnit === 'kg') return 'lb'
+  // A workout-count goal reads "4 / 12 workouts", not "12 session" (SB-509).
+  if (storedUnit === 'session') return 'workouts'
   return storedUnit
 }
 

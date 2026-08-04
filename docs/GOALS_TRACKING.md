@@ -69,6 +69,33 @@ Running entries can be **projected from the existing `runs` table** (a view or a
 sync-time insert) so we don't duplicate the SmashRun pipeline. `runs` already
 carries `body_weight_kg` per run — those become `body_weight` entries for free.
 
+#### Projected metrics
+
+Two metrics are written by database triggers rather than by a person, so a goal
+over them fills in as a side effect of doing the thing:
+
+| metric | source table | trigger migration |
+|--------|--------------|-------------------|
+| `running_distance` | `runs` | `20260603120000_project_runs_to_metric_entries.sql` |
+| `workout_session`  | `workout_sessions` + `exercise_sets` | `20260803000000_project_workouts_to_metric_entries.sql` |
+
+`workout_session` (SB-509) is what makes "complete 12 workouts in August"
+possible. Two details are worth knowing:
+
+- **A session counts once it has at least one `exercise_set`.** An empty session
+  is a shell — scheduled or abandoned — and must not tick a goal. Deleting the
+  last set un-completes it and the count goes back down.
+- **The subject is the athlete, not the logger.** `workout_sessions.user_id` is
+  whoever typed it in; a coach logging for an athlete writes `athlete_id` too.
+  The projection credits `athletes.linked_user_id` in that case, so a coach's own
+  goals never absorb their athlete's work. A managed athlete with no login has
+  nobody to credit and projects nothing — until they link, at which point their
+  history backfills.
+
+Because the metric's aggregation is `count`, the two goal kinds answer different
+questions and a two-a-day is where they diverge: **`volume` counts sessions**
+(two-a-day = 2), **`frequency` counts distinct days** (two-a-day = 1).
+
 ### `metric_goals`
 
 Native, **app-set** goals (not the SmashRun mirror). This is the new capability.
