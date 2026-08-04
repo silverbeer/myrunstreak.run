@@ -33,6 +33,22 @@ What's covered:
   `test_auth_routes`), Redis cache with fakeredis (`test_cache`), stats &
   streaks, the goals module/repository/endpoint, sync, publish-status, secrets.
 
+## Database tests (`supabase/tests/`)
+
+Triggers and RLS live in SQL, so the Python suites — which run against a fake
+Supabase client — cannot reach them. These scripts run against local Postgres
+inside a transaction and `ROLLBACK`, so they leave nothing behind and are safe to
+re-run against a database with real data in it.
+
+```bash
+DB=$(supabase status -o env | grep ^DB_URL | cut -d= -f2- | tr -d '"')
+for f in supabase/tests/*.sql; do psql "$DB" -v ON_ERROR_STOP=1 -f "$f"; done
+```
+
+A failed `ASSERT` aborts with a message naming the case. **Not run by CI** — the
+migrations workflow only pushes migrations; run these locally when you touch a
+trigger or a policy.
+
 ## Frontend tests
 
 ```bash

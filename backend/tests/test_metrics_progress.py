@@ -242,3 +242,58 @@ def test_before_time_excludes_entries_without_timestamp():
     entries = [_entry("running_distance", date(2026, 6, 1), 5.0, at=None)]
     p = compute_progress(goal, RUNNING, entries, date(2026, 6, 1))
     assert p.progress == 0.0  # no precise start time → can't satisfy a time goal
+
+
+# ---- workout-count goals (SB-509) ----
+# The workout_session metric projects one entry per completed session (value 1),
+# so "12 workouts in August" is a month goal over that metric. The two goal kinds
+# answer different questions and the difference shows up on a two-a-day.
+
+WORKOUT = MetricType(
+    key="workout_session",
+    display_name="Workouts",
+    unit="session",
+    aggregation=MetricAggregation.count,
+)
+
+
+def _august_workouts() -> list[MetricEntry]:
+    # Four sessions across three August days — Aug 4 is a two-a-day. Plus one in
+    # July that must stay outside the window.
+    return [
+        _entry("workout_session", date(2026, 7, 31), 1.0),
+        _entry("workout_session", date(2026, 8, 1), 1.0),
+        _entry("workout_session", date(2026, 8, 4), 1.0),
+        _entry("workout_session", date(2026, 8, 4), 1.0),
+        _entry("workout_session", date(2026, 8, 9), 1.0),
+    ]
+
+
+def test_workout_volume_goal_counts_sessions():
+    goal = _goal(metric_key="workout_session", kind=GoalKind.volume, target=12.0)
+    p = compute_progress(goal, WORKOUT, _august_workouts(), date(2026, 8, 9))
+    assert p.window_start == date(2026, 8, 1) and p.window_end == date(2026, 8, 31)
+    assert p.progress == 4.0  # the two-a-day counts twice; July is out of window
+    assert p.met is False
+
+
+def test_workout_frequency_goal_counts_days():
+    goal = _goal(metric_key="workout_session", kind=GoalKind.frequency, target=12.0)
+    p = compute_progress(goal, WORKOUT, _august_workouts(), date(2026, 8, 9))
+    assert p.progress == 3.0  # Aug 1, 4, 9 — the two-a-day is one day
+
+
+def test_workout_goal_met_at_target():
+    entries = [_entry("workout_session", date(2026, 8, d), 1.0) for d in range(1, 13)]
+    goal = _goal(metric_key="workout_session", kind=GoalKind.volume, target=12.0)
+    p = compute_progress(goal, WORKOUT, entries, date(2026, 8, 31))
+    assert p.progress == 12.0
+    assert p.met is True
+    assert p.percent == 100.0
+
+
+def test_workout_goal_starts_empty():
+    goal = _goal(metric_key="workout_session", kind=GoalKind.volume, target=12.0)
+    p = compute_progress(goal, WORKOUT, [], date(2026, 8, 3))
+    assert p.progress == 0.0
+    assert p.met is False
