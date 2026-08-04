@@ -104,7 +104,9 @@ import { todayLocalISO } from '@/utils/format'
  * authorises them identically. Two copies of this would drift, which is exactly
  * how the athlete-side bugs of the last week happened.
  */
-const props = defineProps<{ templateId: string; athleteId: string }>()
+// athleteId null = scheduling my own workout (SB-578); the API reads the
+// caller's self-owned rows when no act-as header is sent.
+const props = defineProps<{ templateId: string; athleteId: string | null }>()
 const emit = defineEmits<{ (e: 'scheduled'): void }>()
 
 const open = ref(false)

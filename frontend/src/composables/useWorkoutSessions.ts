@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { apiCall } from '@/config/api'
+import { actAs } from '@/utils/actAs'
 import type { WorkoutSession } from '@/types/coach'
 import type { WorkoutSessionInput } from '@/types/workout'
 
@@ -15,23 +16,23 @@ import type { WorkoutSessionInput } from '@/types/workout'
 export async function renameSession(
   sessionId: string,
   name: string | null,
-  athleteId: string,
+  athleteId: string | null,
 ): Promise<WorkoutSession> {
   return apiCall<WorkoutSession>(`/workouts/sessions/${sessionId}`, {
     method: 'PATCH',
     body: JSON.stringify({ name }),
-    headers: { 'X-Act-As-Athlete': athleteId },
+    headers: actAs(athleteId),
   })
 }
 
 export async function createSession(
   payload: WorkoutSessionInput,
-  athleteId: string,
+  athleteId: string | null,
 ): Promise<{ id: string }> {
   return apiCall<{ id: string }>('/workouts/sessions', {
     method: 'POST',
     body: JSON.stringify(payload),
-    headers: { 'X-Act-As-Athlete': athleteId },
+    headers: actAs(athleteId),
   })
 }
 
@@ -52,12 +53,12 @@ export function useWorkoutSessions() {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  const load = async (athleteId: string, limit = 100): Promise<void> => {
+  const load = async (athleteId: string | null, limit = 100): Promise<void> => {
     loading.value = true
     error.value = null
     try {
       sessions.value = await apiCall<WorkoutSession[]>(`/workouts/sessions?limit=${limit}`, {
-        headers: { 'X-Act-As-Athlete': athleteId },
+        headers: actAs(athleteId),
       })
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load sessions'

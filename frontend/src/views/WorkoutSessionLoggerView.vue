@@ -461,7 +461,7 @@ const save = async (): Promise<void> => {
   error.value = null
   errorStatus.value = null
   try {
-    await createSession(payload.value, athleteId.value!)
+    await createSession(payload.value, athleteId.value)
     // An ad-hoc session is the one moment he might want to keep the workout:
     // he just did it and liked it. Nobody opens an empty builder cold, which is
     // why every plan he has is his coach's (SB-531).
@@ -496,7 +496,7 @@ const keepAsPlan = async (): Promise<void> => {
           position: i,
         })),
       } as WorkoutTemplateInput,
-      athleteId.value!,
+      athleteId.value,
     )
     router.push(homePath.value)
   } catch {
@@ -514,7 +514,7 @@ const keepAsPlan = async (): Promise<void> => {
 const defaultName = computed(() => defaultSessionName(sessionDate.value))
 
 const prefillFrom = (id: string): Promise<void> =>
-  getTemplate(id, athleteId.value!).then((tpl) => {
+  getTemplate(id, athleteId.value).then((tpl) => {
     templateName.value = tpl.name
     sessionType.value = tpl.type
     blocks.value = tpl.blocks ?? []
@@ -525,13 +525,10 @@ const prefillFrom = (id: string): Promise<void> =>
   })
 
 onMounted(async () => {
-  // Coach or athlete — the gate is having an athlete to act on, not a role.
-  // A user who is neither has nothing to log here (SB-486).
+  // Coach, linked athlete, or a user logging their own workout — all three are
+  // valid here. A null athlete id means the last one (SB-578), so it is resolved
+  // for the header and never treated as a reason to leave.
   await resolveAthlete()
-  if (!athleteId.value) {
-    router.replace('/dashboard')
-    return
-  }
   await load()
   if (templateId) await prefillFrom(templateId)
 })

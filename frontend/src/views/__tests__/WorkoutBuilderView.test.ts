@@ -65,14 +65,16 @@ async function mountBuilder() {
 }
 
 describe('WorkoutBuilderView', () => {
-  it('redirects when there is no athlete to act on', async () => {
-    // Since SB-486 the gate is "do we have an athlete", not "are you a coach" —
-    // an athlete opens this view for themselves with no route param.
+  it('builds a plan for a user who is nobody’s athlete', async () => {
+    // SB-486 made the gate "do we have an athlete" rather than "are you a
+    // coach". SB-578 removes the gate: with no athlete record the plan is the
+    // user's own, and a null athlete id is how that is expressed.
     h.isCoach.value = false
     h.params = {}
     h.myAthlete.value = null
-    await mountBuilder()
-    expect(h.replace).toHaveBeenCalledWith('/dashboard')
+    const w = await mountBuilder()
+    expect(h.replace).not.toHaveBeenCalled()
+    expect(w.find('[data-testid="add-main"]').exists()).toBe(true)
   })
 
   it('adds an exercise to a section via the picker', async () => {

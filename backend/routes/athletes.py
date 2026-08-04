@@ -104,14 +104,20 @@ def my_athlete(user_id: UUID = Depends(authenticate_request)) -> Athlete | None:
 
 @me_router.get("/workouts", response_model=list[WorkoutTemplate])
 def my_workouts(user_id: UUID = Depends(authenticate_request)) -> list[WorkoutTemplate]:
-    """The workout templates assigned to the athlete this user IS (via
-    linked_user_id). Empty when the user isn't a linked athlete. Lets an athlete
-    see their coach-assigned workouts without the coach act-as header (SB-332)."""
+    """This user's workout plans, whoever they are.
+
+    For a linked athlete that means the templates assigned to them, reachable
+    without the coach act-as header (SB-332). For everyone else it means their
+    own self-owned templates — ``athlete_id IS NULL``, the shape the repository
+    already writes when no athlete is in play.
+
+    Returning [] for a non-athlete (SB-578) made the training screen a dead end
+    for anyone who is nobody's athlete: they could set a workout goal and never
+    have anywhere to build or log the work that fills it."""
     sb = get_supabase_client()
     athlete = AthletesRepository(sb).get_by_linked_user(user_id)
-    if athlete is None:
-        return []
-    rows = WorkoutTemplatesRepository(sb).list(user_id, athlete_id=UUID(athlete["id"]))
+    athlete_id = UUID(athlete["id"]) if athlete is not None else None
+    rows = WorkoutTemplatesRepository(sb).list(user_id, athlete_id=athlete_id)
     return [WorkoutTemplate(**r) for r in rows]
 
 

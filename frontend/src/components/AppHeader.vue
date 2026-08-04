@@ -85,7 +85,10 @@ const navLinks = computed(() => [
   ...(isCoach.value ? [{ name: 'Coach', path: '/coach' }] : []),
   ...(isCoach.value ? [{ name: 'Catalog', path: '/exercises' }] : []),
   ...(isAdmin.value ? [{ name: 'Admin', path: '/admin' }] : []),
-  ...(myAthlete.value ? [{ name: 'My Workouts', path: '/my/workouts' }] : []),
+  // My Workouts is for everyone (SB-578). Training is something a user does for
+  // themselves; requiring an athlete record first meant only people a coach had
+  // created could record any of it — including their own workout-count goal.
+  { name: 'My Workouts', path: '/my/workouts' },
   ...(myAthlete.value ? [{ name: 'My Profile', path: '/profile' }] : []),
   { name: 'Settings', path: '/settings' },
 ])

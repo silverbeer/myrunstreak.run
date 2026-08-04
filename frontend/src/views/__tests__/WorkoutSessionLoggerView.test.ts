@@ -94,14 +94,16 @@ describe('WorkoutSessionLoggerView', () => {
     expect(h.createSession.mock.calls[0][1]).toBe('ath1')
   })
 
-  it('redirects when there is no athlete to act on', async () => {
-    // Since SB-486 the gate is "do we have an athlete", not "are you a coach" —
-    // an athlete opens this view for themselves with no route param.
+  it('logs a workout for a user who is nobody’s athlete', async () => {
+    // SB-486 made the gate "do we have an athlete" rather than "are you a
+    // coach". SB-578 removes the gate: a user with no athlete record is logging
+    // their own workout, and a null athlete id is how that is expressed.
     h.isCoach.value = false
     h.params = {}
     h.myAthlete.value = null
-    await mountLogger()
-    expect(h.replace).toHaveBeenCalledWith('/dashboard')
+    const w = await mountLogger()
+    expect(h.replace).not.toHaveBeenCalled()
+    expect(w.find('[data-testid="save"]').exists()).toBe(true)
   })
 
   it('adds an exercise via the picker', async () => {

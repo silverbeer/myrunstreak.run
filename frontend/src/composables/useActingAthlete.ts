@@ -10,6 +10,12 @@
  * `actAs()` header need. The API authorises either caller identically —
  * `can_access_athlete` returns true for the coach *and* for the linked athlete
  * (backend/admin.py) — so nothing else has to branch on who is asking.
+ *
+ * A **null athlete id is a third valid case** (SB-578): a user who is nobody's
+ * athlete, working on their own training. `actAs(null)` sends no header and the
+ * API reads and writes their self-owned rows. Views must not treat null as a
+ * failure to resolve — that turned the training screens into a dead end for
+ * every user a coach had not created first.
  */
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
