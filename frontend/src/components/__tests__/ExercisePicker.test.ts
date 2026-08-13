@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ExercisePicker from '../ExercisePicker.vue'
-import type { Exercise, MovementPattern } from '@/types/workout'
+import type { Exercise } from '@/types/workout'
 
 const make = (over: Partial<Exercise>): Exercise => ({
   key: 'k',
