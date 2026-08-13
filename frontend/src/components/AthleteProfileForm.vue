@@ -91,7 +91,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import { updateAthleteProfile } from '@/composables/useCoach'
-import type { Athlete, AthleteProfile, AthleteProfileUpdate } from '@/types/coach'
+import type { Athlete, AthleteProfileUpdate } from '@/types/coach'
 
 const props = defineProps<{ athlete: Athlete; mode: 'coach' | 'athlete' }>()
 const emit = defineEmits<{ saved: [Athlete] }>()

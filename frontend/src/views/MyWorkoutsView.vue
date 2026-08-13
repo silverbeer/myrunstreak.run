@@ -456,7 +456,7 @@ import WorkoutTemplateCard from '@/components/WorkoutTemplateCard.vue'
 import { formatDayPill, todayLocalISO } from '@/utils/format'
 import { defaultSessionName } from '@/utils/sessionPayload'
 import { prettifyKey } from '@/utils/workoutPayload'
-import type { WorkoutScheduleEntry, WorkoutTemplate } from '@/types/workout'
+import type { WorkoutTemplate } from '@/types/workout'
 
 const router = useRouter()
 const { myAthlete, loadMyAthlete } = useMyAthlete()

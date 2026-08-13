@@ -16,6 +16,23 @@ export const useAuthStore = defineStore('auth', () => {
   const setError = (msg: string | null) => { error.value = msg }
   const clearError = () => { error.value = null }
 
+  // Every action below fails the same way: record the message, hand it back to
+  // the caller. Narrowing `unknown` here keeps `catch (err: any)` out of the
+  // store. Two throw shapes reach this: real Errors (apiCall builds one), and
+  // the bare `{ message }` objects Supabase returns as `{ error }` and we
+  // rethrow — so check for a string `.message` before stringifying.
+  const errorMessage = (err: unknown): string => {
+    if (err instanceof Error) return err.message
+    const message = (err as { message?: unknown } | null)?.message
+    return typeof message === 'string' ? message : String(err)
+  }
+
+  const fail = (err: unknown) => {
+    const message = errorMessage(err)
+    setError(message)
+    return { success: false, error: message }
+  }
+
   const initialize = async () => {
     loading.value = true
     try {
@@ -41,9 +58,8 @@ export const useAuthStore = defineStore('auth', () => {
       session.value = data.session
       user.value = data.user
       return { success: true }
-    } catch (err: any) {
-      setError(err.message)
-      return { success: false, error: err.message }
+    } catch (err) {
+      return fail(err)
     } finally {
       loading.value = false
     }
@@ -62,9 +78,8 @@ export const useAuthStore = defineStore('auth', () => {
       })
       if (err) throw err
       return { success: true }
-    } catch (err: any) {
-      setError(err.message)
-      return { success: false, error: err.message }
+    } catch (err) {
+      return fail(err)
     } finally {
       loading.value = false
     }
@@ -89,9 +104,8 @@ export const useAuthStore = defineStore('auth', () => {
       session.value = sess.session
       user.value = sess.user
       return { success: true }
-    } catch (err: any) {
-      setError(err.message)
-      return { success: false, error: err.message }
+    } catch (err) {
+      return fail(err)
     } finally {
       loading.value = false
     }
@@ -121,9 +135,8 @@ export const useAuthStore = defineStore('auth', () => {
         }),
       })
       return { success: true }
-    } catch (err: any) {
-      setError(err.message)
-      return { success: false, error: err.message }
+    } catch (err) {
+      return fail(err)
     } finally {
       loading.value = false
     }
@@ -141,9 +154,8 @@ export const useAuthStore = defineStore('auth', () => {
         }),
       })
       return { success: true }
-    } catch (err: any) {
-      setError(err.message)
-      return { success: false, error: err.message }
+    } catch (err) {
+      return fail(err)
     } finally {
       loading.value = false
     }
@@ -160,9 +172,8 @@ export const useAuthStore = defineStore('auth', () => {
       const { error: err } = await supabase.auth.updateUser({ password: newPassword })
       if (err) throw err
       return { success: true }
-    } catch (err: any) {
-      setError(err.message)
-      return { success: false, error: err.message }
+    } catch (err) {
+      return fail(err)
     } finally {
       loading.value = false
     }
