@@ -14,6 +14,7 @@ Usage:
     stk summary          # Aggregate of a filtered set vs overall
     stk goals            # Distance-goal progress
     stk sync             # Sync runs from SmashRun
+    stk import run.gpx   # Import one run from a GPX/TCX/JSON file
     stk auth login       # Authenticate with SmashRun
 """
 
@@ -26,6 +27,7 @@ from cli.commands import (
     athlete,
     auth,
     cache,
+    import_file,
     invite,
     plan,
     runs,
@@ -151,6 +153,7 @@ app.command(name="map", rich_help_panel=_PANEL_RUNS)(runs.territory_map)
 app.command(name="audio", rich_help_panel=_PANEL_RUNS)(runs.audio)
 app.command(name="summary", rich_help_panel=_PANEL_RUNS)(runs.summary)
 app.command(name="sync", rich_help_panel=_PANEL_RUNS)(sync.sync_runs)
+app.command(name="import", rich_help_panel=_PANEL_RUNS)(import_file.import_activity)
 app.command(name="verify", rich_help_panel=_PANEL_RUNS)(verify.verify)
 app.command(name="goals", rich_help_panel=_PANEL_PLANNING)(stats.goals)
 

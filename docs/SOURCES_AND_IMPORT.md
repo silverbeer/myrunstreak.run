@@ -1,6 +1,7 @@
 # Data Sources, BYOK & Import — Design
 
-**Status:** Proposed (2026-06-01)
+**Status:** Partly shipped — single-run file import live (SB-99, 2026-08-14);
+provider abstraction and bulk zip import still proposed (2026-06-01)
 **Owner:** @silverbeer
 **Related:** `docs/GOALS_TRACKING.md`, `docs/SMASHRUN_OAUTH.md`
 
@@ -103,10 +104,37 @@ A first-class ingestion path for sources without a live API, for backfill, and
 as a manual fallback. Modeled as an **import provider** (add `import` to the
 `source_type` enum, or reuse `other` with a marker).
 
-### Single-run import
-Upload one activity file → parse → `Activity` → upsert into `runs`. Idempotent
-via dedup key (`source_activity_id` or a content hash) so re-uploads don't
-duplicate.
+### Single-run import — **shipped (SB-99)**
+
+`POST /import/activity` (multipart: `file`, optional `timezone`). Upload one
+activity file → parse → `Activity` → upsert into `runs`. Synchronous: a single
+file parses in milliseconds, so it answers in the request.
+
+- **Parsers** live in `src/shared/importers/` — one module per format, all
+  producing the same `Activity` the SmashRun sync produces, so imported runs
+  are stored, deduped and displayed exactly like synced ones.
+- **Source row.** Imported runs hang off a `user_sources` row of type
+  `import`, created lazily on a user's first upload
+  (`UsersRepository.get_or_create_source`). Provenance is then a type, not a
+  naming convention: a run came from a file iff its source is `import`.
+- **Dedup key** (`source_activity_id`, prefixed by format):
+  - TCX → `tcx-<Activity/Id>`; the id is stable across re-exports of the run.
+  - SmashRun JSON → `smashrun-<activityId>`. Prefixed so an imported run can
+    never collide with the same activity arriving later over OAuth sync.
+  - GPX → `gpx-<sha256(file)[:24]>`; GPX states no id, so the bytes are the key.
+- **GPS track.** GPX/TCX trackpoints are simplified and stored in `run_tracks`
+  (`simplify_and_encode` → `upsert_track`), so an imported run gets a route map.
+- **Timezone.** GPX and TCX record UTC. The request's `timezone` (default
+  `America/New_York`) is what their timestamps are read into, and it is stored
+  on the run — without it a 9pm run lands on tomorrow and breaks the streak.
+  SmashRun JSON already states local time with an offset and is left alone.
+- **Distance/duration.** TCX's stated lap totals win over the track. GPX has
+  neither, so distance is summed over the trackpoints and duration excludes
+  gaps longer than 60s (a paused watch, not a slow kilometre).
+- **CLI:** `stk import <file> [--timezone ZONE]`, ahead of the upload UI (SB-418).
+
+Re-uploading an already-imported file returns `status: "duplicate"` and writes
+nothing — a re-upload is a reasonable thing to do, not an error.
 
 ### Bulk zip import
 Upload a `.zip` (a full SmashRun/Strava data export, or many activity files) →
@@ -114,8 +142,8 @@ unzip → iterate → batch upsert with per-file results (imported / skipped-dup
 failed). This is the migration/backfill path; safe to re-run.
 
 ### Formats (phase the parsers)
-- **Phase A:** GPX + TCX (XML, simplest) and SmashRun export JSON.
-- **Phase B:** FIT (binary — needs `fitparse` / Garmin FIT SDK), Strava export.
+- **Phase A (shipped, SB-99):** GPX + TCX (XML, simplest) and SmashRun export JSON.
+- **Phase B (SB-421):** FIT (binary — needs `fitparse` / Garmin FIT SDK), Strava export.
 
 ### Processing model
 - Small single file → synchronous parse + upsert in the request.
@@ -128,6 +156,12 @@ failed). This is the migration/backfill path; safe to re-run.
   (entry-count + uncompressed-size caps).
 - File-type allowlist (`.gpx`/`.tcx`/`.fit`/`.json`/`.zip`); reject everything
   else. Scope all writes to the authenticated user.
+
+Single-file import enforces this today: extension checked before any parsing
+(415), 10 MB cap applied while streaming the upload so an oversized file costs
+one 64 KB chunk rather than its full size (413), and XML parsed through
+`defusedxml` — `xml.etree` is entity-bomb prone, and a size cap does not help
+when a few hundred bytes of nested entities can exhaust memory.
 
 ## Strava specifics
 
@@ -175,6 +209,11 @@ how we integrate. Key points, from the June 2026 Strava API Team announcement:
   a free account against a dev build, and (2) emailing `api@smashrun.com`.**
   (Primary target is Pro users either way.)
 - Encryption approach for stored tokens / keys: pgcrypto vs. app-level envelope.
-- `import` as a new `source_type` enum value vs. reuse `other` + a flag.
-- Where do uploaded raw files live — ephemeral (parse-and-discard) vs. retained
-  in object storage for re-processing? Retention has privacy implications.
+- **Answered (SB-99):** `import` is its own `source_type` enum value
+  (migration `20260814000000_add_import_source_type.sql`), not `other` + a flag.
+- **Answered (SB-99):** uploaded files are parse-and-discard. Nothing is
+  retained, so there is no new privacy surface; re-processing means
+  re-uploading. Revisit only if bulk zip import (SB-419) needs resumability.
+- **Open:** a run imported from a file and later synced from SmashRun lands as
+  two rows — different `source_id`, so the upsert key can't see the collision.
+  Cross-source dedup (same start time + distance) is not built.

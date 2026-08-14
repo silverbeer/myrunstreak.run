@@ -206,6 +206,68 @@ class UsersRepository:
 
         return data_list[0]
 
+    def get_or_create_source(
+        self,
+        user_id: UUID,
+        source_type: str,
+        source_username: str | None = None,
+    ) -> UUID:
+        """Source id for (user, source_type), creating the row if it's absent.
+
+        Used by file import (SB-99), where there is no connect flow to create
+        the source up front — the first upload creates it. ``user_sources`` is
+        UNIQUE on (user_id, source_type), so a concurrent first upload loses
+        the insert race and re-reads the winner's row rather than failing.
+
+        Args:
+            user_id: User UUID
+            source_type: Source type (e.g. 'import')
+            source_username: Human-readable label for the source
+
+        Returns:
+            The user_source UUID
+        """
+        existing = (
+            self.supabase.table("user_sources")
+            .select("id")
+            .eq("user_id", str(user_id))
+            .eq("source_type", source_type)
+            .limit(1)
+            .execute()
+        )
+        rows = cast(list[dict[str, Any]], existing.data)
+        if rows:
+            return UUID(rows[0]["id"])
+
+        try:
+            created = (
+                self.supabase.table("user_sources")
+                .insert(
+                    {
+                        "user_id": str(user_id),
+                        "source_type": source_type,
+                        "source_username": source_username,
+                    }
+                )
+                .execute()
+            )
+            inserted = cast(list[dict[str, Any]], created.data)
+            logger.info(f"Created {source_type} source for user {user_id}")
+            return UUID(inserted[0]["id"])
+        except Exception:
+            retry = (
+                self.supabase.table("user_sources")
+                .select("id")
+                .eq("user_id", str(user_id))
+                .eq("source_type", source_type)
+                .limit(1)
+                .execute()
+            )
+            rows = cast(list[dict[str, Any]], retry.data)
+            if rows:
+                return UUID(rows[0]["id"])
+            raise
+
     def get_user_sources(self, user_id: UUID, active_only: bool = True) -> list[dict[str, Any]]:
         """
         Get all data sources for a user.
