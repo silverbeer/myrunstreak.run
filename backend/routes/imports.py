@@ -41,6 +41,14 @@ IMPORT_SOURCE_LABEL = "file-import"
 
 _READ_CHUNK = 64 * 1024
 
+# Finer than the 6 m default used when caching a synced run's shape (SB-309).
+# That default is tuned for the territory heatmap, and a synced run can always
+# re-fetch its full track from SmashRun. An imported run cannot: this polyline
+# is the only copy of its geometry, and it feeds the detail map too (SB-622).
+# On a 3.2 km run this is the difference between 12 points and 62 — 215 bytes
+# instead of 54, for a route that reads as a run rather than a polygon.
+IMPORT_TRACK_TOLERANCE_M = 1.0
+
 
 async def _read_capped(upload: UploadFile) -> bytes:
     """Read the upload, refusing anything over the cap.
@@ -128,7 +136,9 @@ async def import_activity(
 
     stored_track = False
     if parsed.has_track:
-        polyline, point_count = simplify_and_encode(parsed.latitudes, parsed.longitudes)
+        polyline, point_count = simplify_and_encode(
+            parsed.latitudes, parsed.longitudes, tolerance_m=IMPORT_TRACK_TOLERANCE_M
+        )
         if polyline:
             runs_repo.upsert_track(run_id, polyline, point_count)
             stored_track = True
