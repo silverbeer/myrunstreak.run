@@ -35,6 +35,37 @@ const readableError = (body: unknown): string | null => {
   return typeof top === 'string' && top ? top : null
 }
 
+/**
+ * Multipart upload (SB-418: activity file import).
+ *
+ * Separate from `apiCall` because that one always sets
+ * `Content-Type: application/json`. A multipart body must NOT carry a
+ * hand-written Content-Type — the browser has to set it itself so it can
+ * include the boundary, and overriding it makes the server fail to parse.
+ */
+export const apiUpload = async <T>(path: string, body: FormData): Promise<T> => {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, { method: 'POST', headers, body })
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({ message: 'Upload failed' }))
+    const message = readableError(errorBody) ?? `HTTP ${response.status}`
+    const err = new Error(message) as Error & { status?: number; body?: unknown }
+    err.status = response.status
+    err.body = errorBody
+    throw err
+  }
+
+  return response.json()
+}
+
 export const apiCall = async <T>(
   path: string,
   options: RequestInit = {}
