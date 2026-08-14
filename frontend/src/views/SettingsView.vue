@@ -53,11 +53,16 @@
 
       <p v-if="viewSaved" class="text-xs text-green-600 mt-3">Saved</p>
     </div>
+
+    <!-- No navigation on success: the card's own result surface is what the
+         runner needs to see (imported / already imported, and a link out). -->
+    <ImportRunCard class="mt-6" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import ImportRunCard from '@/components/ImportRunCard.vue'
 import { useUserPreferences, type DefaultView } from '@/composables/useUserPreferences'
 import { useRoles } from '@/composables/useCoach'
 import { resetLanding } from '@/composables/useLanding'

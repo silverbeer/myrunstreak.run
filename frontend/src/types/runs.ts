@@ -215,3 +215,21 @@ export interface ConditionsPenalty {
   steamy_run_count?: number
   baseline_run_count?: number
 }
+
+/** One activity file imported, or found to be already imported (SB-99/SB-418). */
+export interface ImportResult {
+  status: 'imported' | 'duplicate'
+  activity_id: string
+  run_id: string
+  distance_km: number
+  duration_seconds: number
+  start_date_time_local: string
+  has_track: boolean
+}
+
+/** What the importer accepts. Served by the API so the UI keeps no second copy. */
+export interface ImportFormats {
+  extensions: string[]
+  max_bytes: number
+  default_timezone: string
+}

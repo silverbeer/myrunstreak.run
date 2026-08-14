@@ -1,6 +1,6 @@
 # Data Sources, BYOK & Import — Design
 
-**Status:** Partly shipped — single-run file import live (SB-99, 2026-08-14);
+**Status:** Partly shipped — single-run file import live end to end (SB-99 backend + SB-418 web UI, 2026-08-14);
 provider abstraction and bulk zip import still proposed (2026-06-01)
 **Owner:** @silverbeer
 **Related:** `docs/GOALS_TRACKING.md`, `docs/SMASHRUN_OAUTH.md`
@@ -131,7 +131,15 @@ file parses in milliseconds, so it answers in the request.
 - **Distance/duration.** TCX's stated lap totals win over the track. GPX has
   neither, so distance is summed over the trackpoints and duration excludes
   gaps longer than 60s (a paused watch, not a slow kilometre).
-- **CLI:** `stk import <file> [--timezone ZONE]`, ahead of the upload UI (SB-418).
+- **CLI:** `stk import <file> [--timezone ZONE]`.
+- **Web UI (SB-418):** `ImportRunCard.vue` on the Settings page — drop zone plus
+  file picker, client-side type/size check before upload, and a result surface
+  that distinguishes imported from already-imported. It reads the allowlist and
+  cap from `GET /import/formats` rather than restating them, and sends the
+  browser's own IANA zone so the run lands on the right date without the
+  runner being asked. The `accept` attribute is deliberately wider than the
+  extension list: iOS greys out files whose extension it can't map to a UTI,
+  which would make a `.tcx` unpickable on the phone.
 
 Re-uploading an already-imported file returns `status: "duplicate"` and writes
 nothing — a re-upload is a reasonable thing to do, not an error.
