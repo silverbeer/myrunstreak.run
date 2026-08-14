@@ -295,6 +295,56 @@ def post_request(
     return _write_request("POST", endpoint, data, params, timeout)
 
 
+def post_file(
+    endpoint: str,
+    filename: str,
+    content: bytes,
+    form: dict[str, str] | None = None,
+    timeout: float | None = None,
+) -> dict[str, Any]:
+    """Authenticated multipart POST of a single file (SB-99: activity import).
+
+    Separate from ``_write_request`` because that one always sends JSON, and a
+    file upload has to go as multipart/form-data.
+    """
+    s = _ensure_fresh(_require_session())
+    url = f"{get_api_url()}/{endpoint.lstrip('/')}"
+    request_timeout = timeout if timeout else TIMEOUT
+
+    def _send(sess: Any) -> httpx.Response:
+        return httpx.post(
+            url,
+            files={"file": (filename, content, "application/octet-stream")},
+            data=form or {},
+            headers=_auth_headers(sess),
+            timeout=request_timeout,
+        )
+
+    try:
+        response = _send(s)
+    except httpx.TimeoutException:
+        display_error(f"Request timed out after {request_timeout}s")
+        sys.exit(1)
+    except httpx.RequestError as e:
+        display_error(f"Request failed: {e}")
+        sys.exit(1)
+
+    if response.status_code == 401:
+        refreshed = _refresh_session(s)
+        if refreshed is None:
+            display_error("Session expired")
+            display_info("Run 'stk auth login' to sign in again")
+            sys.exit(1)
+        response = _send(refreshed)
+
+    if response.status_code >= 400:
+        _exit_with_error(response)
+
+    cache_mod.invalidate_scope(s.email or "anon")
+    result: dict[str, Any] = response.json()
+    return result
+
+
 def patch_request(
     endpoint: str,
     data: dict[str, Any] | None = None,

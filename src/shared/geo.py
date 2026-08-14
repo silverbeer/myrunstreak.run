@@ -125,3 +125,27 @@ def simplify_and_encode(
     pts = list(zip(lat, lon, strict=True))
     simplified = douglas_peucker(pts, tolerance_m)
     return encode_polyline(simplified), len(simplified)
+
+
+_EARTH_RADIUS_KM = 6371.0088
+
+
+def haversine_km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Great-circle distance in km between two (lat, lon) points."""
+    lat1, lon1 = math.radians(a[0]), math.radians(a[1])
+    lat2, lon2 = math.radians(b[0]), math.radians(b[1])
+    dlat, dlon = lat2 - lat1, lon2 - lon1
+    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return 2 * _EARTH_RADIUS_KM * math.asin(math.sqrt(h))
+
+
+def path_length_km(points: list[tuple[float, float]]) -> float:
+    """Total length of a (lat, lon) path in km.
+
+    Used by file import (SB-99): GPX carries trackpoints but no distance field,
+    so the run's distance has to come from the track itself. Summing raw
+    consecutive fixes slightly over-reads distance because GPS noise adds
+    length, which is why this is only a fallback for formats that state no
+    distance of their own — TCX does, and that stated value wins.
+    """
+    return sum(haversine_km(points[i - 1], points[i]) for i in range(1, len(points)))

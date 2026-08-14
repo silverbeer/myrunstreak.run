@@ -20,6 +20,8 @@ dependencies = [
     "pytz>=2024.1",
     "structlog>=24.0.0",
     "google-cloud-storage>=3.10.1",
+    "python-multipart>=0.0.9",  # multipart/form-data for activity-file upload (SB-99)
+    "defusedxml>=0.7.1",  # GPX/TCX are user uploads; xml.etree is entity-bomb prone
 ]
 
 [project.optional-dependencies]

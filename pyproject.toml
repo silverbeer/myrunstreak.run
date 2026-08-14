@@ -30,6 +30,7 @@ dependencies = [
     "pydantic-settings>=2.5.0",
 
     # Utilities
+    "defusedxml>=0.7.1",  # GPX/TCX import parses user uploads (SB-99)
     "python-dateutil>=2.9.0",
     "pytz>=2024.1",  # Required by DuckDB for timezone operations
 ]
@@ -106,5 +107,6 @@ disallow_untyped_calls = false
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.0",
+    "types-defusedxml>=0.7",
     "types-python-dateutil>=2.9.0.20251115",
 ]

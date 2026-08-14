@@ -7,6 +7,7 @@ from backend.routes import (
     athletes,
     auth_routes,
     coach,
+    imports,
     invites,
     metrics,
     plan,
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(athletes.router)
     app.include_router(athletes.me_router)
     app.include_router(coach.router)
+    app.include_router(imports.router)
 
     return app
 
