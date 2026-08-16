@@ -89,12 +89,15 @@
       </div>
     </div>
 
-    <!-- legend for the active metric -->
-    <div class="flex items-center justify-between mt-3 text-xs text-gray-400">
+    <!-- legend for the active metric — nothing to scale when there are no series -->
+    <div v-if="hasSeries" class="flex items-center justify-between mt-3 text-xs text-gray-400">
       <span>{{ activeMode.legendLow }}</span>
       <div class="h-1.5 flex-1 mx-3 rounded-full" :style="{ background: legendGradient }" />
       <span>{{ activeMode.legendHigh }}</span>
     </div>
+    <p v-else class="mt-3 text-xs text-gray-400">
+      Route only — an imported run carries no per-point pace or heart rate.
+    </p>
   </div>
 </template>
 
@@ -209,9 +212,22 @@ function ramp(values: number[], stops: Stop[]) {
   return { color, lo, hi }
 }
 
+/**
+ * An imported run has geometry but no per-point series (SB-622): `run_tracks`
+ * stores the polyline only. Without this the ramp would index an empty array
+ * and throw, taking the whole map with it — so the route draws in one colour
+ * and the metric switcher and legend hide themselves.
+ */
+const hasSeries = computed(() => availableModes.value.length > 0)
+
+const PLAIN_LINE = 'rgb(241,147,15)'
+
 const segments = computed(() => {
   const s = activeDef.value.series()
-  const { color } = ramp(s, activeDef.value.stops)
+  const plain = !hasSeries.value
+  const { color } = plain
+    ? { color: () => PLAIN_LINE }
+    : ramp(s, activeDef.value.stops)
   const p = pts.value
   const out: { x1: number; y1: number; x2: number; y2: number; color: string }[] = []
   for (let i = 1; i < p.length; i++) {

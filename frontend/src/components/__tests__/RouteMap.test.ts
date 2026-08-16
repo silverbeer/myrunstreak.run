@@ -63,4 +63,37 @@ describe('RouteMap', () => {
     const elevColors = w.findAll('line').map((l) => l.attributes('stroke'))
     expect(elevColors).not.toEqual(paceColors)
   })
+
+  // SB-622: an imported run has geometry but no per-point series — run_tracks
+  // stores the polyline only. This used to index an empty array in the colour
+  // ramp and throw, taking the whole map down with it.
+  describe('with no per-point series (imported run)', () => {
+    const geometryOnly: RunTrack = {
+      ...track,
+      elevation_m: [],
+      heart_rate: [],
+      pace_min_per_km: [],
+      city: null,
+      state: null,
+    }
+
+    it('still draws the route', () => {
+      const w = mount(RouteMap, { props: { track: geometryOnly, unit: 'mi' } })
+      expect(w.findAll('line').length).toBe(3)
+    })
+
+    it('draws every segment in one colour', () => {
+      const w = mount(RouteMap, { props: { track: geometryOnly, unit: 'mi' } })
+      const colors = new Set(w.findAll('line').map((l) => l.attributes('stroke')))
+      expect(colors.size).toBe(1)
+      expect([...colors][0]).not.toContain('NaN')
+    })
+
+    it('offers no metric modes and no legend', () => {
+      const w = mount(RouteMap, { props: { track: geometryOnly, unit: 'mi' } })
+      const labels = w.findAll('button').map((b) => b.text())
+      expect(labels).toEqual(['↻ Replay'])
+      expect(w.text()).toContain('Route only')
+    })
+  })
 })

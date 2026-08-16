@@ -8,14 +8,15 @@ from uuid import UUID
 
 from backend.auth import authenticate_request
 from backend.cache import cached, invalidate_user
+from backend.routes.imports import IMPORT_SOURCE_TYPE
 from backend.routes.sync import _resolve_access_token
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from src.shared.geo import simplify_and_encode
+from src.shared.geo import decode_polyline, haversine_km, simplify_and_encode
 from src.shared.route_shape import SHAPE_GROUPING_ENABLED
 from src.shared.smashrun import SmashRunAPIClient
 from src.shared.supabase_client import get_supabase_client
-from src.shared.supabase_ops import RunsRepository, TokenRepository
+from src.shared.supabase_ops import RunsRepository, TokenRepository, UsersRepository
 from src.shared.supabase_ops.mappers import WeatherType
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -301,6 +302,52 @@ async def all_tracks(
     return await _tracks(user_id)
 
 
+def _is_imported(supabase: Any, run: dict[str, Any]) -> bool:
+    """Did this run come from an uploaded file rather than a live-API sync?
+
+    Anything we can't positively identify as an import keeps the old SmashRun
+    behaviour — the column is NOT NULL in practice, but a map is not worth a
+    500 over a missing source.
+    """
+    source_id = run.get("source_id")
+    if not source_id:
+        return False
+    source = UsersRepository(supabase).get_source_by_id(UUID(str(source_id)))
+    return (source or {}).get("source_type") == IMPORT_SOURCE_TYPE
+
+
+def _stored_track(supabase: Any, run: dict[str, Any]) -> dict[str, list[float]]:
+    """Track from our own `run_tracks` polyline (SB-622).
+
+    An imported run has no SmashRun activity to fetch a track from — its id is
+    ours (`gpx-<hash>`), and the owner may never have connected SmashRun at
+    all. The polyline import already stored is the only copy, so this decodes
+    it back into the lat/lon arrays the map expects.
+
+    Cumulative distance is re-derived so the map's hover readout still works.
+    The per-point pace/HR/elevation series are *not* recoverable: `run_tracks`
+    holds geometry only. The map falls back to an uncoloured line.
+    """
+    stored = RunsRepository(supabase).get_track_polyline(UUID(run["id"]))
+    polyline = (stored or {}).get("polyline")
+    if not polyline:
+        return {"lat": [], "lon": [], "dist_km": []}
+
+    points = decode_polyline(str(polyline))
+    if len(points) < 2:
+        return {"lat": [], "lon": [], "dist_km": []}
+
+    cumulative = [0.0]
+    for i in range(1, len(points)):
+        cumulative.append(round(cumulative[-1] + haversine_km(points[i - 1], points[i]), 4))
+
+    return {
+        "lat": [p[0] for p in points],
+        "lon": [p[1] for p in points],
+        "dist_km": cumulative,
+    }
+
+
 @cached(ttl=86400, key_prefix="runs:track")
 async def _track(user_id: UUID, activity_id: str) -> dict[str, Any]:
     supabase = get_supabase_client()
@@ -308,38 +355,47 @@ async def _track(user_id: UUID, activity_id: str) -> dict[str, Any]:
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
 
-    # The GPS track lives only in SmashRun's per-activity detail (recordingValues),
-    # not our DB — fetch it on demand with the user's token.
-    token = _resolve_access_token(user_id, TokenRepository(supabase))
-    with SmashRunAPIClient(access_token=token) as api:
-        detail = api.get_activity_by_id(activity_id)
+    detail: dict[str, Any] = {}
+    elevation: list[float] = []
+    heart_rate: list[float] = []
+    pace: list[float] = []
 
-    keys = detail.get("recordingKeys") or []
-    values = detail.get("recordingValues") or []
+    if _is_imported(supabase, run):
+        stored = _stored_track(supabase, run)
+        lat, lon, dist_km = stored["lat"], stored["lon"], stored["dist_km"]
+    else:
+        # The GPS track lives only in SmashRun's per-activity detail
+        # (recordingValues), not our DB — fetch it on demand with the user's token.
+        token = _resolve_access_token(user_id, TokenRepository(supabase))
+        with SmashRunAPIClient(access_token=token) as api:
+            detail = api.get_activity_by_id(activity_id)
 
-    def series(name: str) -> list[float]:
-        return [float(v) for v in values[keys.index(name)]] if name in keys and values else []
+        keys = detail.get("recordingKeys") or []
+        values = detail.get("recordingValues") or []
 
-    lat = series("latitude")
-    lon = series("longitude")
-    elevation = series("elevation")
-    heart_rate = series("heartRate")
-    # Per-point pace (min/km) smoothed over a short window of the cumulative
-    # distance/clock series — SmashRun gives cumulative km + seconds, not pace.
-    dist_km = series("distance")
-    clock_s = series("clock")
-    pace = _per_point_pace(dist_km, clock_s)
+        def series(name: str) -> list[float]:
+            return [float(v) for v in values[keys.index(name)]] if name in keys and values else []
 
-    # Persist the simplified polyline for the heatmap + route-matching (SB-309).
-    # Best-effort store-on-read: never fail the request over it; the batched
-    # backfill covers runs whose map is never opened.
-    if lat and lon:
-        try:
-            polyline, n_pts = simplify_and_encode(lat, lon)
-            if polyline:
-                RunsRepository(supabase).upsert_track(UUID(run["id"]), polyline, n_pts)
-        except Exception:  # noqa: BLE001 — storage is a side effect, not the response
-            pass
+        lat = series("latitude")
+        lon = series("longitude")
+        elevation = series("elevation")
+        heart_rate = series("heartRate")
+        # Per-point pace (min/km) smoothed over a short window of the cumulative
+        # distance/clock series — SmashRun gives cumulative km + seconds, not pace.
+        dist_km = series("distance")
+        clock_s = series("clock")
+        pace = _per_point_pace(dist_km, clock_s)
+
+        # Persist the simplified polyline for the heatmap + route-matching (SB-309).
+        # Best-effort store-on-read: never fail the request over it; the batched
+        # backfill covers runs whose map is never opened.
+        if lat and lon:
+            try:
+                polyline, n_pts = simplify_and_encode(lat, lon)
+                if polyline:
+                    RunsRepository(supabase).upsert_track(UUID(run["id"]), polyline, n_pts)
+            except Exception:  # noqa: BLE001 — storage is a side effect, not the response
+                pass
 
     # How many times this route has been run (count + rank), so the card can say
     # "run N times, #k of M" (SB-297). Needs the run's own start coords.
