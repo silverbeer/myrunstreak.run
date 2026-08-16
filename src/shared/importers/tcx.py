@@ -14,9 +14,18 @@ from xml.etree.ElementTree import Element
 from src.shared.geo import path_length_km
 from src.shared.models import Activity
 
+from .cadence import to_steps_per_minute
 from .errors import NoRunFoundError
 from .models import ParsedActivityFile
-from .xml_common import child_float, child_text, find_all, mean, parse_timestamp, parse_xml
+from .xml_common import (
+    child_float,
+    child_text,
+    find_all,
+    mean,
+    parse_timestamp,
+    parse_xml,
+    recorded,
+)
 
 # TCX Sport attribute values we accept. Biking/Other files parse fine but are
 # not runs, and the runs table is running-only (ActivityType has one member).
@@ -85,6 +94,8 @@ def parse_tcx(content: bytes) -> ParsedActivityFile:
     duration_seconds = sum(child_float(lap, "TotalTimeSeconds") or 0.0 for lap in laps)
 
     lats, lons, heart_rates, cadences = _track_series(activity_el)
+    # A 0 sample means the watch had nothing to report, not a real reading.
+    heart_rates, cadences = recorded(heart_rates), recorded(cadences)
 
     # Some exporters write laps without distance; fall back to the track.
     if distance_km <= 0 and len(lats) >= 2:
@@ -105,6 +116,14 @@ def parse_tcx(content: bytes) -> ParsedActivityFile:
     raw_id = child_text(activity_el, "Id")
     identity = raw_id or hashlib.sha256(content).hexdigest()[:24]
 
+    # Garmin writes running cadence as strides per minute in both <Cadence> and
+    # <RunCadence>; the runs table stores steps per minute (SB-623).
+    cadence_avg, cadence_min, cadence_max = to_steps_per_minute(
+        mean(cadences),
+        min(cadences) if cadences else None,
+        max(cadences) if cadences else None,
+    )
+
     activity = Activity(
         activityId=f"tcx-{identity}",
         startDateTimeLocal=started,
@@ -117,8 +136,8 @@ def parse_tcx(content: bytes) -> ParsedActivityFile:
         heartRateAverage=mean(heart_rates),
         heartRateMin=min(heart_rates) if heart_rates else None,
         heartRateMax=max(heart_rates) if heart_rates else None,
-        cadenceAverage=mean(cadences),
-        cadenceMin=min(cadences) if cadences else None,
-        cadenceMax=max(cadences) if cadences else None,
+        cadenceAverage=cadence_avg,
+        cadenceMin=cadence_min,
+        cadenceMax=cadence_max,
     )
     return ParsedActivityFile(activity=activity, latitudes=lats, longitudes=lons)

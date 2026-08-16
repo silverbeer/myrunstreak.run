@@ -15,9 +15,10 @@ from xml.etree.ElementTree import Element
 from src.shared.geo import path_length_km
 from src.shared.models import Activity
 
+from .cadence import to_steps_per_minute
 from .errors import NoRunFoundError
 from .models import ParsedActivityFile
-from .xml_common import child_text, find_all, mean, parse_timestamp, parse_xml
+from .xml_common import child_text, find_all, mean, parse_timestamp, parse_xml, recorded
 
 # GPS fixes 60s+ apart are a paused watch, not a slow kilometre. Elapsed time
 # includes such gaps; the run's duration should not, so they are subtracted —
@@ -98,6 +99,8 @@ def parse_gpx(content: bytes) -> ParsedActivityFile:
         raise NoRunFoundError("No GPS trackpoints found — is this an empty or route-only GPX?")
 
     lats, lons, times, heart_rates, cadences = _point_values(points)
+    # A 0 sample means the watch had nothing to report, not a real reading.
+    heart_rates, cadences = recorded(heart_rates), recorded(cadences)
     if len(lats) < 2:
         raise NoRunFoundError("Track has fewer than two GPS points, so it has no distance.")
     if len(times) < 2:
@@ -118,6 +121,14 @@ def parse_gpx(content: bytes) -> ParsedActivityFile:
     track = find_all(root, "trk")
     title = child_text(track[0], "name") if track else None
 
+    # <gpxtpx:cad> is strides per minute on Garmin and most watches; the runs
+    # table stores steps per minute (SB-623).
+    cadence_avg, cadence_min, cadence_max = to_steps_per_minute(
+        mean(cadences),
+        min(cadences) if cadences else None,
+        max(cadences) if cadences else None,
+    )
+
     activity = Activity(
         activityId=f"gpx-{digest}",
         startDateTimeLocal=min(times),
@@ -130,8 +141,8 @@ def parse_gpx(content: bytes) -> ParsedActivityFile:
         heartRateAverage=mean(heart_rates),
         heartRateMin=min(heart_rates) if heart_rates else None,
         heartRateMax=max(heart_rates) if heart_rates else None,
-        cadenceAverage=mean(cadences),
-        cadenceMin=min(cadences) if cadences else None,
-        cadenceMax=max(cadences) if cadences else None,
+        cadenceAverage=cadence_avg,
+        cadenceMin=cadence_min,
+        cadenceMax=cadence_max,
     )
     return ParsedActivityFile(activity=activity, latitudes=lats, longitudes=lons)
