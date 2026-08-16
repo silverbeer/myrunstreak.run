@@ -131,6 +131,18 @@ file parses in milliseconds, so it answers in the request.
 - **Distance/duration.** TCX's stated lap totals win over the track. GPX has
   neither, so distance is summed over the trackpoints and duration excludes
   gaps longer than 60s (a paused watch, not a slow kilometre).
+- **Cadence units (SB-623).** Garmin writes cadence as *strides* per minute
+  (~93 for a normal running cadence); SmashRun, and therefore the
+  `cadence_average` column, stores *steps* per minute (~186). Imported cadence
+  is doubled when the average falls below 130 — running cadence sits at
+  150–200 steps/min and stride rates at 75–100, so the ranges don't overlap.
+  The decision is made once from the average and applied to min/max too, since
+  a doubled average beside an untouched maximum is worse than either unit
+  applied consistently.
+- **Zero samples are gaps, not readings (SB-623).** A watch writes 0 for heart
+  rate or cadence when it has nothing to report — stopped at a light, or a
+  strap that lost contact. Those are dropped before averaging, or "minimum
+  cadence" reads 0 on every run that ever paused.
 - **CLI:** `stk import <file> [--timezone ZONE]`.
 - **Web UI (SB-418):** `ImportRunCard.vue` on the Settings page — drop zone plus
   file picker, client-side type/size check before upload, and a result surface

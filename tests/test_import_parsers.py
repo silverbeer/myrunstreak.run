@@ -113,7 +113,8 @@ def test_gpx_keeps_the_gps_track_and_hr_cadence() -> None:
     assert parsed.activity.start_latitude == 42.2400
     assert parsed.activity.heart_rate_average == pytest.approx(150.0)
     assert parsed.activity.heart_rate_max == 160
-    assert parsed.activity.cadence_average == pytest.approx(87.667, abs=0.01)
+    # Strides in the file (85/88/90) -> steps per minute on the model (SB-623).
+    assert parsed.activity.cadence_average == pytest.approx(175.333, abs=0.01)
     assert parsed.activity.has_details_gps is True
 
 
@@ -195,7 +196,8 @@ def test_tcx_reads_heart_rate_and_cadence() -> None:
     parsed = parse_tcx(TCX)
     assert parsed.activity.heart_rate_average == pytest.approx(150.0)
     assert parsed.activity.heart_rate_min == 142
-    assert parsed.activity.cadence_average == pytest.approx(88.0)
+    # 86/90 strides -> steps per minute (SB-623).
+    assert parsed.activity.cadence_average == pytest.approx(176.0)
 
 
 def test_tcx_falls_back_to_the_track_when_laps_state_no_distance() -> None:

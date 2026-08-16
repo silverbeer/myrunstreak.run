@@ -85,6 +85,17 @@ def mean(values: list[float]) -> float | None:
     return sum(values) / len(values) if values else None
 
 
+def recorded(values: list[float]) -> list[float]:
+    """Drop zero samples from a sensor series (SB-623).
+
+    A watch writes 0 for heart rate or cadence when it has nothing to report —
+    stopped at a light, or a strap that lost contact. Those are gaps, not
+    measurements: kept in, they make "minimum cadence" read 0 on every run that
+    ever paused, and drag the average below what the runner actually held.
+    """
+    return [v for v in values if v > 0]
+
+
 def as_float(value: Any) -> float | None:
     try:
         return float(value)
