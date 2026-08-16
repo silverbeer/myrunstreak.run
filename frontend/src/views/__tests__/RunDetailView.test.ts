@@ -9,8 +9,11 @@ vi.mock('@/composables/useUserPreferences', async () => {
   const { ref } = await import('vue')
   return { useUserPreferences: () => ({ unit: ref('mi') }) }
 })
+const routerPush = vi.fn()
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { activityId: 'act-123' } }),
+  // Delete navigates away once the run is gone (SB-621).
+  useRouter: () => ({ push: routerPush }),
   RouterLink: { template: '<a><slot /></a>' },
 }))
 vi.mock('vue3-apexcharts', () => ({
@@ -71,5 +74,71 @@ describe('RunDetailView (SB-263)', () => {
     await flushPromises()
     expect(w.text()).not.toContain('splits')
     expect(w.text()).not.toContain('Elevation')
+  })
+
+  // SB-621: only imported runs can be deleted. A synced run would be recreated
+  // by the next sync, so the API refuses it — offering the control anyway would
+  // hand the user a button that fails.
+  describe('delete control', () => {
+    it('is absent on a synced run', async () => {
+      apiCallMock.mockResolvedValue(detail)
+      const w = mount(RunDetailView)
+      await flushPromises()
+      expect(w.text()).not.toContain('Delete this run')
+    })
+
+    it('is offered on an imported run', async () => {
+      apiCallMock.mockResolvedValue({ ...detail, is_imported: true })
+      const w = mount(RunDetailView)
+      await flushPromises()
+      expect(w.text()).toContain('Delete this run')
+      expect(w.text()).toContain('Imported from a file')
+    })
+
+    it('asks before deleting, naming what goes and that it cannot be undone', async () => {
+      apiCallMock.mockResolvedValue({ ...detail, is_imported: true })
+      const w = mount(RunDetailView)
+      await flushPromises()
+
+      // Nothing is requested just by opening the confirm.
+      const callsBefore = apiCallMock.mock.calls.length
+      await w.findAll('button').find((b) => b.text() === 'Delete this run')!.trigger('click')
+      await flushPromises()
+
+      expect(w.text()).toContain('Delete this run?')
+      expect(w.text()).toContain("can't be undone")
+      expect(w.text()).toContain('GPS track and splits')
+      expect(apiCallMock.mock.calls.length).toBe(callsBefore)
+    })
+
+    it('deletes and leaves the page once confirmed', async () => {
+      apiCallMock.mockResolvedValue({ ...detail, is_imported: true })
+      routerPush.mockClear()
+      const w = mount(RunDetailView)
+      await flushPromises()
+
+      await w.findAll('button').find((b) => b.text() === 'Delete this run')!.trigger('click')
+      apiCallMock.mockResolvedValueOnce(null)
+      await w.findAll('button').find((b) => b.text() === 'Delete run')!.trigger('click')
+      await flushPromises()
+
+      expect(apiCallMock).toHaveBeenCalledWith('/runs/act-123', { method: 'DELETE' })
+      expect(routerPush).toHaveBeenCalledWith('/runs')
+    })
+
+    it('stays put and shows why when the delete is refused', async () => {
+      apiCallMock.mockResolvedValue({ ...detail, is_imported: true })
+      routerPush.mockClear()
+      const w = mount(RunDetailView)
+      await flushPromises()
+
+      await w.findAll('button').find((b) => b.text() === 'Delete this run')!.trigger('click')
+      apiCallMock.mockRejectedValueOnce(new Error('A synced run comes back on the next sync'))
+      await w.findAll('button').find((b) => b.text() === 'Delete run')!.trigger('click')
+      await flushPromises()
+
+      expect(w.find('[role="alert"]').text()).toContain('comes back on the next sync')
+      expect(routerPush).not.toHaveBeenCalled()
+    })
   })
 })

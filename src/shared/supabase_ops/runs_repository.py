@@ -1021,15 +1021,37 @@ class RunsRepository:
         )
         return cast(int, result.count or 0)
 
-    def delete_run(self, run_id: UUID) -> None:
+    def delete_run(self, user_id: UUID, run_id: UUID) -> bool:
         """
-        Delete a run and all related data (cascades to splits, laps, etc.).
+        Delete one of a user's runs, with everything hanging off it.
+
+        The owner is part of the delete filter rather than something the caller
+        is trusted to have checked (SB-621). The backend holds the service-role
+        key, so RLS is not a second line of defence here — an unscoped delete by
+        id would remove any user's run given its uuid.
+
+        Cascades handle the rest: splits, laps, recording_data and run_tracks
+        are ON DELETE CASCADE, and project_run_to_metric_entry_trigger removes
+        the projected metric_entries row.
 
         Args:
+            user_id: Owner's UUID — the run is only deleted if it is theirs
             run_id: Run UUID
+
+        Returns:
+            True if a run was deleted, False if it did not exist or isn't theirs
         """
-        self.supabase.table("runs").delete().eq("id", str(run_id)).execute()
-        logger.info(f"Deleted run {run_id}")
+        result = (
+            self.supabase.table("runs")
+            .delete()
+            .eq("id", str(run_id))
+            .eq("user_id", str(user_id))
+            .execute()
+        )
+        deleted = bool(cast(list[dict[str, Any]], result.data))
+        if deleted:
+            logger.info(f"Deleted run {run_id} for user {user_id}")
+        return deleted
 
     def recalculate_user_stats(
         self, user_id: UUID, timezone: str = "America/New_York"

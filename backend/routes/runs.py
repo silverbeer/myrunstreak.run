@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Any, Literal
 from uuid import UUID
@@ -13,11 +14,14 @@ from backend.routes.sync import _resolve_access_token
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from src.shared.geo import decode_polyline, haversine_km, simplify_and_encode
+from src.shared.importers import DEFAULT_TIMEZONE
 from src.shared.route_shape import SHAPE_GROUPING_ENABLED
 from src.shared.smashrun import SmashRunAPIClient
 from src.shared.supabase_client import get_supabase_client
 from src.shared.supabase_ops import RunsRepository, TokenRepository, UsersRepository
 from src.shared.supabase_ops.mappers import WeatherType
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -520,6 +524,9 @@ async def get_run_detail(
         "distance_km": _f(run["distance_km"]),
         "duration_seconds": _f(run["duration_seconds"]),
         "avg_pace_min_per_km": _f(run.get("average_pace_min_per_km")),
+        # Only imported runs can be deleted (SB-621). The view needs to know
+        # before it offers the control — otherwise it shows a button that 409s.
+        "is_imported": _is_imported(get_supabase_client(), run),
         "weather": {
             "temperature_celsius": _f(run.get("temperature_celsius")),
             "weather_type": run.get("weather_type"),
@@ -565,6 +572,54 @@ async def set_run_audio(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
     await invalidate_user(user_id)
     return {"audio_type": updated.get("audio_type"), "audio_note": updated.get("audio_note")}
+
+
+@router.delete("/{activity_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_run(
+    activity_id: str,
+    user_id: UUID = Depends(authenticate_request),
+) -> None:
+    """Delete one of your **imported** runs (SB-621).
+
+    Import is the only ingestion path that can produce a run you did not do —
+    wrong file, misparse, a near-duplicate that dodged the dedup key — so it is
+    the one that needs an undo.
+
+    Synced runs are refused: deleting one only lasts until the next sync
+    recreates it from SmashRun, which reads as the delete having failed.
+
+    404 if the run isn't the caller's — never a 403, which would confirm that
+    someone else's activity id exists.
+    """
+    supabase = get_supabase_client()
+    repo = RunsRepository(supabase)
+
+    run = repo.get_run_by_activity_id(user_id, activity_id)
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
+
+    if not _is_imported(supabase, run):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Only imported runs can be deleted here. A synced run comes back on the "
+            "next sync — remove it in SmashRun instead.",
+        )
+
+    if not repo.delete_run(user_id, UUID(run["id"])):
+        # Lost a race with another delete of the same run; the end state is the
+        # one asked for either way.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
+
+    # Streak and totals read from the aggregation row, which would otherwise
+    # keep counting the run we just removed.
+    try:
+        repo.recalculate_user_stats(user_id, timezone=run.get("timezone") or DEFAULT_TIMEZONE)
+    except Exception as exc:  # noqa: BLE001 - the run is gone; stats catch up next write
+        logger.warning(f"recalculate_user_stats failed after delete for {user_id}: {exc}")
+
+    await invalidate_user(user_id)
+
+    await invalidate_user(user_id)
 
 
 def _f(value: Any) -> float | None:

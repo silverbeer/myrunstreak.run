@@ -27,6 +27,7 @@ from cli.commands import (
     athlete,
     auth,
     cache,
+    delete_run,
     import_file,
     invite,
     plan,
@@ -154,6 +155,7 @@ app.command(name="audio", rich_help_panel=_PANEL_RUNS)(runs.audio)
 app.command(name="summary", rich_help_panel=_PANEL_RUNS)(runs.summary)
 app.command(name="sync", rich_help_panel=_PANEL_RUNS)(sync.sync_runs)
 app.command(name="import", rich_help_panel=_PANEL_RUNS)(import_file.import_activity)
+app.command(name="delete", rich_help_panel=_PANEL_RUNS)(delete_run.delete_run)
 app.command(name="verify", rich_help_panel=_PANEL_RUNS)(verify.verify)
 app.command(name="goals", rich_help_panel=_PANEL_PLANNING)(stats.goals)
 

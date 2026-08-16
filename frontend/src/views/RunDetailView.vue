@@ -105,13 +105,43 @@
       />
 
       <p v-if="run.notes" class="text-sm text-gray-500 mt-4">{{ run.notes }}</p>
+
+      <!--
+        Delete is offered only for imported runs (SB-621). A synced run would be
+        recreated by the next sync, so the API refuses it — showing the control
+        anyway would just hand the user a button that fails.
+      -->
+      <div v-if="run.is_imported" class="mt-6 flex items-center gap-3">
+        <button
+          type="button"
+          class="text-sm text-red-600 hover:text-red-700 hover:underline"
+          @click="confirmingDelete = true"
+        >
+          Delete this run
+        </button>
+        <span class="text-xs text-gray-400">Imported from a file</span>
+      </div>
+
+      <p v-if="deleteError" class="mt-2 text-sm text-red-600" role="alert">{{ deleteError }}</p>
+
+      <ConfirmModal
+        :show="confirmingDelete"
+        variant="danger"
+        title="Delete this run?"
+        :message="deleteMessage"
+        confirm-text="Delete run"
+        loading-text="Deleting…"
+        :loading="deleting"
+        @cancel="confirmingDelete = false"
+        @confirm="handleDelete"
+      />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { RouterLink } from 'vue-router'
 import ApexChart from 'vue3-apexcharts'
 import {
@@ -125,12 +155,34 @@ import { formatDate, formatDistance, formatDuration, formatPace, distanceLabel }
 import RouteMap from '@/components/RouteMap.vue'
 import RouteFrequency from '@/components/RouteFrequency.vue'
 import AudioLog from '@/components/AudioLog.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
+import { useDeleteRun } from '@/composables/useDeleteRun'
 
 const KM_PER_MI = 1.609344
 
 const route = useRoute()
+const router = useRouter()
 const { unit } = useUserPreferences()
 const { run, loading, error, load } = useRunDetail(String(route.params.activityId))
+const { remove, deleting, error: deleteError } = useDeleteRun()
+
+const confirmingDelete = ref(false)
+
+// Name what is about to go, so the confirm isn't an abstract "are you sure".
+const deleteMessage = computed(() => {
+  if (!run.value) return ''
+  const distance = `${formatDistance(run.value.distance_km, unit.value)} ${distanceLabel(unit.value)}`
+  return `${formatDate(run.value.date)} · ${distance}. This also removes its GPS track and splits, and your streak and totals are recalculated. It can't be undone — you'd need to import the file again.`
+})
+
+const handleDelete = async () => {
+  const activityId = run.value?.activity_id
+  if (!activityId) return
+  const gone = await remove(activityId)
+  confirmingDelete.value = false
+  // The run no longer exists, so this page has nothing left to show.
+  if (gone) router.push('/runs')
+}
 const { track, load: loadTrack } = useRunTrack(String(route.params.activityId))
 const { penalty, load: loadPenalty } = useConditionsPenalty()
 

@@ -157,6 +157,8 @@ export interface RunVitals {
 export interface RunDetail {
   activity_id: string
   date: string
+  /** Imported from a file rather than synced — the only kind that can be deleted (SB-621). */
+  is_imported?: boolean
   distance_km: number
   duration_seconds: number
   avg_pace_min_per_km: number | null
