@@ -69,7 +69,7 @@ backend:
 
   image:
     repository: ghcr.io/silverbeer/myrunstreak-backend
-    tag: "923d5d6" # backend-tag
+    tag: "d57c975" # backend-tag
     pullPolicy: IfNotPresent
 
   env:
