@@ -37,7 +37,7 @@ if [[ -z "$PROD_KEY" ]]; then
         exit 1
     fi
     echo "==> Reading prod service key from 1Password..."
-    PROD_KEY="$(op read 'op://Personal/stk-prod/service_role_key')"
+    PROD_KEY="$(op read 'op://agents/stk-prod/service_role_key')"
 fi
 
 # --- Confirm destructive action --------------------------------------------
