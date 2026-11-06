@@ -37,7 +37,7 @@ the `helm/myrunstreak/` chart.
 - Vue 3 + Vite + Tailwind + Pinia + vue-router, talks to Supabase Auth directly
   and to the backend for data.
 - Built to static assets, served by nginx in the container (`/health` probe).
-- Served at `myrunstreak.run` / `www.myrunstreak.run`; 2 replicas.
+- Served at `myrunstreak.run` / `www.myrunstreak.run`; 1 replica.
 
 ### Backend — FastAPI (`api.myrunstreak.run`)
 - `app.py`: CORS, route mounting, `/health`.
